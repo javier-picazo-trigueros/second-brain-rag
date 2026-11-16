@@ -69,7 +69,7 @@ def test_main_chunks_appear_in_rank_order_with_label_heading_and_page(tmp_path: 
     ctx = build_context(r, settings(tmp_path))
     assert ctx.text.index("Nota: Semáforos") < ctx.text.index("Nota: OpenMP")
     assert "Encabezado: Monitores" in ctx.text and "Página: 7" in ctx.text
-    assert "texto uno" in ctx.text and "SISTEMAS" in ctx.text
+    assert "texto uno" in ctx.text and "Asignatura: SO" in ctx.text
     assert [s.label for s in ctx.sources] == ["Semáforos", "OpenMP"]
     assert all(s.kind == "evidence" for s in ctx.sources)
 
@@ -186,12 +186,12 @@ def test_metadata_goes_on_its_own_labelled_line_not_next_to_the_citation(tmp_pat
     assert title_line == "### [S1]"  # solo el identificador: lo único que se copia al citar
     assert lines[lines.index(title_line) + 1] == "Nota: Semáforos"
     meta_line = lines[lines.index(title_line) + 2]
-    assert meta_line == "Asignatura: SISTEMAS · Curso: 2º · Encabezado: Monitores · Página: 7"
+    assert meta_line == "Asignatura: SO · Curso: 2º · Encabezado: Monitores · Página: 7"
 
 
 def test_missing_metadata_is_left_out_of_the_line(tmp_path: Path) -> None:
-    hit = Hit(0.5, {"note_path": "a/X.md", "text": "texto", "heading_path": "", "page": None})
-    ctx = build_context(result([note("a/X.md", hit)]), settings(tmp_path))
+    hit = Hit(0.5, {"note_path": "X.md", "text": "texto", "heading_path": "", "page": None})
+    ctx = build_context(result([note("X.md", hit)]), settings(tmp_path))
     assert "Página" not in ctx.text and "Asignatura" not in ctx.text
     assert "### [S1]\nNota: X\ntexto" in ctx.text
 
@@ -209,3 +209,21 @@ def test_overview_uses_the_whole_budget_because_it_has_no_hints(tmp_path: Path) 
         [x for x in normal.sources if x.kind == "evidence"]
     )
     assert overview.tokens <= 1000
+
+
+# --- asignatura mostrada ----------------------------------------------------------------------
+
+
+def test_the_subject_is_the_subject_folder_not_the_nearest_folder(tmp_path: Path) -> None:
+    # Regresión: la nota decía «images» (su subcarpeta) en vez de la asignatura.
+    path = "3º/DM/images/figura.md"
+    hit = Hit(0.5, {"note_path": path, "text": "t", "asignatura": "images", "curso": "3º"})
+    ctx = build_context(result([note(path, hit)]), settings(tmp_path))
+    assert ctx.sources[0].asignatura == "DM"
+    assert "Asignatura: DM" in ctx.text and "images" not in ctx.text
+
+
+def test_the_frontmatter_subject_is_used_only_outside_a_subject_folder(tmp_path: Path) -> None:
+    hit = Hit(0.5, {"note_path": "Suelta.md", "text": "t", "asignatura": "Propia"})
+    ctx = build_context(result([note("Suelta.md", hit)]), settings(tmp_path))
+    assert ctx.sources[0].asignatura == "Propia"

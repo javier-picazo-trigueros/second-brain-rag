@@ -32,6 +32,12 @@ def subject_of(path: str) -> str | None:
     return parts[0] if len(parts) >= 2 else None
 
 
+def display_subject(path: str, frontmatter_value: object) -> str | None:
+    """Asignatura que se muestra de una nota: su carpeta de asignatura; el frontmatter solo si la
+    nota está fuera de una (el campo suele ser la subcarpeta inmediata: «images», «Parte1»...)."""
+    return subject_of(path) or (str(frontmatter_value) if frontmatter_value else None)
+
+
 @dataclass(frozen=True, slots=True)
 class SubjectSpec:
     """Entrada del fichero de alias: cómo nombra el usuario una asignatura y dónde está."""

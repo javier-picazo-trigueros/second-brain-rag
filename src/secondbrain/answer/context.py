@@ -8,6 +8,7 @@ from typing import Literal
 from secondbrain.config import Settings
 from secondbrain.domain import Hit
 from secondbrain.retrieval.hybrid import NoteHit, RelatedNote, SearchResult
+from secondbrain.retrieval.subjects import display_subject
 
 # Medido con Ollama sobre chunks reales: 3,29-3,85 caracteres por token. Se usa 3,0, que
 # sobreestima ~10 % y por tanto nunca se queda corto.
@@ -150,7 +151,7 @@ def build_context(result: SearchResult, settings: Settings) -> BuiltContext:
                     title=note.title,
                     kind="evidence",
                     pages=pages,
-                    asignatura=first.get("asignatura"),
+                    asignatura=display_subject(note.path, first.get("asignatura")),
                     curso=first.get("curso"),
                     truncated=was_cut,
                 )
@@ -180,7 +181,11 @@ def _add_note(
     included = False
     for hit in note.chunks:
         fragment = _fragment(f"S{len(fragments) + 1}", label, note, hit)
-        header = _header(fragment.id, label, hit.payload)
+        shown = {
+            **hit.payload,
+            "asignatura": display_subject(note.path, hit.payload.get("asignatura")),
+        }
+        header = _header(fragment.id, label, shown)
         block = f"{header}\n{hit.payload['text']}\n\n"
         room = budget - estimate_tokens(_SOURCES_HEADER + body)
         if estimate_tokens(_SOURCES_HEADER + body + block) <= budget:

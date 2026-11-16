@@ -10,7 +10,7 @@ from secondbrain.answer.context import Fragment
 _INNER = re.compile(r"\s*S\s?\d{1,3}\s*(?:(?:[,;]|\by\b)\s*S\s?\d{1,3}\s*)*", re.I)
 _ID = re.compile(r"S\s?(\d{1,3})", re.I)
 # La página la pone el sistema (la del fragmento): la que el modelo añada se descarta.
-_PAGE_GROUP = re.compile(r"\((?:pp?|p[áa]gs?)\.?\s*[\d\s,;\-–y]+\)", re.I)
+_PAGE_GROUP = re.compile(r"\((?:pp?|p[áa]gs?)\.?\s*[\d\s,;\-\u2013y]+\)", re.I)
 _MAX_RAW = 200  # una cita [[...]] más larga que esto no se considera cita
 _MAX_ID_GROUP = 40  # un corchete más largo que esto no es un grupo de identificadores
 _MAX_PAGE_GAP = 2  # espacios admitidos entre la cita y su paréntesis de página

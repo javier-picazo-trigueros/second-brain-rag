@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ApiError, apiGet, type NoteDetail } from "../lib/api";
 import { ErrorBanner } from "./ErrorBanner";
@@ -26,7 +26,10 @@ const CHIP = "rounded-full border border-border bg-surface-2 px-2.5 py-0.5 text-
 export function NotePanel({ path, page = null, onClose, onOpenNote }: Props) {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   // Mientras lo cargado no corresponda a la ruta pedida, se está cargando (sin setState en el efecto).
-  const state = loaded !== null && loaded.path === path ? loaded : ({ status: "loading" } as const);
+  const state = useMemo(
+    () => (loaded !== null && loaded.path === path ? loaded : ({ status: "loading" } as const)),
+    [loaded, path],
+  );
   const closeRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {

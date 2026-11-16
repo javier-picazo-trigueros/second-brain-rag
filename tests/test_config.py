@@ -305,3 +305,8 @@ def test_cors_origins_are_read_from_a_semicolon_separated_variable(
     monkeypatch.setenv("BRAIN_API_CORS_ORIGINS", "http://localhost:5173; http://127.0.0.1:5173")
     s = Settings(_env_file=None)  # type: ignore[call-arg]
     assert s.api_cors_origins == ["http://localhost:5173", "http://127.0.0.1:5173"]
+
+
+def test_mcp_output_is_bounded_by_default(tmp_path: Path) -> None:
+    s = _settings(tmp_path)
+    assert (s.mcp_max_chars, s.mcp_snippet_chars) == (20_000, 400)

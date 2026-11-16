@@ -84,6 +84,11 @@ class Settings(BaseSettings):
     api_port: int = Field(8000, ge=1, le=65535)
     api_cors_origins: Annotated[list[str], NoDecode] = Field(default_factory=list)
 
+    # Servidor MCP: todo lo que devuelve pasa a la conversación del cliente (p. ej. Claude Code),
+    # así que las salidas están acotadas.
+    mcp_max_chars: int = Field(20_000, ge=1_000)  # máximo de texto de nota por llamada
+    mcp_snippet_chars: int = Field(400, ge=50)  # tamaño de cada fragmento en los resultados
+
     # Respuestas
     answer_k: int = Field(5, ge=1)  # notas que se recuperan para responder
     # Coseno mínimo del mejor chunk para considerar fiable el contexto. Es un aviso, no un bloqueo.

@@ -78,6 +78,11 @@ class Settings(BaseSettings):
     context_budget_tokens: int = Field(4500, ge=500)
     related_budget_tokens: int = Field(800, ge=0)  # parte del anterior reservada a las pistas
 
+    # Respuestas
+    answer_k: int = Field(5, ge=1)  # notas que se recuperan para responder
+    # Coseno mínimo del mejor chunk para considerar fiable el contexto. Es un aviso, no un bloqueo.
+    confidence_threshold: float = Field(0.5, ge=0, le=1)
+
     # Grafo de conceptos
     graph_fanout_cap: int = Field(5, ge=1)  # vecinas máximas por concepto
     graph_budget: int = Field(4, ge=0)  # notas relacionadas máximas por búsqueda

@@ -11,6 +11,9 @@ _FENCE_LINE = re.compile(r"^[ \t]*(```|~~~)")
 _PLACEHOLDER = re.compile(r"^\*\(sin texto extraíble[^\n]*\)\*[ \t]*$", re.M)
 _MIN_KEEP = 40
 
+# Súbela cuando cambie el algoritmo: fuerza a reindexar todas las notas.
+CHUNKER_VERSION = 1
+
 _Section = tuple[tuple[str, ...], int | None, str]
 
 

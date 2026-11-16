@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from fastembed import SparseTextEmbedding
 from qdrant_client import QdrantClient, models
 
@@ -109,18 +111,35 @@ class VectorStore:
             wait=True,
         )
 
+    @staticmethod
+    def _paths_filter(only_paths: Sequence[str] | None) -> models.Filter | None:
+        if only_paths is None:
+            return None
+        return models.Filter(
+            must=[
+                models.FieldCondition(key="note_path", match=models.MatchAny(any=list(only_paths)))
+            ]
+        )
+
     def search(
-        self, query: str, query_dense: list[float], limit: int = 8, prefetch: int = 40
+        self,
+        query: str,
+        query_dense: list[float],
+        limit: int = 8,
+        prefetch: int = 40,
+        only_paths: Sequence[str] | None = None,
     ) -> list[Hit]:
         s = next(iter(self._sparse.query_embed(query)))
+        within = self._paths_filter(only_paths)
         res = self._client.query_points(
             self._name,
             prefetch=[
-                models.Prefetch(query=query_dense, using=DENSE, limit=prefetch),
+                models.Prefetch(query=query_dense, using=DENSE, limit=prefetch, filter=within),
                 models.Prefetch(
                     query=models.SparseVector(indices=s.indices.tolist(), values=s.values.tolist()),
                     using=SPARSE,
                     limit=prefetch,
+                    filter=within,
                 ),
             ],
             query=models.FusionQuery(fusion=models.Fusion.RRF),
@@ -144,6 +163,23 @@ class VectorStore:
             with_payload=True,
         )
         return [Hit(score=p.score, payload=dict(p.payload or {})) for p in res.points]
+
+    def dense_notes(
+        self, query_dense: list[float], limit: int = 100, only_paths: Sequence[str] | None = None
+    ) -> dict[str, float]:
+        """Mejor coseno de cada nota entre los `limit` chunks más cercanos (solo ranking denso)."""
+        res = self._client.query_points(
+            self._name,
+            query=query_dense,
+            using=DENSE,
+            query_filter=self._paths_filter(only_paths),
+            limit=limit,
+            with_payload=["note_path"],
+        )
+        best: dict[str, float] = {}
+        for point in res.points:
+            best.setdefault(str((point.payload or {})["note_path"]), point.score)
+        return best
 
     def dense_top(self, query_dense: list[float]) -> float | None:
         """Coseno del chunk más cercano a la consulta (solo ranking denso), o None si no hay."""

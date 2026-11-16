@@ -72,6 +72,10 @@ class Settings(BaseSettings):
     big_note_chunks: int = Field(200, ge=1)  # a partir de aquí una nota cuenta como "grande"
     big_note_quota: int = Field(2, ge=0)  # máximo de notas grandes en el top-k...
     quota_override_ratio: float = Field(0.9, gt=0, le=1)  # ...salvo que casi igualen al primero
+    # Corte por relevancia: una nota es evidencia solo si el coseno de su mejor chunk llega a
+    # `min_note_cosine` y no queda más de `cosine_margin` por debajo de la mejor nota.
+    min_note_cosine: float = Field(0.55, ge=0, le=1)
+    cosine_margin: float = Field(0.12, ge=0, le=1)
 
     # Contexto que se da al LLM (tokens estimados). El total del prompt más la respuesta debe caber
     # en `llm_num_ctx`: sistema ~450 + contexto + pregunta ~700 + `llm_max_tokens`.

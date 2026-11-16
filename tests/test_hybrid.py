@@ -32,6 +32,7 @@ def build(tmp_path: Path) -> Any:
         copies: list[list[str]] | None = None,
         best: dict[str, Hit] | None = None,
         dense: float | None = 0.6,
+        cosines: dict[str, float] | None = None,
         **overrides: Any,
     ) -> tuple[HybridRetriever, ScriptedStore]:
         settings = Settings(_env_file=None, vault_path=tmp_path, **overrides)  # type: ignore[call-arg]
@@ -46,7 +47,7 @@ def build(tmp_path: Path) -> Any:
         for path, n in counts.items():
             manifest.upsert(path, "h", n)
             manifest.set_meta(path, (concepts or {}).get(path, []), group_of.get(path))
-        store = ScriptedStore(hits, best, dense=dense)
+        store = ScriptedStore(hits, best, dense=dense, cosines=cosines)
         return HybridRetriever(settings, FakeEmbedder(), store, manifest), store
 
     yield _build
@@ -96,7 +97,7 @@ def test_no_hits_gives_an_empty_result(build: Build) -> None:
     r, store = build([])
     result = r.search("q")
     assert (result.notes, result.related) == ([], [])
-    assert store.note_calls == []
+    assert not any(call.startswith("r") for call in store.note_calls)  # sin grafo, sin vecinas
 
 
 def test_note_hit_exposes_title_and_chunk_count(build: Build) -> None:
@@ -257,7 +258,7 @@ def test_graph_budget_and_switch(build: Build) -> None:
     assert len(r.search("q").related) == 2
     store.note_calls.clear()
     assert r.search("q", with_graph=False).related == []
-    assert store.note_calls == []
+    assert not any(call.startswith("r") for call in store.note_calls)  # sin grafo, sin vecinas
 
 
 def test_related_without_a_best_chunk_is_still_listed(build: Build) -> None:
@@ -283,3 +284,58 @@ def test_similarity_is_reported_even_without_hits(build: Build) -> None:
 def test_similarity_is_none_when_the_index_is_empty(build: Build) -> None:
     r, _ = build([], dense=None)
     assert r.search("q").top_similarity is None
+
+
+# --- corte por coseno de la nota ------------------------------------------------------
+
+
+def three_notes() -> list[Hit]:
+    return [hit("a.md", 0.9), hit("b.md", 0.8), hit("c.md", 0.7)]
+
+
+def test_notes_far_below_the_best_cosine_are_dropped(build: Build) -> None:
+    r, _ = build(three_notes(), cosines={"a.md": 0.70, "b.md": 0.66, "c.md": 0.40})
+    assert paths(r.search("q")) == ["a.md", "b.md"]
+
+
+def test_cosine_margin_is_relative_to_the_best_note(build: Build) -> None:
+    # 0,57 supera el mínimo absoluto (0,55) pero queda 0,13 por debajo del mejor (0,70).
+    r, _ = build(three_notes()[:2], cosines={"a.md": 0.70, "b.md": 0.57})
+    assert paths(r.search("q")) == ["a.md"]
+
+
+def test_absolute_floor_can_leave_no_evidence(build: Build) -> None:
+    r, _ = build(three_notes(), cosines={"a.md": 0.45, "b.md": 0.44, "c.md": 0.30})
+    assert r.search("q").notes == []
+
+
+def test_floor_and_margin_come_from_settings(build: Build) -> None:
+    r, _ = build(
+        three_notes(),
+        cosines={"a.md": 0.70, "b.md": 0.50, "c.md": 0.40},
+        min_note_cosine=0.30,
+        cosine_margin=0.35,
+    )
+    assert paths(r.search("q")) == ["a.md", "b.md", "c.md"]
+
+
+def test_cutoff_happens_before_taking_top_k(build: Build) -> None:
+    hits = [hit(f"{n}.md", 0.9 - i / 20) for i, n in enumerate("abcd")]
+    r, _ = build(hits, cosines={"a.md": 0.70, "b.md": 0.30, "c.md": 0.68, "d.md": 0.66})
+    assert paths(r.search("q", k=2)) == ["a.md", "c.md"]
+
+
+def test_unknown_cosine_keeps_the_note(build: Build) -> None:
+    r, _ = build(three_notes(), cosines={"a.md": 0.70})
+    assert paths(r.search("q")) == ["a.md", "b.md", "c.md"]
+
+
+def test_cosine_is_exposed_on_the_note(build: Build) -> None:
+    r, _ = build(three_notes()[:1], cosines={"a.md": 0.70})
+    assert r.search("q").notes[0].cosine == 0.70
+
+
+def test_only_paths_restricts_the_search(build: Build) -> None:
+    r, store = build(three_notes())
+    r.search("q", only_paths=["a.md"])
+    assert store.last_only_paths == ["a.md"]

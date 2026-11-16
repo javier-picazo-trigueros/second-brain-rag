@@ -47,6 +47,8 @@ class RelatedNote:
 class SearchResult:
     notes: list[NoteHit]
     related: list[RelatedNote]
+    # Coseno del mejor chunk: mide cuánto se parece la consulta al vault (el RRF no está calibrado).
+    top_similarity: float | None = None
 
 
 def _canonical_key(path: str) -> tuple[bool, int, str]:
@@ -70,13 +72,14 @@ class HybridRetriever:
         hits = self._store.search(
             query, dense, limit=self._s.candidate_limit, prefetch=self._s.prefetch_limit
         )
+        similarity = self._store.dense_top(dense)
         if not hits:
-            return SearchResult([], [])
+            return SearchResult([], [], similarity)
         canonical, copies = self._copy_index()
         ranked = self._rank(hits, canonical, copies)
         selected = self._select(ranked, k)
         related = self._related(selected, dense, canonical) if with_graph else []
-        return SearchResult(selected, related)
+        return SearchResult(selected, related, similarity)
 
     # --- ranking ------------------------------------------------------------------------------
 

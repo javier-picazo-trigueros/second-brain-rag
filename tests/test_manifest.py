@@ -158,3 +158,28 @@ def test_opens_a_database_created_before_the_meta_columns(tmp_path: Path) -> Non
         assert m.note_concepts() == {"a.md": ("x",)}
     finally:
         m.close()
+
+
+# --- valores sueltos (última sincronización...) ---------------------------------------------------
+
+
+def test_values_default_to_none(manifest: Manifest) -> None:
+    assert manifest.get_value("last_sync") is None
+
+
+def test_values_are_stored_and_overwritten(manifest: Manifest) -> None:
+    manifest.set_value("last_sync", "2026-11-16T10:00:00+00:00")
+    manifest.set_value("last_sync", "2026-11-16T11:00:00+00:00")
+    assert manifest.get_value("last_sync") == "2026-11-16T11:00:00+00:00"
+
+
+def test_values_persist_across_instances(tmp_path: Path) -> None:
+    db = tmp_path / "manifest.sqlite"
+    first = Manifest(db)
+    first.set_value("k", "v")
+    first.close()
+    second = Manifest(db)
+    try:
+        assert second.get_value("k") == "v"
+    finally:
+        second.close()

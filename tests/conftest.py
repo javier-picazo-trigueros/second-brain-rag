@@ -14,6 +14,12 @@ QDRANT_URL = "http://127.0.0.1:6333"
 EMBED_MODEL = "bge-m3"
 
 
+@pytest.fixture(autouse=True)
+def _isolate_from_local_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ningún test lee el .env real del desarrollador (ni, por tanto, su vault)."""
+    monkeypatch.setenv("BRAIN_ENV_FILE", str(tmp_path / "no-existe.env"))
+
+
 @pytest.fixture(scope="session")
 def vault() -> Path:
     """Vault de ejemplo. Los tests nunca tocan el vault real."""

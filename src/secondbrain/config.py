@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import Annotated, Any
@@ -10,9 +11,16 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from secondbrain.ingest.chunker import CHUNKER_VERSION
 
+# Raíz del repositorio (src/secondbrain/config.py -> ../..). Las rutas relativas y el .env se
+# resuelven desde aquí y no desde el directorio de trabajo: Claude Code lanza el servidor MCP
+# desde otro directorio.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="BRAIN_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="BRAIN_", env_file=PROJECT_ROOT / ".env", extra="ignore"
+    )
 
     vault_path: Path
     exclude_dirs: frozenset[str] = frozenset(
@@ -48,6 +56,13 @@ class Settings(BaseSettings):
     # Caché del modelo BM25 de fastembed: se descarga una vez y después funciona offline.
     bm25_cache_dir: Path = Path("data/fastembed_cache")
 
+    # Modelo de lenguaje (respuestas). En consulta el embedder va en CPU para dejar la VRAM al LLM.
+    llm_model: str = "qwen2.5:7b"
+    llm_num_ctx: int = Field(8192, ge=2048)
+    llm_max_tokens: int = Field(1024, ge=1)  # tope de la respuesta (num_predict)
+    llm_temperature: float = Field(0.2, ge=0, le=1)
+    llm_keep_alive: str = "10m"
+
     # Búsqueda híbrida. Los valores por defecto son un punto de partida: los ajustan los evals.
     candidate_limit: int = Field(150, ge=1)  # chunks fusionados que se piden a Qdrant
     prefetch_limit: int = Field(120, ge=1)  # candidatos por rama (denso / BM25) antes de fusionar
@@ -58,6 +73,27 @@ class Settings(BaseSettings):
     big_note_quota: int = Field(2, ge=0)  # máximo de notas grandes en el top-k...
     quota_override_ratio: float = Field(0.9, gt=0, le=1)  # ...salvo que casi igualen al primero
 
+    # Contexto que se da al LLM (tokens estimados). El total del prompt más la respuesta debe caber
+    # en `llm_num_ctx`: sistema ~450 + contexto + pregunta ~700 + `llm_max_tokens`.
+    context_budget_tokens: int = Field(4500, ge=500)
+    related_budget_tokens: int = Field(800, ge=0)  # parte del anterior reservada a las pistas
+
+    # API HTTP: solo escucha en la propia máquina. El front de desarrollo (Vite) necesita su origen
+    # en `api_cors_origins`, separado por ";"; en producción la sirve la propia API y no hace falta.
+    api_host: str = "127.0.0.1"
+    api_port: int = Field(8000, ge=1, le=65535)
+    api_cors_origins: Annotated[list[str], NoDecode] = Field(default_factory=list)
+
+    # Servidor MCP: todo lo que devuelve pasa a la conversación del cliente (p. ej. Claude Code),
+    # así que las salidas están acotadas.
+    mcp_max_chars: int = Field(20_000, ge=1_000)  # máximo de texto de nota por llamada
+    mcp_snippet_chars: int = Field(400, ge=50)  # tamaño de cada fragmento en los resultados
+
+    # Respuestas
+    answer_k: int = Field(5, ge=1)  # notas que se recuperan para responder
+    # Coseno mínimo del mejor chunk para considerar fiable el contexto. Es un aviso, no un bloqueo.
+    confidence_threshold: float = Field(0.6, ge=0, le=1)
+
     # Grafo de conceptos
     graph_fanout_cap: int = Field(5, ge=1)  # vecinas máximas por concepto
     graph_budget: int = Field(4, ge=0)  # notas relacionadas máximas por búsqueda
@@ -67,12 +103,17 @@ class Settings(BaseSettings):
     chunk_max_chars: int = Field(1800, ge=400)
     chunk_min_chars: int = Field(300, ge=50)
 
-    @field_validator("exclude_globs", "demote_globs", mode="before")
+    @field_validator("exclude_globs", "demote_globs", "api_cors_origins", mode="before")
     @classmethod
     def _split_globs(cls, v: Any) -> Any:
         if isinstance(v, str):
             return [part.strip() for part in v.split(";") if part.strip()]
         return v
+
+    @field_validator("manifest_path", "bm25_cache_dir")
+    @classmethod
+    def _anchor_to_project_root(cls, v: Path) -> Path:
+        return v if v.is_absolute() else PROJECT_ROOT / v
 
     @field_validator("vault_path")
     @classmethod
@@ -85,6 +126,8 @@ class Settings(BaseSettings):
     def _min_below_max(self) -> Settings:
         if self.chunk_min_chars >= self.chunk_max_chars:
             raise ValueError("chunk_min_chars debe ser menor que chunk_max_chars")
+        if self.related_budget_tokens >= self.context_budget_tokens:
+            raise ValueError("related_budget_tokens debe ser menor que context_budget_tokens")
         return self
 
     def is_excluded(self, rel_path: str) -> bool:
@@ -116,3 +159,9 @@ class Settings(BaseSettings):
             f"chunker-v{CHUNKER_VERSION}",
         )
         return hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
+
+
+def load_settings() -> Settings:
+    """Configuración de la aplicación: `.env` de la raíz del proyecto, o el de `BRAIN_ENV_FILE`."""
+    env_file = os.environ.get("BRAIN_ENV_FILE")
+    return Settings(_env_file=env_file or PROJECT_ROOT / ".env")  # type: ignore[call-arg]

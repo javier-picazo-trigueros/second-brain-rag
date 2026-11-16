@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
@@ -28,8 +29,14 @@ class SyncReport:
 
 class Indexer:
     def __init__(
-        self, settings: Settings, embedder: Embedder, store: Store, manifest: Manifest
+        self,
+        settings: Settings,
+        embedder: Embedder,
+        store: Store,
+        manifest: Manifest,
+        now: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
+        self._now = now
         self._s = settings
         self._embedder = embedder
         self._store = store
@@ -77,10 +84,11 @@ class Indexer:
         self._store.delete_note(rel_path)
         self._manifest.delete(rel_path)
 
-    def sync(self) -> SyncReport:
+    def sync(self, on_progress: Callable[[int, int, str], None] | None = None) -> SyncReport:
         report = SyncReport()
         seen: set[str] = set()
-        for abs_path in self.iter_note_paths():
+        paths = list(self.iter_note_paths())
+        for position, abs_path in enumerate(paths, start=1):
             rel = abs_path.relative_to(self._s.vault_path).as_posix()
             seen.add(rel)
             try:
@@ -88,15 +96,18 @@ class Indexer:
             except Exception as exc:  # una nota rota no debe parar el sync; se registra y reporta
                 log.exception("Fallo indexando %s", rel)
                 report.failed.append((rel, repr(exc)))
-                continue
-            if status == "indexed":
-                report.indexed += 1
-                log.info("indexada: %s", rel)
-            elif status == "empty":
-                report.empty += 1
             else:
-                report.unchanged += 1
+                if status == "indexed":
+                    report.indexed += 1
+                    log.info("indexada: %s", rel)
+                elif status == "empty":
+                    report.empty += 1
+                else:
+                    report.unchanged += 1
+            if on_progress is not None:
+                on_progress(position, len(paths), rel)
         for gone in self._manifest.paths() - seen:
             self.remove(gone)
             report.deleted += 1
+        self._manifest.set_value("last_sync", self._now().isoformat())
         return report

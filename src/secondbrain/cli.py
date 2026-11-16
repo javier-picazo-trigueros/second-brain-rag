@@ -3,18 +3,19 @@ from __future__ import annotations
 import logging
 import threading
 from dataclasses import dataclass
-from pathlib import PurePosixPath
 from typing import Annotated, NoReturn
 
 import httpx
 import typer
+import uvicorn
 from pydantic import ValidationError
 from qdrant_client.http.exceptions import ResponseHandlingException
 
-from secondbrain.config import Settings
+from secondbrain.config import Settings, load_settings
 from secondbrain.embeddings.ollama import OllamaEmbedder
 from secondbrain.ingest.indexer import Indexer, SyncReport
 from secondbrain.ingest.watcher import WatcherService
+from secondbrain.notes import resolve_note
 from secondbrain.protocols import Embedder, Store
 from secondbrain.retrieval.graph import ConceptGraph
 from secondbrain.retrieval.hybrid import HybridRetriever, NoteHit, RelatedNote
@@ -40,9 +41,9 @@ def _fail(message: str) -> NoReturn:
     raise typer.Exit(_EXIT_ENVIRONMENT)
 
 
-def _build() -> Services:
+def _settings() -> Settings:
     try:
-        settings = Settings()  # type: ignore[call-arg]
+        return load_settings()
     except ValidationError as exc:
         problems = "\n".join(
             f"  BRAIN_{'_'.join(str(p) for p in e['loc']).upper()}: {e['msg']}"
@@ -52,6 +53,10 @@ def _build() -> Services:
             f"Configuración inválida:\n{problems}\n"
             "Copia .env.example a .env y ajusta BRAIN_VAULT_PATH."
         )
+
+
+def _build() -> Services:
+    settings = _settings()
 
     embedder = OllamaEmbedder(settings)
     try:
@@ -134,14 +139,6 @@ def search(
             _echo_related(rel)
 
 
-def _resolve_note(paths: set[str], wanted: str) -> list[str]:
-    """Rutas que casan con lo escrito: ruta exacta, o título (sin distinguir mayúsculas)."""
-    if wanted in paths:
-        return [wanted]
-    title = wanted.casefold()
-    return sorted(p for p in paths if PurePosixPath(p).stem.casefold() == title)
-
-
 @app.command()
 def graph(
     note: Annotated[str, typer.Argument(help="Ruta relativa o título de la nota.")],
@@ -150,7 +147,7 @@ def graph(
     """Conceptos de una nota y las notas con las que se conecta en el grafo."""
     svc = _build()
     note_concepts = svc.manifest.note_concepts()
-    matches = _resolve_note(set(note_concepts), note)
+    matches = resolve_note(note_concepts, note)
     if not matches:
         typer.echo(f"No encuentro ninguna nota «{note}» en el índice.", err=True)
         raise typer.Exit(1)
@@ -205,6 +202,39 @@ def stats() -> None:
     typer.echo(
         f"notas={notes} chunks_manifest={chunks} puntos_qdrant={svc.store.count()} "
         f"grupos_de_copias={len(svc.manifest.duplicate_groups())} conceptos={len(concepts)}"
+    )
+
+
+_LOOPBACK = frozenset({"127.0.0.1", "localhost", "::1"})
+
+
+@app.command()
+def serve(
+    host: Annotated[
+        str | None, typer.Option(help="Dirección (por defecto BRAIN_API_HOST).")
+    ] = None,
+    port: Annotated[int | None, typer.Option(help="Puerto (por defecto BRAIN_API_PORT).")] = None,
+    allow_remote: Annotated[
+        bool, typer.Option("--allow-remote", help="Permite escuchar fuera de esta máquina.")
+    ] = False,
+) -> None:
+    """Arranca la API HTTP (solo en localhost salvo que se pida otra cosa)."""
+    settings = _settings()
+    bind = host or settings.api_host
+    if bind not in _LOOPBACK:
+        if not allow_remote:
+            _fail(
+                f"Escuchar en {bind} expondría tus apuntes a la red y la API no tiene "
+                "autenticación. Si es lo que quieres, añade --allow-remote."
+            )
+        typer.echo(f"AVISO: escuchando en {bind} sin autenticación.", err=True)
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    uvicorn.run(
+        "secondbrain.api.main:create_app_from_env",
+        factory=True,
+        host=bind,
+        port=port or settings.api_port,
+        log_level="info",
     )
 
 

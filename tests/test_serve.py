@@ -6,7 +6,6 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
-from secondbrain import cli
 from secondbrain.cli import app
 
 runner = CliRunner()

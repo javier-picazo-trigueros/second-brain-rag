@@ -88,3 +88,13 @@ def test_fingerprint_ignores_unrelated_settings(tmp_path: Path) -> None:
 def test_qdrant_default_uses_ipv4_loopback(tmp_path: Path) -> None:
     # "localhost" resuelve antes a ::1 y Docker solo publica IPv4: cada conexión nueva pierde ~2 s.
     assert _settings(tmp_path).qdrant_url == "http://127.0.0.1:6333"
+
+
+def test_embed_batch_size_default_is_8(tmp_path: Path) -> None:
+    # Con la GPU casi llena durante la ingesta, lotes de 16 coincidieron con crashes del runner.
+    assert _settings(tmp_path).embed_batch_size == 8
+
+
+def test_embed_batch_size_does_not_affect_the_fingerprint(tmp_path: Path) -> None:
+    other = _settings(tmp_path, embed_batch_size=32)
+    assert other.index_fingerprint == _settings(tmp_path).index_fingerprint

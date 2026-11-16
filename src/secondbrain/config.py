@@ -31,7 +31,7 @@ class Settings(BaseSettings):
 
     ollama_url: str = "http://localhost:11434"
     embed_model: str = "bge-m3"
-    embed_batch_size: int = Field(16, ge=1, le=128)
+    embed_batch_size: int = Field(8, ge=1, le=128)
     embed_on_cpu: bool = False
     embed_keep_alive: str = "30s"
 

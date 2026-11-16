@@ -31,6 +31,9 @@ class Manifest:
             self._db.execute(
                 "CREATE INDEX IF NOT EXISTS idx_note_concepts_concept ON note_concepts(concept)"
             )
+            self._db.execute(
+                "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+            )
             self._db.commit()
 
     def get(self, path: str) -> str | None:
@@ -102,6 +105,20 @@ class Manifest:
     def chunk_counts(self) -> dict[str, int]:
         with self._lock:
             return {str(p): int(n) for p, n in self._db.execute("SELECT path, n_chunks FROM notes")}
+
+    def get_value(self, key: str) -> str | None:
+        with self._lock:
+            row = self._db.execute("SELECT value FROM meta WHERE key=?", (key,)).fetchone()
+        return None if row is None else str(row[0])
+
+    def set_value(self, key: str, value: str) -> None:
+        with self._lock:
+            self._db.execute(
+                "INSERT INTO meta(key, value) VALUES(?,?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (key, value),
+            )
+            self._db.commit()
 
     def close(self) -> None:
         with self._lock:

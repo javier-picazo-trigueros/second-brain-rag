@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from secondbrain.ingest.indexer import Indexer
 from tests.env import Env
 
 CONTENT_NOTES = {
@@ -279,3 +280,28 @@ def test_is_indexed_reflects_the_manifest(env: Env) -> None:
     assert idx.is_indexed(CARRERA)
     idx.remove(CARRERA)
     assert not idx.is_indexed(CARRERA)
+
+
+# --- progreso y última sincronización ------------------------------------
+
+
+def test_sync_reports_progress_for_every_note(env: Env) -> None:
+    seen: list[tuple[int, int, str]] = []
+    env.indexer().sync(on_progress=lambda done, total, path: seen.append((done, total, path)))
+    assert [d for d, _, _ in seen] == list(range(1, len(CONTENT_NOTES) + 1))
+    assert {t for _, t, _ in seen} == {len(CONTENT_NOTES)}
+    assert {p for _, _, p in seen} == CONTENT_NOTES
+
+
+def test_sync_records_the_time_of_the_last_sync(env: Env) -> None:
+    from datetime import UTC, datetime
+
+    moment = datetime(2026, 11, 16, 12, 30, tzinfo=UTC)
+    idx = Indexer(env.settings(), env.embedder, env.store, env.manifest, now=lambda: moment)
+    idx.sync()
+    assert env.manifest.get_value("last_sync") == "2026-11-16T12:30:00+00:00"
+
+
+def test_the_last_sync_time_is_not_set_by_other_operations(env: Env) -> None:
+    env.indexer().index_file(env.vault / CARRERA)
+    assert env.manifest.get_value("last_sync") is None

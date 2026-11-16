@@ -9,8 +9,8 @@ Se actualiza en cada checkpoint.
 | 0. Andamiaje | Terminada, aprobada y publicada (`main`) |
 | 1. Parser, chunking, indexación incremental | Terminada, aprobada y publicada (`main`) |
 | 2. Grafo, búsqueda híbrida y watcher | Terminada, aprobada y publicada (`main`) |
-| 3a. Respuesta, API y MCP (sin interfaz) | Checkpoint pendiente de aprobación (rama `feat/fase-3a-respuesta-api-mcp`, sin merge ni push) |
-| 3b. Interfaz web | Pendiente (esquemas y tokens de diseño antes de programar) |
+| 3a. Respuesta, API y MCP (sin interfaz) | Terminada, aprobada y publicada (`main`) |
+| 3b. Interfaz web | Plan (esquemas y tokens de diseño) pendiente de aprobación |
 | 4. Evals | Pendiente |
 
 ## Fase 0: resultado
@@ -281,6 +281,12 @@ fiabilidad**: la medición seria es la Fase 4 (evals).
    escudo web del antivirus desactivado temporalmente.
 4. **`/ask` sin estado** en la 3a; el historial y la reescritura de la pregunta van en la 3b.
 5. **Privacidad del MCP:** aceptada y documentada en el README.
+6. **Diversificación por asignatura** (preguntas que cruzan asignaturas): a la Fase 4 como **prioridad 1**,
+   evaluada con preguntas que crucen asignaturas.
+7. **Citas literales:** descartadas. En la Fase 4, comprobación posterior de respaldo (similitud entre cada
+   frase y el chunk que cita) que marque las frases con respaldo bajo.
+8. **Aparcado para la Fase 4** (además de lo ya anotado): umbral relativo de score, dos conceptos
+   compartidos en el grafo y ajuste de α, cuota y umbral de nota grande.
 
 ## Decisiones aprobadas (Fase 2)
 
@@ -315,6 +321,7 @@ Sobre el diseño de `referencia_fase1.md`:
 
 ## Siguiente paso
 
-Aprobar el checkpoint de la 3a (merge a `main` y push). Después, la 3b (interfaz web): primero los
-esquemas de pantalla y los tokens de diseño, y esperar el visto bueno antes de programar. La capa
-agéntica (PydanticAI) va al final de la 3b o en la Fase 4, según la fiabilidad del pipeline.
+Fase 3b (interfaz web): se presentan los esquemas de cada pantalla (Preguntar, Buscar, Nota, Estado), los
+tokens de diseño y cómo se muestran los avisos (confianza baja, citas no verificadas, «no lo encuentro en
+el vault»), y se espera el visto bueno antes de programar. Después, Fase 4 (evals), con la diversificación
+por asignatura como prioridad 1 y la comprobación de respaldo por frase.

@@ -27,7 +27,7 @@ def one_note(text: str = "contenido") -> SearchResult:
 def test_system_prompt_demands_citations_and_the_not_found_sentence() -> None:
     assert NOT_FOUND == "No lo encuentro en el vault."
     assert NOT_FOUND in SYSTEM_PROMPT
-    assert "[[" in SYSTEM_PROMPT and "(p. " in SYSTEM_PROMPT
+    assert "[S3]" in SYSTEM_PROMPT
     assert "FUENTES" in SYSTEM_PROMPT
 
 
@@ -82,8 +82,8 @@ def test_the_whole_prompt_plus_the_answer_fits_in_the_context_window(tmp_path: P
 # --- ajustes tras ver respuestas reales del modelo -------------------------------
 
 
-def test_the_prompt_forbids_copying_the_subject_and_course_after_a_citation() -> None:
-    assert "No añadas asignatura ni curso" in SYSTEM_PROMPT
+def test_the_prompt_forbids_writing_titles_pages_or_subjects_after_a_citation() -> None:
+    assert "No escribas títulos de notas, páginas, asignaturas ni cursos" in SYSTEM_PROMPT
 
 
 def test_the_prompt_gives_a_fixed_template_for_suggesting_nearby_notes() -> None:
@@ -96,5 +96,23 @@ def test_the_prompt_forbids_extrapolating_beyond_the_sources() -> None:
     assert "No extrapoles" in SYSTEM_PROMPT
 
 
-def test_the_prompt_asks_for_the_page_right_next_to_the_citation() -> None:
-    assert "pegado a la cita" in SYSTEM_PROMPT
+def test_the_prompt_asks_for_complete_structured_answers() -> None:
+    assert "completa y bien estructurada" in SYSTEM_PROMPT
+    assert "conciso" not in SYSTEM_PROMPT.lower()
+
+
+def test_overview_questions_get_the_overview_instructions(tmp_path: Path) -> None:
+    from secondbrain.answer.context import BuiltContext
+    from secondbrain.answer.prompt import OVERVIEW_PROMPT
+
+    overview = BuiltContext("FUENTES (evidencia):", (), 5, 0, "overview", ())
+    system = build_messages("¿De qué trata?", overview)[0].content
+    assert OVERVIEW_PROMPT in system and "visión general" in system
+    normal = BuiltContext("FUENTES (evidencia):", (), 5, 0, "search", ())
+    assert OVERVIEW_PROMPT not in build_messages("¿Qué es un hilo?", normal)[0].content
+
+
+def test_the_overview_prompt_still_fits_the_window(tmp_path: Path) -> None:
+    from secondbrain.answer.prompt import OVERVIEW_PROMPT
+
+    assert estimate_tokens(SYSTEM_PROMPT + OVERVIEW_PROMPT) <= 650

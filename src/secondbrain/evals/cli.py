@@ -61,7 +61,6 @@ def _answer(services: AppServices) -> Any:
             answer=done.answer,
             warnings=done.warnings,
             invalid=done.invalid,
-            bad_pages=done.bad_pages,
             citations=len(done.citations),
             not_found=done.not_found,
             completion_tokens=done.completion_tokens,

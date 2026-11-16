@@ -53,7 +53,7 @@ def make_api(env: Env) -> Iterator[MakeApi]:
     env.indexer().sync()
 
     def _make(
-        deltas: Sequence[str] = ("Hay tres estrategias ", "[[Condiciones de carrera]]."),
+        deltas: Sequence[str] = ("Hay tres estrategias ", "[S1]."),
         *,
         retriever: Any = None,
         reindex_run: Callable[..., SyncReport] | None = None,
@@ -206,7 +206,7 @@ def test_ask_streams_sources_tokens_and_done(make_api: MakeApi) -> None:
     assert set(names[1:-1]) == {"token"}
     done = events[-1][1]
     text = "".join(d["text"] for n, d in events if n == "token")
-    assert text == done["answer"] == "Hay tres estrategias [[Condiciones de carrera]]."
+    assert text == done["answer"] == "Hay tres estrategias [S1]."
     assert [c["path"] for c in done["citations"]] == [CARRERA]
     assert done["warnings"] == [] and done["not_found"] is False
     assert done["timings"]["total_ms"] > 0
@@ -220,11 +220,11 @@ def test_ask_lists_the_citable_sources_first(make_api: MakeApi) -> None:
 
 
 def test_ask_never_streams_an_unverified_citation(make_api: MakeApi) -> None:
-    api = make_api(["Dato [[Inve", "ntada]] y [[Condiciones de carrera]]."])
+    api = make_api(["Dato [S", "9] y [S1]."])
     events = sse(api.client.post("/ask", json={"question": "estrategias"}).text)
     text = "".join(d["text"] for n, d in events if n == "token")
-    assert "[[Inventada" not in text and "[cita no verificada: Inventada]" in text
-    assert events[-1][1]["invalid"] == ["Inventada"]
+    assert "[S9" not in text and "[cita no verificada: S9]" in text
+    assert events[-1][1]["invalid"] == ["S9"]
 
 
 def test_ask_reports_model_failures_as_an_error_event(make_api: MakeApi) -> None:

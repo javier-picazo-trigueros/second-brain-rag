@@ -30,7 +30,7 @@ def test_run_golden_scores_each_question_and_summarises() -> None:
 
 def test_run_golden_with_answers_adds_answer_metrics() -> None:
     answer = AnswerScore(
-        chars=100, completion_tokens=40, citations=1, invalid_citations=0, bad_pages=0,
+        chars=100, completion_tokens=40, citations=1, invalid_citations=0,
         not_found=False, warnings=(), retrieval_ms=100.0, first_token_ms=900.0, total_ms=3000.0,
     )  # fmt: skip
     report = run_golden([_q("a")], retrieve=lambda q: ["x/Semáforos.md"], answer=lambda q: answer)
@@ -48,7 +48,7 @@ def test_run_golden_records_environment_note() -> None:
 
 def test_run_golden_trap_answered_not_found_is_marked() -> None:
     answer = AnswerScore(
-        chars=28, completion_tokens=8, citations=0, invalid_citations=0, bad_pages=0,
+        chars=28, completion_tokens=8, citations=0, invalid_citations=0,
         not_found=True, warnings=(), retrieval_ms=1.0, first_token_ms=1.0, total_ms=2.0,
     )  # fmt: skip
     trap = _q("t", "trap", expect=(), expect_not_found=True)

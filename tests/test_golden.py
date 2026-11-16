@@ -123,7 +123,6 @@ def test_score_answer_extracts_metrics() -> None:
         answer="Texto largo " * 10,
         warnings=("citas_no_verificadas",),
         invalid=("X",),
-        bad_pages=(),
         citations=2,
         not_found=False,
         completion_tokens=120,

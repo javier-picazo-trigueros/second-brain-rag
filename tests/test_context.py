@@ -67,7 +67,7 @@ def test_main_chunks_appear_in_rank_order_with_label_heading_and_page(tmp_path: 
         ]
     )
     ctx = build_context(r, settings(tmp_path))
-    assert ctx.text.index("[[Semáforos]]") < ctx.text.index("[[OpenMP]]")
+    assert ctx.text.index("Nota: Semáforos") < ctx.text.index("Nota: OpenMP")
     assert "Encabezado: Monitores" in ctx.text and "Página: 7" in ctx.text
     assert "texto uno" in ctx.text and "SISTEMAS" in ctx.text
     assert [s.label for s in ctx.sources] == ["Semáforos", "OpenMP"]
@@ -147,15 +147,15 @@ def test_related_notes_are_hints_with_their_summary(tmp_path: Path) -> None:
     ctx = build_context(r, settings(tmp_path))
     hint = next(s for s in ctx.sources if s.path == "b/Y.md")
     assert hint.kind == "hint"
-    assert "[[Y]]" in ctx.text and "Resumen de Y." in ctx.text
-    assert ctx.text.index("[[X]]") < ctx.text.index("[[Y]]")
+    assert "- [S2] Y: Resumen de Y." in ctx.text
+    assert ctx.text.index("Nota: X") < ctx.text.index("- [S2] Y")
 
 
 def test_related_falls_back_to_the_snippet_and_then_to_the_title(tmp_path: Path) -> None:
     rel = [related("b/Y.md", None, "fragmento de Y"), related("b/Z.md", None, None)]
     ctx = build_context(result([note("a/X.md", chunk("a/X.md", "t"))], rel), settings(tmp_path))
     assert "fragmento de Y" in ctx.text
-    assert "[[Z]]" in ctx.text
+    assert "- [S3] Z" in ctx.text
 
 
 def test_related_stay_within_their_own_budget(tmp_path: Path) -> None:
@@ -183,8 +183,9 @@ def test_metadata_goes_on_its_own_labelled_line_not_next_to_the_citation(tmp_pat
     ctx = build_context(result([n]), settings(tmp_path))
     lines = ctx.text.splitlines()
     title_line = next(ln for ln in lines if ln.startswith("### "))
-    assert title_line == "### [[Semáforos]]"  # solo el título: nada que copiar tras la cita
-    meta_line = lines[lines.index(title_line) + 1]
+    assert title_line == "### [S1]"  # solo el identificador: lo único que se copia al citar
+    assert lines[lines.index(title_line) + 1] == "Nota: Semáforos"
+    meta_line = lines[lines.index(title_line) + 2]
     assert meta_line == "Asignatura: SISTEMAS · Curso: 2º · Encabezado: Monitores · Página: 7"
 
 
@@ -192,7 +193,7 @@ def test_missing_metadata_is_left_out_of_the_line(tmp_path: Path) -> None:
     hit = Hit(0.5, {"note_path": "a/X.md", "text": "texto", "heading_path": "", "page": None})
     ctx = build_context(result([note("a/X.md", hit)]), settings(tmp_path))
     assert "Página" not in ctx.text and "Asignatura" not in ctx.text
-    assert "### [[X]]\ntexto" in ctx.text
+    assert "### [S1]\nNota: X\ntexto" in ctx.text
 
 
 # --- visión general ---------------------------------------------------------------------------

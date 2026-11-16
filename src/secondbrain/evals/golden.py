@@ -39,7 +39,6 @@ class AnswerScore:
     completion_tokens: int | None
     citations: int
     invalid_citations: int
-    bad_pages: int
     not_found: bool
     warnings: tuple[str, ...]
     retrieval_ms: float
@@ -104,7 +103,6 @@ def score_answer(
     answer: str,
     warnings: Sequence[str],
     invalid: Sequence[str],
-    bad_pages: Sequence[object],
     citations: int,
     not_found: bool,
     completion_tokens: int | None,
@@ -117,7 +115,6 @@ def score_answer(
         completion_tokens=completion_tokens,
         citations=citations,
         invalid_citations=len(invalid),
-        bad_pages=len(bad_pages),
         not_found=not_found,
         warnings=tuple(warnings),
         retrieval_ms=retrieval_ms,

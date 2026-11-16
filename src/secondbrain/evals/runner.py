@@ -66,7 +66,6 @@ def _summarize_answers(items: Sequence[tuple[GoldenQuestion, AnswerScore]]) -> d
         ),
         "citations": float(sum(a.citations for a in scores)),
         "invalid_citations": float(sum(a.invalid_citations for a in scores)),
-        "bad_pages": float(sum(a.bad_pages for a in scores)),
         "mean_retrieval_ms": _mean([a.retrieval_ms for a in scores]),
         "mean_first_token_ms": _mean(firsts),
         "mean_total_ms": _mean([a.total_ms for a in scores]),

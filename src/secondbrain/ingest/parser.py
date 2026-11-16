@@ -102,5 +102,6 @@ def parse_note(abs_path: Path, vault: Path) -> ParsedNote:
         body=body,
         content_hash=hashlib.sha256(raw).hexdigest(),
         concepts=concepts,
-        body_hash=body_fingerprint(body),
+        # Un PDF sin texto conserva trozos sueltos: dos de ellos no son copias aunque se parezcan.
+        body_hash=None if fm.get("sin_texto") is True else body_fingerprint(body),
     )

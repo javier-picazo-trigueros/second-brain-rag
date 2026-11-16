@@ -270,3 +270,12 @@ def test_removing_an_exclusion_indexes_the_notes_again(env: Env) -> None:
     report = env.indexer().sync()
     assert report.indexed == 1
     assert "3º/REDES/Network layers.md" in env.store.notes
+
+
+def test_is_indexed_reflects_the_manifest(env: Env) -> None:
+    idx = env.indexer()
+    assert not idx.is_indexed(CARRERA)
+    idx.sync()
+    assert idx.is_indexed(CARRERA)
+    idx.remove(CARRERA)
+    assert not idx.is_indexed(CARRERA)

@@ -70,6 +70,9 @@ class Indexer:
         self._manifest.set_meta(note.path, note.concepts, note.body_hash)
         return "indexed" if chunks else "empty"
 
+    def is_indexed(self, rel_path: str) -> bool:
+        return self._manifest.get(rel_path) is not None
+
     def remove(self, rel_path: str) -> None:
         self._store.delete_note(rel_path)
         self._manifest.delete(rel_path)

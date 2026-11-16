@@ -84,6 +84,9 @@ class FakeStore:
     def notes(self) -> set[str]:
         return set(self.chunks)
 
+    def dense_top(self, query_dense: list[float]) -> float | None:
+        return 0.5 if self.chunks else None
+
     def count(self) -> int:
         return sum(len(v) for v in self.chunks.values())
 
@@ -91,8 +94,11 @@ class FakeStore:
 class ScriptedStore:
     """Store con resultados predefinidos, para probar la lógica de ranking sin Qdrant."""
 
-    def __init__(self, hits: list[Hit], best: dict[str, Hit] | None = None) -> None:
+    def __init__(
+        self, hits: list[Hit], best: dict[str, Hit] | None = None, dense: float | None = 0.6
+    ) -> None:
         self.hits = hits
+        self.dense = dense
         self.best = best or {}
         self.last_search: dict[str, object] = {}
         self.note_calls: list[str] = []
@@ -112,6 +118,9 @@ class ScriptedStore:
     def search_note(self, note_path: str, query_dense: list[float], limit: int = 1) -> list[Hit]:
         self.note_calls.append(note_path)
         return [self.best[note_path]] if note_path in self.best else []
+
+    def dense_top(self, query_dense: list[float]) -> float | None:
+        return self.dense
 
     def count(self) -> int:
         return len(self.hits)

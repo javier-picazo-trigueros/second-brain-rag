@@ -31,6 +31,7 @@ def build(tmp_path: Path) -> Any:
         concepts: dict[str, list[str]] | None = None,
         copies: list[list[str]] | None = None,
         best: dict[str, Hit] | None = None,
+        dense: float | None = 0.6,
         **overrides: Any,
     ) -> tuple[HybridRetriever, ScriptedStore]:
         settings = Settings(_env_file=None, vault_path=tmp_path, **overrides)  # type: ignore[call-arg]
@@ -45,7 +46,7 @@ def build(tmp_path: Path) -> Any:
         for path, n in counts.items():
             manifest.upsert(path, "h", n)
             manifest.set_meta(path, (concepts or {}).get(path, []), group_of.get(path))
-        store = ScriptedStore(hits, best)
+        store = ScriptedStore(hits, best, dense=dense)
         return HybridRetriever(settings, FakeEmbedder(), store, manifest), store
 
     yield _build
@@ -264,3 +265,21 @@ def test_related_without_a_best_chunk_is_still_listed(build: Build) -> None:
     r, _ = build([hit("a.md", 0.9)], concepts=concepts)
     (rel,) = r.search("q").related
     assert (rel.path, rel.resumen, rel.snippet) == ("r1.md", None, None)
+
+
+# --- similitud densa (señal de confianza) -----------------------------------------------------
+
+
+def test_result_carries_the_best_dense_similarity(build: Build) -> None:
+    r, _ = build([hit("a.md", 0.9)], dense=0.73)
+    assert r.search("q").top_similarity == 0.73
+
+
+def test_similarity_is_reported_even_without_hits(build: Build) -> None:
+    r, _ = build([], dense=0.21)
+    assert r.search("q").top_similarity == 0.21
+
+
+def test_similarity_is_none_when_the_index_is_empty(build: Build) -> None:
+    r, _ = build([], dense=None)
+    assert r.search("q").top_similarity is None

@@ -141,5 +141,12 @@ class VectorStore:
         )
         return [Hit(score=p.score, payload=dict(p.payload or {})) for p in res.points]
 
+    def dense_top(self, query_dense: list[float]) -> float | None:
+        """Coseno del chunk más cercano a la consulta (solo ranking denso), o None si no hay."""
+        res = self._client.query_points(
+            self._name, query=query_dense, using=DENSE, limit=1, with_payload=False
+        )
+        return res.points[0].score if res.points else None
+
     def count(self) -> int:
         return self._client.count(self._name, exact=True).count

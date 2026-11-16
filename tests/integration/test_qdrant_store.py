@@ -149,3 +149,15 @@ def test_search_note_returns_the_best_chunk_of_that_note_only(store: VectorStore
 
 def test_search_note_of_unknown_note_is_empty(store: VectorStore) -> None:
     assert store.search_note("no-existe.md", [1, 0, 0, 0]) == []
+
+
+def test_dense_top_returns_the_cosine_of_the_closest_chunk(store: VectorStore) -> None:
+    store.upsert_chunks(
+        [_chunk("a.md", "uno"), _chunk("b.md", "dos")], [[1, 0, 0, 0], [0, 1, 0, 0]]
+    )
+    assert store.dense_top([1, 0, 0, 0]) == pytest.approx(1.0)
+    assert store.dense_top([1, 1, 0, 0]) == pytest.approx(0.7071, abs=1e-3)
+
+
+def test_dense_top_of_an_empty_collection_is_none(store: VectorStore) -> None:
+    assert store.dense_top([1, 0, 0, 0]) is None

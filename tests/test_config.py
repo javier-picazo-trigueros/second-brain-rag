@@ -98,3 +98,88 @@ def test_embed_batch_size_default_is_8(tmp_path: Path) -> None:
 def test_embed_batch_size_does_not_affect_the_fingerprint(tmp_path: Path) -> None:
     other = _settings(tmp_path, embed_batch_size=32)
     assert other.index_fingerprint == _settings(tmp_path).index_fingerprint
+
+
+# --- parámetros de búsqueda, libros y grafo ----------------------------------------------------
+
+
+def test_retrieval_defaults(tmp_path: Path) -> None:
+    s = _settings(tmp_path)
+    assert (s.candidate_limit, s.prefetch_limit, s.max_chunks_per_note) == (150, 120, 2)
+    assert (s.length_penalty_alpha, s.length_ref_chunks) == (0.1, 8)
+    assert (s.big_note_chunks, s.big_note_quota, s.quota_override_ratio) == (200, 2, 0.9)
+    assert (s.graph_fanout_cap, s.graph_budget, s.graph_min_idf) == (5, 4, 0.0)
+
+
+def test_no_vault_specific_globs_by_default(tmp_path: Path) -> None:
+    s = _settings(tmp_path)
+    assert s.exclude_globs == [] and s.demote_globs == []
+    assert s.demote_factor == 0.5
+
+
+def test_globs_are_read_from_a_semicolon_separated_variable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("BRAIN_VAULT_PATH", str(tmp_path))
+    monkeypatch.setenv("BRAIN_EXCLUDE_GLOBS", "3º/Libros/*; **/borrador*.md ;")
+    monkeypatch.setenv("BRAIN_DEMOTE_GLOBS", "*/manual-*.md")
+    s = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert s.exclude_globs == ["3º/Libros/*", "**/borrador*.md"]
+    assert s.demote_globs == ["*/manual-*.md"]
+
+
+def test_empty_glob_variable_means_no_globs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("BRAIN_VAULT_PATH", str(tmp_path))
+    monkeypatch.setenv("BRAIN_EXCLUDE_GLOBS", "")
+    assert Settings(_env_file=None).exclude_globs == []  # type: ignore[call-arg]
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("length_penalty_alpha", -0.1),
+        ("graph_fanout_cap", 0),
+        ("graph_budget", -1),
+        ("big_note_quota", -1),
+        ("quota_override_ratio", 1.5),
+        ("demote_factor", 0.0),
+        ("max_chunks_per_note", 0),
+    ],
+)
+def test_out_of_range_parameters_are_rejected(tmp_path: Path, field: str, value: float) -> None:
+    with pytest.raises(ValidationError):
+        _settings(tmp_path, **{field: value})
+
+
+def test_is_excluded_by_directory_file_or_glob(tmp_path: Path) -> None:
+    s = _settings(tmp_path, exclude_globs=["3º/Libros/*", "**/borrador*.md"])
+    assert s.is_excluded("_conceptos/x.md")
+    assert s.is_excluded("1º/.obsidian/workspace.md")
+    assert s.is_excluded("CLAUDE.md")
+    assert s.is_excluded("3º/Libros/Grande.md")
+    assert s.is_excluded("2º/IA/borrador final.md")
+    assert not s.is_excluded("2º/IA/Apuntes.md")
+
+
+def test_is_excluded_is_false_without_rules_for_a_normal_note(tmp_path: Path) -> None:
+    assert not _settings(tmp_path).is_excluded("2º/IA/Apuntes.md")
+
+
+def test_demote_factor_applies_only_to_matching_paths(tmp_path: Path) -> None:
+    s = _settings(tmp_path, demote_globs=["*/Manual*.md"], demote_factor=0.4)
+    assert s.demotion_for("2º/IA/Manual de C.md") == 0.4
+    assert s.demotion_for("2º/IA/Apuntes.md") == 1.0
+
+
+@pytest.mark.parametrize(
+    "override",
+    [{"exclude_globs": ["x/*"]}, {"demote_globs": ["x/*"]}, {"length_penalty_alpha": 0.5}],
+)
+def test_search_and_exclusion_settings_do_not_change_the_fingerprint(
+    tmp_path: Path, override: dict[str, object]
+) -> None:
+    assert (
+        _settings(tmp_path, **override).index_fingerprint == _settings(tmp_path).index_fingerprint
+    )

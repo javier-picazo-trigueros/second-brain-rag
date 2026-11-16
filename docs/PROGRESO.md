@@ -8,8 +8,9 @@ Se actualiza en cada checkpoint.
 |---|---|
 | 0. Andamiaje | Terminada, aprobada y publicada (`main`) |
 | 1. Parser, chunking, indexación incremental | Terminada, aprobada y publicada (`main`) |
-| 2. Grafo, búsqueda híbrida y watcher | Plan pendiente de aprobación |
-| 3. Respuesta, API, MCP e interfaz web | Pendiente |
+| 2. Grafo, búsqueda híbrida y watcher | Terminada, aprobada y publicada (`main`) |
+| 3a. Respuesta, API y MCP (sin interfaz) | Plan pendiente de aprobación |
+| 3b. Interfaz web | Pendiente (esquemas y tokens de diseño antes de programar) |
 | 4. Evals | Pendiente |
 
 ## Fase 0: resultado
@@ -108,6 +109,93 @@ Concentración: top-5 = 23,6 %, top-10 = 32,7 %, top-25 = 42,3 %, top-50 = 52,9 
 - No hay verdad de referencia todavía: juzgar si la búsqueda semántica es buena o no es tarea de la
   Fase 4 (evals).
 
+## Fase 2: resultado
+
+Módulos (TDD): `retrieval/graph.py`, `retrieval/hybrid.py`, `ingest/watcher.py`, `ingest/text.py`;
+ampliaciones de `parser` (conceptos y huella del cuerpo), `manifest` (tablas `note_concepts` y
+`body_hash`, con migración de la base de la Fase 1), `config` (parámetros y patrones) y `cli`
+(`brain search` híbrido, `brain graph`, `brain watch`, `brain stats` ampliado; tarea `watch`).
+
+Verificación: 280 tests en verde (incluidos los de integración con Ollama y Qdrant reales y uno con
+`watchdog` real), cobertura total 99 % (`ingest/` 97-100 %, `retrieval/` 99-100 %), `ruff` y
+`mypy --strict` sin errores. Un test (`is_indexed`) se escribió junto con su implementación y no se
+observó en rojo.
+
+### Comprobaciones técnicas previas
+
+- **`query_points_groups` con prefetch + RRF (qdrant-client 1.20.0, servidor 1.20.2):** funciona sin
+  error pero **no es fiable**: con los mismos datos y la misma consulta ordena distinto que la fusión
+  plana (una nota casi última en la fusión plana salía primera agrupada) y sus scores no son los de RRF.
+  Decisión: el agrupado por nota se hace **en cliente** sobre una consulta plana con límite amplio
+  (`candidate_limit=150`, `prefetch_limit=120`).
+- **Copias exactas** (hash del cuerpo normalizado: sin frontmatter, sin placeholders ni marcadores de
+  página, NFC, espacios colapsados; mínimo 200 caracteres): **128 grupos** (115 de 2, 12 de 3, 1 de 4),
+  142 notas redundantes y 2.222 chunks (9,6 % del total). En 108 grupos las copias están en carpetas o
+  asignaturas distintas (un mismo documento reutilizado). 122 grupos tienen una ruta sin sufijo
+  `(n)`/`copia`. Además hay 15 grupos de casi-duplicados con contenido distinto, que no se tocan.
+- **Error corregido durante la verificación:** la primera versión daba 136 grupos porque las notas
+  `sin_texto` (solo `## Página N` y trozos sueltos) con el mismo número de páginas coincidían. Ahora las
+  notas `sin_texto` no tienen huella y los marcadores de página no cuentan; el resultado real es 128.
+
+### Búsqueda híbrida (valores por defecto en `Settings`, a ajustar en la Fase 4)
+
+Una consulta plana a Qdrant (denso + BM25 con RRF) y después, en cliente: agrupado por nota (máximo 2
+chunks por nota, la nota puntúa por su mejor chunk), colapso de copias exactas (se muestra la ruta sin
+sufijo y `también en:` con las demás ubicaciones), rebaja por patrones, penalización por longitud
+`1 + α·log2(n/n_ref)` (α=0,1, n_ref=8), cuota de notas grandes (≥200 chunks; máximo 2 salvo que
+alcancen el 90 % de la primera) y, aparte del ranking, notas relacionadas por el grafo.
+
+Antes/después con el índice real (embedder en CPU):
+
+| Consulta | Antes (fase 1, 5 chunks) | Después (5 notas) |
+|---|---|---|
+| término exacto (`iptables`) | 1 nota (5 chunks de la misma) | 5 notas distintas; la mejor conserva el primer puesto |
+| semántica (carreras entre hilos) | 5 notas | las mismas 5; una nota larga (118 chunks) baja al último puesto |
+| inglés (control de congestión TCP) | 1 nota (5 chunks de la misma) | 5 notas; las 4 últimas con score muy bajo (0,12-0,06 frente a 0,56) |
+
+Observación abierta: en la consulta en inglés la cola de resultados es débil y entran 2 notas grandes
+(libro de referencia y artículo) con scores bajos. Candidato para la Fase 4: un umbral relativo
+mínimo de score respecto al primero.
+
+### Grafo
+
+915 conceptos, mediana de 2 notas por concepto, máximo 21. Con tope de 5 vecinas por concepto y
+presupuesto de 4, una nota con 20 vecinas posibles muestra 4. Hallazgo: el idf **no separa** los
+conceptos ambiguos: el más genérico (21 notas) tiene idf 3,86 y uno ambiguo como `redes` (9 notas) 4,71,
+frente a 6,21 de un concepto raro; por eso `graph_min_idf` no sirve para filtrarlos. En la búsqueda
+de `iptables`, las relacionadas incluyen una nota de otra asignatura conectada solo por `reglas` y dos
+por `redes`. Candidato para la Fase 4: exigir 2 conceptos compartidos o rebajar las aristas de un solo
+concepto ambiguo.
+
+### Watcher (copia temporal, colección y manifest de prueba aparte, ya eliminados)
+
+Arranque sincroniza las 7 notas copiadas; editar una nota: 1 indexada; crear: 1 indexada; reescribir
+con el mismo contenido (como hace OneDrive): sin actividad (el hash del manifest evita reindexar);
+ráfaga de 5 guardados seguidos: 1 indexación (debounce de 1,5 s); temporales `~$x.md` y `x.tmp`:
+ignorados; renombrar: 1 eliminada y 1 indexada; borrar: 1 eliminada. El párrafo añadido en vivo se
+encontró en una búsqueda. El índice real no se tocó (23.236 puntos antes y después).
+
+### Índice real tras la migración
+
+`brain index`: `indexadas=0 sin_cambios=1000` en ~20 s (rellena conceptos y huellas sin embeber nada).
+`brain stats`: `notas=1000 chunks_manifest=23236 puntos_qdrant=23236 grupos_de_copias=128 conceptos=915`.
+
+## Decisiones aprobadas (Fase 2)
+
+1. **Libros:** capas 1-3 activas por defecto (un hueco por nota con prefetch ampliado, penalización
+   por longitud, cuota de notas grandes), sin exclusión por defecto. Capa 4 disponible con
+   `BRAIN_EXCLUDE_GLOBS` y `BRAIN_DEMOTE_GLOBS` (+ `BRAIN_DEMOTE_FACTOR`), sin rutas por defecto: se
+   configuran en el `.env` local y se documentan con un ejemplo genérico en `.env.example`.
+2. **Copias exactas:** se colapsan al buscar, sin dejar de indexarlas ni tocar el vault. Se muestra una
+   sola ruta, preferiblemente sin sufijo `(n)`/`copia`, y las demás ubicaciones en `también en:`.
+3. **Relacionadas por grafo:** sección aparte del ranking.
+4. **Parámetros:** la penalización (α, n_ref), el umbral de nota grande, la cuota y su excepción, los
+   límites del grafo y los de candidatos están en `Settings` para ajustarlos con datos en la Fase 4.
+5. **Historial:** el commit de la Fase 0 que nombra el archivo `CLAUDE.md` se deja como está.
+6. **Aparcado para la Fase 4:** umbral relativo mínimo de score respecto al primero (cola débil),
+   exigir 2 conceptos compartidos o rebajar las aristas de un solo concepto ambiguo, y afinar α, la cuota
+   y el umbral de nota grande con Hit@k y MRR.
+
 ## Decisiones aprobadas (Fase 1)
 
 Sobre el diseño de `referencia_fase1.md`:
@@ -125,7 +213,6 @@ Sobre el diseño de `referencia_fase1.md`:
 
 ## Siguiente paso
 
-Fase 2: `retrieval/graph.py` (expansión nota → concepto → notas con tope de fan-out e idf),
-`retrieval/hybrid.py` (denso + BM25 + RRF + grafo + deduplicado por nota, con control para que los
-libros largos no dominen) y `ingest/watcher.py`. El plan se presenta antes de programar y espera
-aprobación.
+Fase 3a: pipeline de respuesta con citas validadas, API FastAPI y servidor MCP, sin interfaz. Después,
+Fase 3b (interfaz web), para la que se presentan antes los esquemas de pantalla y los tokens de diseño.
+La capa agéntica (PydanticAI) va al final de la 3b o en la Fase 4, según la fiabilidad del pipeline.

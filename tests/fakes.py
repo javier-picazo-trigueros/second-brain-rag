@@ -64,9 +64,54 @@ class FakeStore:
                     hits.append(Hit(score=score, payload=payload))
         return sorted(hits, key=lambda h: -h.score)[:limit]
 
+    def search_note(self, note_path: str, query_dense: list[float], limit: int = 1) -> list[Hit]:
+        hits = [
+            Hit(
+                1.0,
+                {
+                    "note_path": c.note_path,
+                    "heading_path": " > ".join(c.heading_path),
+                    "page": c.page,
+                    "text": c.text,
+                    "resumen": c.resumen,
+                },
+            )
+            for c in self.chunks.get(note_path, [])
+        ]
+        return hits[:limit]
+
     @property
     def notes(self) -> set[str]:
         return set(self.chunks)
 
     def count(self) -> int:
         return sum(len(v) for v in self.chunks.values())
+
+
+class ScriptedStore:
+    """Store con resultados predefinidos, para probar la lógica de ranking sin Qdrant."""
+
+    def __init__(self, hits: list[Hit], best: dict[str, Hit] | None = None) -> None:
+        self.hits = hits
+        self.best = best or {}
+        self.last_search: dict[str, object] = {}
+        self.note_calls: list[str] = []
+
+    def ensure_collection(self) -> None: ...
+
+    def upsert_chunks(self, chunks: list[Chunk], dense: list[list[float]]) -> None: ...
+
+    def delete_note(self, note_path: str) -> None: ...
+
+    def search(
+        self, query: str, query_dense: list[float], limit: int = 8, prefetch: int = 40
+    ) -> list[Hit]:
+        self.last_search = {"query": query, "limit": limit, "prefetch": prefetch}
+        return self.hits[:limit]
+
+    def search_note(self, note_path: str, query_dense: list[float], limit: int = 1) -> list[Hit]:
+        self.note_calls.append(note_path)
+        return [self.best[note_path]] if note_path in self.best else []
+
+    def count(self) -> int:
+        return len(self.hits)

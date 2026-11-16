@@ -4,11 +4,11 @@ import re
 import uuid
 
 from secondbrain.domain import Chunk, ParsedNote
+from secondbrain.ingest.text import PLACEHOLDER
 
 _HEADING = re.compile(r"^(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$")
 _PAGE_HEADING = re.compile(r"^p[aá]gina\s+(\d+)$", re.I)
 _FENCE_LINE = re.compile(r"^[ \t]*(```|~~~)")
-_PLACEHOLDER = re.compile(r"^\*\(sin texto extraíble[^\n]*\)\*[ \t]*$", re.M)
 _MIN_KEEP = 40
 
 # Súbela cuando cambie el algoritmo: fuerza a reindexar todas las notas.
@@ -119,7 +119,7 @@ def _pack(text: str, max_chars: int) -> list[str]:
 
 
 def chunk_note(note: ParsedNote, max_chars: int = 1800, min_chars: int = 300) -> list[Chunk]:
-    body = _PLACEHOLDER.sub("", note.body)
+    body = PLACEHOLDER.sub("", note.body)
     pieces: list[_Section] = []
     for heading_path, page, text in _sections(body):
         for piece in _pack(text, max_chars):

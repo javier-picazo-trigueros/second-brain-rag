@@ -172,3 +172,85 @@ def test_links_to_non_note_files_are_ignored(tmp_path: Path) -> None:
     )
     note = parse_note(tmp_path / "n.md", tmp_path)
     assert note.links == ("Python 3.11", "otra nota")
+
+
+# --- conceptos y huella del cuerpo -----------------------------------------------------------
+
+
+def test_concepts_come_from_the_conceptos_field(vault: Path) -> None:
+    note = parse_note(vault / CARRERA, vault)
+    assert note.concepts == ("condicion de carrera", "semaforo")
+
+
+def test_concepts_drop_aliases(vault: Path) -> None:
+    assert parse_note(vault / ENLACES, vault).concepts == ("semaforo", "firewall")
+
+
+def test_note_without_conceptos_has_none(vault: Path) -> None:
+    assert parse_note(vault / SIN_FM, vault).concepts == ()
+
+
+def test_conceptos_in_the_body_are_not_concepts(tmp_path: Path) -> None:
+    _write(tmp_path, "n.md", "---\nconceptos:\n  - '[[a]]'\n---\n\nTexto con [[b]].\n")
+    assert parse_note(tmp_path / "n.md", tmp_path).concepts == ("a",)
+
+
+def _long(text: str = "contenido repetido de la nota") -> str:
+    return (text + " ") * 60
+
+
+def test_body_hash_ignores_frontmatter_and_whitespace(tmp_path: Path) -> None:
+    _write(tmp_path, "a.md", f"---\nasignatura: X\n---\n\n# T\n\n{_long()}\n")
+    _write(tmp_path, "b.md", f"---\nasignatura: Y\noriginal: z\n---\n# T\n\n\n{_long()}   \n")
+    a = parse_note(tmp_path / "a.md", tmp_path)
+    b = parse_note(tmp_path / "b.md", tmp_path)
+    assert a.body_hash is not None
+    assert a.body_hash == b.body_hash
+
+
+def test_body_hash_differs_when_the_text_differs(tmp_path: Path) -> None:
+    _write(tmp_path, "a.md", f"# T\n\n{_long('uno')}")
+    _write(tmp_path, "b.md", f"# T\n\n{_long('dos')}")
+    a = parse_note(tmp_path / "a.md", tmp_path)
+    b = parse_note(tmp_path / "b.md", tmp_path)
+    assert a.body_hash != b.body_hash
+
+
+def test_body_hash_ignores_extraction_placeholders(tmp_path: Path) -> None:
+    placeholder = "*(sin texto extraíble: ver PDF)*"
+    _write(tmp_path, "a.md", f"# T\n\n{_long()}")
+    _write(tmp_path, "b.md", f"# T\n\n{placeholder}\n\n{_long()}\n\n{placeholder}")
+    a = parse_note(tmp_path / "a.md", tmp_path)
+    b = parse_note(tmp_path / "b.md", tmp_path)
+    assert a.body_hash == b.body_hash
+
+
+def test_short_or_empty_bodies_have_no_hash(vault: Path) -> None:
+    # Las notas sin texto comparten placeholder: no deben contar como copias entre sí.
+    assert parse_note(vault / SIN_TEXTO, vault).body_hash is None
+
+
+def test_sin_texto_notes_have_no_body_hash_even_with_some_text(tmp_path: Path) -> None:
+    # Los PDF sin texto extraíble conservan trozos sueltos: no son copias aunque se parezcan.
+    body = (
+        "## Página 1\n\n"
+        + _long("fragmento suelto")
+        + "\n\n## Página 2\n\n*(sin texto extraíble: ver PDF)*"
+    )
+    _write(tmp_path, "a.md", f"---\nsin_texto: true\n---\n\n{body}\n")
+    assert parse_note(tmp_path / "a.md", tmp_path).body_hash is None
+
+
+def test_page_markers_alone_do_not_make_a_body_hashable(tmp_path: Path) -> None:
+    pages = "\n\n".join(f"## Página {i}\n\n*(sin texto extraíble: ver PDF)*" for i in range(1, 40))
+    _write(tmp_path, "a.md", pages)
+    assert parse_note(tmp_path / "a.md", tmp_path).body_hash is None
+
+
+def test_page_markers_do_not_change_the_hash_of_a_real_text(tmp_path: Path) -> None:
+    _write(tmp_path, "a.md", f"## Página 1\n\n{_long('texto real de la nota')}")
+    _write(tmp_path, "b.md", f"{_long('texto real de la nota')}")
+    a = parse_note(tmp_path / "a.md", tmp_path)
+    b = parse_note(tmp_path / "b.md", tmp_path)
+    assert a.body_hash is not None
+    assert a.body_hash == b.body_hash

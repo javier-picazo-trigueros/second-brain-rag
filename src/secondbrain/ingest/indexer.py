@@ -36,19 +36,25 @@ class Indexer:
         self._manifest = manifest
         self._fingerprint = settings.index_fingerprint
 
+    def _rel(self, abs_path: Path) -> str:
+        return abs_path.relative_to(self._s.vault_path).as_posix()
+
     def iter_note_paths(self) -> Iterator[Path]:
         for root, dirs, files in os.walk(self._s.vault_path):
             # Poda en sitio: no se entra en node_modules, .obsidian, _conceptos...
             dirs[:] = sorted(d for d in dirs if d not in self._s.exclude_dirs)
             for f in sorted(files):
-                if f.lower().endswith(".md") and f not in self._s.exclude_files:
-                    yield Path(root) / f
+                path = Path(root) / f
+                if f.lower().endswith(".md") and not self._s.is_excluded(self._rel(path)):
+                    yield path
 
     def index_file(self, abs_path: Path) -> Status:
         note = parse_note(abs_path, self._s.vault_path)
         # El hash incluye la huella de configuración: cambiar modelo o chunking reindexa todo.
         stamp = f"{note.content_hash}:{self._fingerprint}"
         if self._manifest.get(note.path) == stamp:
+            # Conceptos y copias se refrescan siempre: es barato y evita reindexar al añadirlos.
+            self._manifest.set_meta(note.path, note.concepts, note.body_hash)
             return "unchanged"
         chunks = (
             []
@@ -61,7 +67,11 @@ class Indexer:
         if chunks:
             self._store.upsert_chunks(chunks, vectors)
         self._manifest.upsert(note.path, stamp, len(chunks))
+        self._manifest.set_meta(note.path, note.concepts, note.body_hash)
         return "indexed" if chunks else "empty"
+
+    def is_indexed(self, rel_path: str) -> bool:
+        return self._manifest.get(rel_path) is not None
 
     def remove(self, rel_path: str) -> None:
         self._store.delete_note(rel_path)

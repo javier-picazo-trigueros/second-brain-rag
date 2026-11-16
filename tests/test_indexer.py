@@ -196,3 +196,86 @@ def test_index_file_reports_status(env: Env) -> None:
     assert idx.index_file(env.vault / CARRERA) == "indexed"
     assert idx.index_file(env.vault / CARRERA) == "unchanged"
     assert idx.index_file(env.vault / SIN_TEXTO) == "empty"
+
+
+# --- conceptos y copias en el manifest ---------------------------------------------------------
+
+
+def test_sync_records_the_concepts_of_every_note(env: Env) -> None:
+    env.indexer().sync()
+    concepts = env.manifest.note_concepts()
+    assert concepts[CARRERA] == ("condicion de carrera", "semaforo")
+    assert concepts[SIN_TEXTO] == ()
+    assert set(concepts) == CONTENT_NOTES
+
+
+def test_unchanged_notes_get_their_meta_backfilled_without_reindexing(env: Env) -> None:
+    idx = env.indexer()
+    idx.sync()
+    env.manifest.set_meta(CARRERA, [], None)  # estado de una base creada antes de la fase 2
+    env.embedder.embedded.clear()
+    report = idx.sync()
+    assert report.indexed == 0
+    assert env.embedder.embedded == []
+    assert env.manifest.note_concepts()[CARRERA] == ("condicion de carrera", "semaforo")
+
+
+def test_exact_copies_form_a_duplicate_group(env: Env) -> None:
+    original = (env.vault / "1º/IA/Sin frontmatter.md").read_text(encoding="utf-8")
+    env.write("1º/IA/Sin frontmatter (1).md", original)
+    env.write("2º/DIS/Otra asignatura.md", "---\nasignatura: DIS\n---\n\n" + original)
+    env.indexer().sync()
+    assert env.manifest.duplicate_groups() == [
+        ("1º/IA/Sin frontmatter (1).md", "1º/IA/Sin frontmatter.md", "2º/DIS/Otra asignatura.md")
+    ]
+
+
+def test_notes_without_text_are_not_reported_as_copies(env: Env) -> None:
+    env.write(
+        "3º/SISTEMAS/Otro temario.md",
+        "---\nsin_texto: true\n---\n\n*(sin texto extraíble: ver PDF)*\n",
+    )
+    env.indexer().sync()
+    assert env.manifest.duplicate_groups() == []
+
+
+def test_concepts_of_a_removed_note_disappear(env: Env) -> None:
+    idx = env.indexer()
+    idx.sync()
+    (env.vault / CARRERA).unlink()
+    idx.sync()
+    assert CARRERA not in env.manifest.note_concepts()
+
+
+# --- exclusión por patrones ----------------------------------------------------------------------
+
+
+def test_excluded_globs_are_not_indexed(env: Env) -> None:
+    report = env.indexer(exclude_globs=["3º/*"]).sync()
+    assert env.store.notes.isdisjoint({"3º/REDES/Network layers.md", SIN_TEXTO})
+    assert (report.indexed, report.empty) == (8, 0)  # 3º aporta 1 nota con texto y 1 sin texto
+    assert "3º/REDES/Network layers.md" not in env.manifest.paths()
+
+
+def test_adding_an_exclusion_removes_the_notes_on_the_next_sync(env: Env) -> None:
+    env.indexer().sync()
+    assert "3º/REDES/Network layers.md" in env.store.notes
+    report = env.indexer(exclude_globs=["3º/REDES/*"]).sync()
+    assert report.deleted == 1
+    assert "3º/REDES/Network layers.md" not in env.store.notes
+
+
+def test_removing_an_exclusion_indexes_the_notes_again(env: Env) -> None:
+    env.indexer(exclude_globs=["3º/REDES/*"]).sync()
+    report = env.indexer().sync()
+    assert report.indexed == 1
+    assert "3º/REDES/Network layers.md" in env.store.notes
+
+
+def test_is_indexed_reflects_the_manifest(env: Env) -> None:
+    idx = env.indexer()
+    assert not idx.is_indexed(CARRERA)
+    idx.sync()
+    assert idx.is_indexed(CARRERA)
+    idx.remove(CARRERA)
+    assert not idx.is_indexed(CARRERA)

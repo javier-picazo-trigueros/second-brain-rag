@@ -133,6 +133,6 @@ class SubjectIndex:
         return list(self._notes[subject.name])
 
     def topic_notes(self, subject: Subject, n: int) -> list[str]:
-        """Notas de la asignatura cuyo nombre o carpeta indican «tema N» (o unidad/unit/capítulo)."""
+        """Notas de la asignatura cuyo nombre o carpeta indican «tema N» (o unidad, unit...)."""
         pattern = _topic_pattern(n)
         return [p for p in self._notes[subject.name] if pattern.search(norm(p))]

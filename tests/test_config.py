@@ -83,3 +83,8 @@ def test_fingerprint_changes_with_indexing_parameters(
 def test_fingerprint_ignores_unrelated_settings(tmp_path: Path) -> None:
     other = _settings(tmp_path, qdrant_url="http://otro:6333", embed_on_cpu=True)
     assert other.index_fingerprint == _settings(tmp_path).index_fingerprint
+
+
+def test_qdrant_default_uses_ipv4_loopback(tmp_path: Path) -> None:
+    # "localhost" resuelve antes a ::1 y Docker solo publica IPv4: cada conexión nueva pierde ~2 s.
+    assert _settings(tmp_path).qdrant_url == "http://127.0.0.1:6333"

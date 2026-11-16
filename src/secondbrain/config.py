@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     embed_on_cpu: bool = False
     embed_keep_alive: str = "30s"
 
-    qdrant_url: str = "http://localhost:6333"
+    qdrant_url: str = "http://127.0.0.1:6333"
     collection: str = "vault_chunks"
     bm25_language: str = "spanish"
     # Caché del modelo BM25 de fastembed: se descarga una vez y después funciona offline.

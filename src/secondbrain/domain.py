@@ -35,3 +35,9 @@ class Chunk:
         """Texto que se embebe: contexto (título > encabezados) + contenido."""
         ctx = " > ".join((self.note_title, *self.heading_path))
         return f"{ctx}\n\n{self.text}"
+
+
+@dataclass(frozen=True, slots=True)
+class Hit:
+    score: float
+    payload: dict[str, Any]

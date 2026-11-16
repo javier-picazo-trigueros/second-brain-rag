@@ -1,0 +1,64 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "secondbrain"
+version = "0.1.0"
+description = "Segundo cerebro local: RAG híbrido + grafo sobre un vault de Obsidian"
+license = { text = "PolyForm-Noncommercial-1.0.0" }
+requires-python = ">=3.11"
+dependencies = [
+  "httpx>=0.27",
+  "pydantic>=2.7",
+  "pydantic-settings>=2.3",
+  "qdrant-client>=1.20,<1.21",
+  "fastembed>=0.4",
+  "pyyaml>=6.0",
+  "typer>=0.12",
+  "tenacity>=8.3",
+  "watchdog>=4.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+  "pytest-cov>=5",
+  "ruff>=0.5",
+  "mypy>=1.10",
+  "types-PyYAML",
+]
+
+[project.scripts]
+brain = "secondbrain.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+secondbrain = ["py.typed"]
+
+[tool.mypy]
+strict = true
+ignore_missing_imports = true
+mypy_path = "src"
+files = ["src", "tests"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+extend-exclude = ["tests/fixtures"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = ["integration: requiere Ollama y Qdrant en marcha"]
+
+[tool.coverage.run]
+source = ["secondbrain"]
+
+[tool.coverage.report]
+show_missing = true

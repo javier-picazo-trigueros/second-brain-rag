@@ -25,3 +25,7 @@ frontend/dist/
 Thumbs.db
 .idea/
 .vscode/
+
+# evaluaciones con nombres reales del vault y sus resultados
+evals/golden/*.local.yaml
+evals/results/

@@ -60,15 +60,20 @@ def _labels(paths: Iterable[str]) -> dict[str, str]:
 
 
 def _header(label: str, payload: dict[str, object]) -> str:
-    head = f"### [[{label}]]"
-    meta = [str(payload[k]) for k in ("asignatura", "curso") if payload.get(k)]
-    if meta:
-        head += f" ({', '.join(meta)})"
-    if payload.get("heading_path"):
-        head += f" | {payload['heading_path']}"
-    if payload.get("page") is not None:
-        head += f" | p. {payload['page']}"
-    return head
+    """Título citable en su propia línea y los metadatos aparte, con etiquetas.
+
+    Si la cabecera fuera `### [[Nota]] (asignatura) | encabezado | p. 7`, el modelo la imita
+    detrás de sus citas y la página deja de ir pegada a la cita (visto con qwen2.5:7b).
+    """
+    fields = [
+        ("Asignatura", payload.get("asignatura")),
+        ("Curso", payload.get("curso")),
+        ("Encabezado", payload.get("heading_path")),
+        ("Página", payload.get("page")),
+    ]
+    meta = " · ".join(f"{name}: {value}" for name, value in fields if value not in (None, ""))
+    title = f"### [[{label}]]"
+    return f"{title}\n{meta}" if meta else title
 
 
 def _truncate(text: str, max_tokens: int) -> str:

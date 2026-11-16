@@ -68,7 +68,7 @@ def test_main_chunks_appear_in_rank_order_with_label_heading_and_page(tmp_path: 
     )
     ctx = build_context(r, settings(tmp_path))
     assert ctx.text.index("[[Semáforos]]") < ctx.text.index("[[OpenMP]]")
-    assert "Monitores" in ctx.text and "p. 7" in ctx.text
+    assert "Encabezado: Monitores" in ctx.text and "Página: 7" in ctx.text
     assert "texto uno" in ctx.text and "SISTEMAS" in ctx.text
     assert [s.label for s in ctx.sources] == ["Semáforos", "OpenMP"]
     assert all(s.kind == "evidence" for s in ctx.sources)
@@ -173,3 +173,23 @@ def test_zero_related_budget_omits_the_section(tmp_path: Path) -> None:
     ctx = build_context(result([note("a/X.md", chunk("a/X.md", "t"))], [related("b/Y.md")]), s)
     assert "NOTAS RELACIONADAS" not in ctx.text
     assert all(x.kind == "evidence" for x in ctx.sources)
+
+
+# --- la cabecera no debe poder confundirse con una cita ---------------------------
+
+
+def test_metadata_goes_on_its_own_labelled_line_not_next_to_the_citation(tmp_path: Path) -> None:
+    n = note("1º/SO/Semáforos.md", chunk("1º/SO/Semáforos.md", "texto uno", 7, "Monitores"))
+    ctx = build_context(result([n]), settings(tmp_path))
+    lines = ctx.text.splitlines()
+    title_line = next(ln for ln in lines if ln.startswith("### "))
+    assert title_line == "### [[Semáforos]]"  # solo el título: nada que copiar tras la cita
+    meta_line = lines[lines.index(title_line) + 1]
+    assert meta_line == "Asignatura: SISTEMAS · Curso: 2º · Encabezado: Monitores · Página: 7"
+
+
+def test_missing_metadata_is_left_out_of_the_line(tmp_path: Path) -> None:
+    hit = Hit(0.5, {"note_path": "a/X.md", "text": "texto", "heading_path": "", "page": None})
+    ctx = build_context(result([note("a/X.md", hit)]), settings(tmp_path))
+    assert "Página" not in ctx.text and "Asignatura" not in ctx.text
+    assert "### [[X]]\ntexto" in ctx.text

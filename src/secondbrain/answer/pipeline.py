@@ -90,10 +90,14 @@ class AnswerPipeline:
         self._llm = llm
         self._clock = clock
 
+    def plan(self, question: str, k: int | None = None) -> tuple[SearchResult, BuiltContext]:
+        """Recuperación y contexto de una pregunta, sin llamar al modelo."""
+        result = self._retriever.search(question, k=k or self._s.answer_k, with_graph=True)
+        return result, build_context(result, self._s)
+
     def ask(self, question: str, k: int | None = None) -> Iterator[Event]:
         start = self._clock()
-        result = self._retriever.search(question, k=k or self._s.answer_k, with_graph=True)
-        context = build_context(result, self._s)
+        result, context = self.plan(question, k)
         retrieval_ms = (self._clock() - start) * 1000
         confidence = confidence_label(result.top_similarity, self._s.confidence_threshold)
         yield SourcesEvent(

@@ -193,3 +193,18 @@ def test_missing_metadata_is_left_out_of_the_line(tmp_path: Path) -> None:
     ctx = build_context(result([note("a/X.md", hit)]), settings(tmp_path))
     assert "Página" not in ctx.text and "Asignatura" not in ctx.text
     assert "### [[X]]\ntexto" in ctx.text
+
+
+# --- visión general ---------------------------------------------------------------------------
+
+
+def test_overview_uses_the_whole_budget_because_it_has_no_hints(tmp_path: Path) -> None:
+    s = settings(tmp_path, context_budget_tokens=1000, related_budget_tokens=800)
+    notes = [note(f"3º/DM/Unit {i}.md", chunk(f"3º/DM/Unit {i}.md", "x" * 900)) for i in range(6)]
+    normal = build_context(SearchResult(notes, []), s)
+    overview = build_context(SearchResult(notes, [], None, mode="overview"), s)
+    assert overview.mode == "overview" and normal.mode == "search"
+    assert len([x for x in overview.sources if x.kind == "evidence"]) > len(
+        [x for x in normal.sources if x.kind == "evidence"]
+    )
+    assert overview.tokens <= 1000

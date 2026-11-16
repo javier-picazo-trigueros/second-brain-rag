@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
+from typing import Any
 
 from secondbrain.answer.llm import Delta, Finished, LLMError, Message
 from secondbrain.domain import Chunk, Hit
@@ -103,6 +104,18 @@ class FakeStore:
     def dense_top(self, query_dense: list[float]) -> float | None:
         return 0.5 if self.chunks else None
 
+    def outline(self, paths: Sequence[str]) -> list[dict[str, Any]]:
+        return [
+            {
+                "note_path": c.note_path,
+                "position": c.position,
+                "heading_path": " > ".join(c.heading_path),
+                "resumen": c.resumen,
+            }
+            for p in paths
+            for c in self.chunks.get(p, [])
+        ]
+
     def dense_notes(
         self, query_dense: list[float], limit: int = 100, only_paths: Sequence[str] | None = None
     ) -> dict[str, float]:
@@ -147,6 +160,9 @@ class ScriptedStore:
         self.last_search = {"query": query, "limit": limit, "prefetch": prefetch}
         self.last_only_paths = only_paths
         return self.hits[:limit]
+
+    def outline(self, paths: Sequence[str]) -> list[dict[str, Any]]:
+        return []
 
     def dense_notes(
         self, query_dense: list[float], limit: int = 100, only_paths: Sequence[str] | None = None

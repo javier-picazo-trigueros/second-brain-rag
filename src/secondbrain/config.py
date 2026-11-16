@@ -77,6 +77,13 @@ class Settings(BaseSettings):
     min_note_cosine: float = Field(0.55, ge=0, le=1)
     cosine_margin: float = Field(0.12, ge=0, le=1)
 
+    # Visión general ("de qué trata X", "qué se da en el tema N"): notas por asignatura y apartados.
+    aliases_path: Path = Path("data/aliases.toml")
+    overview_max_notes: int = Field(22, ge=1)
+    overview_text_chars: int = Field(350, ge=100)  # texto por nota en una visión de asignatura
+    overview_headings_subject: int = Field(5, ge=0)
+    overview_headings_topic: int = Field(25, ge=0)
+
     # Contexto que se da al LLM (tokens estimados). El total del prompt más la respuesta debe caber
     # en `llm_num_ctx`: sistema ~450 + contexto + pregunta ~700 + `llm_max_tokens`.
     context_budget_tokens: int = Field(4500, ge=500)
@@ -114,7 +121,7 @@ class Settings(BaseSettings):
             return [part.strip() for part in v.split(";") if part.strip()]
         return v
 
-    @field_validator("manifest_path", "bm25_cache_dir")
+    @field_validator("manifest_path", "bm25_cache_dir", "aliases_path")
     @classmethod
     def _anchor_to_project_root(cls, v: Path) -> Path:
         return v if v.is_absolute() else PROJECT_ROOT / v

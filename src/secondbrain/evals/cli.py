@@ -8,7 +8,6 @@ from typing import Annotated, Any
 
 import typer
 
-from secondbrain.answer.context import build_context
 from secondbrain.answer.pipeline import DoneEvent, TokenEvent
 from secondbrain.api.app import AppServices
 from secondbrain.evals.golden import (
@@ -41,8 +40,7 @@ def gpu_note() -> str:
 
 def _retrieve(services: AppServices) -> Any:
     def retrieve(question: str) -> list[str]:
-        result = services.retriever.search(question, k=services.settings.answer_k)
-        context = build_context(result, services.settings)
+        _, context = services.pipeline.plan(question)
         return [s.path for s in context.sources if s.kind == "evidence"]
 
     return retrieve

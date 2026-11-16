@@ -44,6 +44,7 @@ class BuiltContext:
     sources: tuple[Source, ...]
     tokens: int
     dropped_notes: int  # notas del ranking que no cupieron en el presupuesto
+    mode: str = "search"  # "overview": cada nota es un resumen, no un fragmento
 
 
 def _title(path: str) -> str:
@@ -108,7 +109,10 @@ def _fit_block(header: str, text: str, room_tokens: int) -> str | None:
 def build_context(result: SearchResult, settings: Settings) -> BuiltContext:
     """Contexto para el modelo dentro del presupuesto: evidencia primero, pistas después."""
     labels = _labels([n.path for n in result.notes] + [r.path for r in result.related])
-    main_budget = settings.context_budget_tokens - settings.related_budget_tokens
+    overview = result.mode == "overview"  # sin pistas del grafo: todo el presupuesto es evidencia
+    main_budget = settings.context_budget_tokens - (
+        0 if overview else settings.related_budget_tokens
+    )
 
     sources: list[Source] = []
     body = ""
@@ -142,7 +146,7 @@ def build_context(result: SearchResult, settings: Settings) -> BuiltContext:
         if hints:
             text = f"{text}\n\n{hint_text}"
             sources.extend(hints_to_sources(hints, labels))
-    return BuiltContext(text, tuple(sources), estimate_tokens(text), dropped)
+    return BuiltContext(text, tuple(sources), estimate_tokens(text), dropped, result.mode)
 
 
 def _add_note(

@@ -16,6 +16,7 @@ from qdrant_client.http.exceptions import ResponseHandlingException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from secondbrain import __version__
+from secondbrain.answer.context import BuiltContext
 from secondbrain.answer.pipeline import (
     DoneEvent,
     ErrorEvent,
@@ -59,6 +60,8 @@ class Retriever(Protocol):
 
 class Pipeline(Protocol):
     def ask(self, question: str, k: int | None = None) -> Iterator[Event]: ...
+
+    def plan(self, question: str, k: int | None = None) -> tuple[SearchResult, BuiltContext]: ...
 
 
 @dataclass(slots=True)

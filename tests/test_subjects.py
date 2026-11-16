@@ -104,9 +104,9 @@ def test_alias_file_merges_folders_and_adds_includes(index: SubjectIndex) -> Non
     assert "3º/IA II/AIII - Unit 2 - Neural Networks.md" not in notes
     so = index.detect("la asignatura de sistemas operativos")
     assert so is not None
-    notes = set(index.notes_of(so))
-    assert "2º/SISTEMAS OPERATIVOS/Tema-3.3 Procesos e Hilos en C v2021.md" in notes
-    assert "3º/SISTEMAS/Tema-3.1 Procesos e Hilos v2021.md" in notes
+    so_notes = set(index.notes_of(so))
+    assert "2º/SISTEMAS OPERATIVOS/Tema-3.3 Procesos e Hilos en C v2021.md" in so_notes
+    assert "3º/SISTEMAS/Tema-3.1 Procesos e Hilos v2021.md" in so_notes
 
 
 def test_detect_prefers_the_longest_alias(index: SubjectIndex) -> None:

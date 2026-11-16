@@ -52,9 +52,10 @@ class SearchResult:
     related: list[RelatedNote]
     # Coseno del mejor chunk: mide cuánto se parece la consulta al vault (el RRF no está calibrado).
     top_similarity: float | None = None
+    mode: str = "search"  # "overview": resumen de una asignatura o tema, no fragmentos
 
 
-def _canonical_key(path: str) -> tuple[bool, int, str]:
+def canonical_key(path: str) -> tuple[bool, int, str]:
     has_suffix = bool(_COPY_SUFFIX.search(PurePosixPath(path).stem))
     return (has_suffix, len(path), path)
 
@@ -127,7 +128,7 @@ class HybridRetriever:
         canonical: dict[str, str] = {}
         others: dict[str, tuple[str, ...]] = {}
         for group in self._manifest.duplicate_groups():
-            rep = min(group, key=_canonical_key)
+            rep = min(group, key=canonical_key)
             others[rep] = tuple(p for p in group if p != rep)
             for path in group:
                 canonical[path] = rep

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Any
 
 from fastembed import SparseTextEmbedding
 from qdrant_client import QdrantClient, models
@@ -163,6 +164,23 @@ class VectorStore:
             with_payload=True,
         )
         return [Hit(score=p.score, payload=dict(p.payload or {})) for p in res.points]
+
+    def outline(self, paths: Sequence[str]) -> list[dict[str, Any]]:
+        """Resumen, posición y encabezado de todos los chunks de esas notas (sin vectores)."""
+        out: list[dict[str, Any]] = []
+        offset = None
+        while True:
+            points, offset = self._client.scroll(
+                self._name,
+                scroll_filter=self._paths_filter(paths),
+                limit=1000,
+                offset=offset,
+                with_payload=["note_path", "position", "heading_path", "resumen"],
+                with_vectors=False,
+            )
+            out.extend(dict(p.payload or {}) for p in points)
+            if offset is None:
+                return out
 
     def dense_notes(
         self, query_dense: list[float], limit: int = 100, only_paths: Sequence[str] | None = None

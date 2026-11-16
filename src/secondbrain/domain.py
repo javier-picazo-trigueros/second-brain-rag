@@ -13,6 +13,8 @@ class ParsedNote:
     links: tuple[str, ...]  # destinos de [[...]] (cuerpo + frontmatter)
     body: str
     content_hash: str
+    concepts: tuple[str, ...] = ()  # destinos de [[...]] en el campo `conceptos`
+    body_hash: str | None = None  # huella del cuerpo normalizado (detecta copias exactas)
 
 
 @dataclass(frozen=True, slots=True)

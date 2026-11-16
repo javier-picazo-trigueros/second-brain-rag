@@ -9,6 +9,7 @@ from typing import Any
 import yaml
 
 from secondbrain.domain import ParsedNote
+from secondbrain.ingest.text import body_fingerprint
 
 _FM = re.compile(r"\A---[ \t]*\r?\n(.*?)\r?\n---[ \t]*(?:\r?\n|\Z)", re.S)
 _FENCED = re.compile(r"^(```|~~~)[^\n]*\n.*?^\1[ \t]*$", re.M | re.S)
@@ -85,6 +86,8 @@ def parse_note(abs_path: Path, vault: Path) -> ParsedNote:
     fm_links = (t for s in _iter_strings(link_fields) for t in _targets(s))
     links = _dedupe((*_targets(scan), *fm_links))
 
+    concepts = _dedupe(t for s in _iter_strings(fm.get("conceptos")) for t in _targets(s))
+
     raw_tags = fm.get("tags", [])
     fm_tags = [raw_tags] if isinstance(raw_tags, str) else list(_iter_strings(raw_tags))
     inline = (m.group(1) for m in _TAG.finditer(scan))
@@ -98,4 +101,6 @@ def parse_note(abs_path: Path, vault: Path) -> ParsedNote:
         links=links,
         body=body,
         content_hash=hashlib.sha256(raw).hexdigest(),
+        concepts=concepts,
+        body_hash=body_fingerprint(body),
     )

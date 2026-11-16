@@ -49,6 +49,8 @@ class Indexer:
         # El hash incluye la huella de configuración: cambiar modelo o chunking reindexa todo.
         stamp = f"{note.content_hash}:{self._fingerprint}"
         if self._manifest.get(note.path) == stamp:
+            # Conceptos y copias se refrescan siempre: es barato y evita reindexar al añadirlos.
+            self._manifest.set_meta(note.path, note.concepts, note.body_hash)
             return "unchanged"
         chunks = (
             []
@@ -61,6 +63,7 @@ class Indexer:
         if chunks:
             self._store.upsert_chunks(chunks, vectors)
         self._manifest.upsert(note.path, stamp, len(chunks))
+        self._manifest.set_meta(note.path, note.concepts, note.body_hash)
         return "indexed" if chunks else "empty"
 
     def remove(self, rel_path: str) -> None:

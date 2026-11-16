@@ -8,8 +8,9 @@ Se actualiza en cada checkpoint.
 |---|---|
 | 0. Andamiaje | Terminada, aprobada y publicada (`main`) |
 | 1. Parser, chunking, indexación incremental | Terminada, aprobada y publicada (`main`) |
-| 2. Grafo, búsqueda híbrida y watcher | Checkpoint pendiente de aprobación (rama `feat/fase-2-grafo-hibrida`, sin merge ni push) |
-| 3. Respuesta, API, MCP e interfaz web | Pendiente |
+| 2. Grafo, búsqueda híbrida y watcher | Terminada, aprobada y publicada (`main`) |
+| 3a. Respuesta, API y MCP (sin interfaz) | Plan pendiente de aprobación |
+| 3b. Interfaz web | Pendiente (esquemas y tokens de diseño antes de programar) |
 | 4. Evals | Pendiente |
 
 ## Fase 0: resultado
@@ -191,6 +192,9 @@ encontró en una búsqueda. El índice real no se tocó (23.236 puntos antes y d
 4. **Parámetros:** la penalización (α, n_ref), el umbral de nota grande, la cuota y su excepción, los
    límites del grafo y los de candidatos están en `Settings` para ajustarlos con datos en la Fase 4.
 5. **Historial:** el commit de la Fase 0 que nombra el archivo `CLAUDE.md` se deja como está.
+6. **Aparcado para la Fase 4:** umbral relativo mínimo de score respecto al primero (cola débil),
+   exigir 2 conceptos compartidos o rebajar las aristas de un solo concepto ambiguo, y afinar α, la cuota
+   y el umbral de nota grande con Hit@k y MRR.
 
 ## Decisiones aprobadas (Fase 1)
 
@@ -209,6 +213,6 @@ Sobre el diseño de `referencia_fase1.md`:
 
 ## Siguiente paso
 
-Aprobar el checkpoint de la Fase 2 (merge a `main` y push). Después, Fase 3: pipeline de respuesta con
-citas `[[nota]]`, API FastAPI, servidor MCP e interfaz web; antes de programar la interfaz se
-presentan los esquemas de pantalla y los tokens de diseño.
+Fase 3a: pipeline de respuesta con citas validadas, API FastAPI y servidor MCP, sin interfaz. Después,
+Fase 3b (interfaz web), para la que se presentan antes los esquemas de pantalla y los tokens de diseño.
+La capa agéntica (PydanticAI) va al final de la 3b o en la Fase 4, según la fiabilidad del pipeline.

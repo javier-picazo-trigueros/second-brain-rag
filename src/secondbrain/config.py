@@ -56,6 +56,13 @@ class Settings(BaseSettings):
     # Caché del modelo BM25 de fastembed: se descarga una vez y después funciona offline.
     bm25_cache_dir: Path = Path("data/fastembed_cache")
 
+    # Modelo de lenguaje (respuestas). En consulta el embedder va en CPU para dejar la VRAM al LLM.
+    llm_model: str = "qwen2.5:7b"
+    llm_num_ctx: int = Field(8192, ge=2048)
+    llm_max_tokens: int = Field(1024, ge=1)  # tope de la respuesta (num_predict)
+    llm_temperature: float = Field(0.2, ge=0, le=1)
+    llm_keep_alive: str = "10m"
+
     # Búsqueda híbrida. Los valores por defecto son un punto de partida: los ajustan los evals.
     candidate_limit: int = Field(150, ge=1)  # chunks fusionados que se piden a Qdrant
     prefetch_limit: int = Field(120, ge=1)  # candidatos por rama (denso / BM25) antes de fusionar

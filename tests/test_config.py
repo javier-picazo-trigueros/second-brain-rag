@@ -255,3 +255,26 @@ def test_settings_resolve_the_same_paths_from_another_working_directory(tmp_path
     manifest, cache = out.stdout.splitlines()
     assert Path(manifest) == PROJECT_ROOT / "data" / "manifest.sqlite"
     assert Path(cache) == PROJECT_ROOT / "data" / "fastembed_cache"
+
+
+# --- modelo de lenguaje -----------------------------------------------------------------------
+
+
+def test_llm_defaults(tmp_path: Path) -> None:
+    s = _settings(tmp_path)
+    assert (s.llm_model, s.llm_num_ctx, s.llm_max_tokens) == ("qwen2.5:7b", 8192, 1024)
+    assert (s.llm_temperature, s.llm_keep_alive) == (0.2, "10m")
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("llm_num_ctx", 512), ("llm_max_tokens", 0), ("llm_temperature", 1.5)],
+)
+def test_out_of_range_llm_parameters_are_rejected(tmp_path: Path, field: str, value: float) -> None:
+    with pytest.raises(ValidationError):
+        _settings(tmp_path, **{field: value})
+
+
+def test_llm_settings_do_not_change_the_index_fingerprint(tmp_path: Path) -> None:
+    other = _settings(tmp_path, llm_model="otro", llm_num_ctx=4096)
+    assert other.index_fingerprint == _settings(tmp_path).index_fingerprint

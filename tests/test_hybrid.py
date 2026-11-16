@@ -57,7 +57,7 @@ def paths(result: Any) -> list[str]:
     return [n.path for n in result.notes]
 
 
-# --- consulta a Qdrant y agrupado por nota ---------------------------------------------------------
+# --- consulta a Qdrant y agrupado por nota ------------------------------------------
 
 
 def test_limits_come_from_settings(build: Build) -> None:
@@ -67,7 +67,12 @@ def test_limits_come_from_settings(build: Build) -> None:
 
 
 def test_chunks_are_grouped_by_note_and_capped(build: Build) -> None:
-    hits = [hit("a.md", 0.9, "a1"), hit("a.md", 0.8, "a2"), hit("a.md", 0.7, "a3"), hit("b.md", 0.6)]
+    hits = [
+        hit("a.md", 0.9, "a1"),
+        hit("a.md", 0.8, "a2"),
+        hit("a.md", 0.7, "a3"),
+        hit("b.md", 0.6),
+    ]
     r, _ = build(hits, max_chunks_per_note=2)
     result = r.search("q")
     assert paths(result) == ["a.md", "b.md"]

@@ -95,6 +95,7 @@ class ScriptedStore:
         self.hits = hits
         self.best = best or {}
         self.last_search: dict[str, object] = {}
+        self.note_calls: list[str] = []
 
     def ensure_collection(self) -> None: ...
 
@@ -109,6 +110,7 @@ class ScriptedStore:
         return self.hits[:limit]
 
     def search_note(self, note_path: str, query_dense: list[float], limit: int = 1) -> list[Hit]:
+        self.note_calls.append(note_path)
         return [self.best[note_path]] if note_path in self.best else []
 
     def count(self) -> int:

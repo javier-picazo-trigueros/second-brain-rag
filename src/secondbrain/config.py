@@ -78,6 +78,12 @@ class Settings(BaseSettings):
     context_budget_tokens: int = Field(4500, ge=500)
     related_budget_tokens: int = Field(800, ge=0)  # parte del anterior reservada a las pistas
 
+    # API HTTP: solo escucha en la propia máquina. El front de desarrollo (Vite) necesita su origen
+    # en `api_cors_origins`, separado por ";"; en producción la sirve la propia API y no hace falta.
+    api_host: str = "127.0.0.1"
+    api_port: int = Field(8000, ge=1, le=65535)
+    api_cors_origins: Annotated[list[str], NoDecode] = Field(default_factory=list)
+
     # Respuestas
     answer_k: int = Field(5, ge=1)  # notas que se recuperan para responder
     # Coseno mínimo del mejor chunk para considerar fiable el contexto. Es un aviso, no un bloqueo.
@@ -92,7 +98,7 @@ class Settings(BaseSettings):
     chunk_max_chars: int = Field(1800, ge=400)
     chunk_min_chars: int = Field(300, ge=50)
 
-    @field_validator("exclude_globs", "demote_globs", mode="before")
+    @field_validator("exclude_globs", "demote_globs", "api_cors_origins", mode="before")
     @classmethod
     def _split_globs(cls, v: Any) -> Any:
         if isinstance(v, str):

@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from secondbrain.answer.llm import Delta, Finished, LLMError, Message
+from secondbrain.answer.llm import Finished
 from secondbrain.answer.pipeline import (
     AnswerPipeline,
     DoneEvent,
@@ -19,6 +19,7 @@ from secondbrain.answer.prompt import NOT_FOUND
 from secondbrain.config import Settings
 from secondbrain.domain import Hit
 from secondbrain.retrieval.hybrid import NoteHit, RelatedNote, SearchResult
+from tests.fakes import FINISHED, FakeRetriever, ScriptedLLM, Tick
 
 
 def settings(tmp_path: Path, **overrides: Any) -> Settings:
@@ -44,59 +45,6 @@ def note(path: str, text: str = "Un semáforo es un contador.", page: int | None
 
 def found(similarity: float | None = 0.8, hints: list[RelatedNote] | None = None) -> SearchResult:
     return SearchResult([note("1º/SO/Semáforos.md")], hints or [], similarity)
-
-
-FINISHED = Finished(
-    prompt_tokens=900, completion_tokens=50, load_ms=0.0, prompt_eval_ms=400.0,
-    eval_ms=1000.0, truncated=False,
-)  # fmt: skip
-
-
-class FakeRetriever:
-    def __init__(self, result: SearchResult) -> None:
-        self.result = result
-        self.calls: list[tuple[str, int]] = []
-
-    def search(self, query: str, k: int = 5, *, with_graph: bool = True) -> SearchResult:
-        self.calls.append((query, k))
-        return self.result
-
-
-class ScriptedLLM:
-    def __init__(
-        self,
-        deltas: Sequence[str],
-        finished: Finished | None = FINISHED,
-        fail_after: int | None = None,
-    ) -> None:
-        self.deltas = list(deltas)
-        self.finished = finished
-        self.fail_after = fail_after
-        self.messages: list[Message] = []
-        self.calls = 0
-
-    def stream_chat(self, messages: Sequence[Message]) -> Iterator[Delta | Finished]:
-        self.calls += 1
-        self.messages = list(messages)
-        for i, text in enumerate(self.deltas):
-            if self.fail_after is not None and i == self.fail_after:
-                raise LLMError("Ollama no responde en http://x: arráncalo con `ollama serve`.")
-            yield Delta(text)
-        if self.fail_after is not None and self.fail_after >= len(self.deltas):
-            raise LLMError("Ollama no responde en http://x: arráncalo con `ollama serve`.")
-        if self.finished is not None:
-            yield self.finished
-
-
-class Tick:
-    """Reloj que avanza 0,1 s cada vez que se lee: tiempos deterministas."""
-
-    def __init__(self) -> None:
-        self.now = 0.0
-
-    def __call__(self) -> float:
-        self.now += 0.1
-        return self.now
 
 
 def run(

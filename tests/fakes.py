@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator, Sequence
+
+from secondbrain.answer.llm import Delta, Finished, LLMError, Message
 from secondbrain.domain import Chunk, Hit
+from secondbrain.retrieval.hybrid import SearchResult
 
 Events = list[tuple[str, str]]
 
@@ -58,8 +62,13 @@ class FakeStore:
                         "note_path": c.note_path,
                         "note_title": c.note_title,
                         "heading_path": " > ".join(c.heading_path),
+                        "position": c.position,
                         "page": c.page,
                         "text": c.text,
+                        "tags": list(c.tags),
+                        "asignatura": c.asignatura,
+                        "curso": c.curso,
+                        "resumen": c.resumen,
                     }
                     hits.append(Hit(score=score, payload=payload))
         return sorted(hits, key=lambda h: -h.score)[:limit]
@@ -124,3 +133,56 @@ class ScriptedStore:
 
     def count(self) -> int:
         return len(self.hits)
+
+
+FINISHED = Finished(
+    prompt_tokens=900, completion_tokens=50, load_ms=0.0, prompt_eval_ms=400.0,
+    eval_ms=1000.0, truncated=False,
+)  # fmt: skip
+
+
+class FakeRetriever:
+    def __init__(self, result: SearchResult) -> None:
+        self.result = result
+        self.calls: list[tuple[str, int]] = []
+
+    def search(self, query: str, k: int = 5, *, with_graph: bool = True) -> SearchResult:
+        self.calls.append((query, k))
+        return self.result
+
+
+class ScriptedLLM:
+    def __init__(
+        self,
+        deltas: Sequence[str],
+        finished: Finished | None = FINISHED,
+        fail_after: int | None = None,
+    ) -> None:
+        self.deltas = list(deltas)
+        self.finished = finished
+        self.fail_after = fail_after
+        self.messages: list[Message] = []
+        self.calls = 0
+
+    def stream_chat(self, messages: Sequence[Message]) -> Iterator[Delta | Finished]:
+        self.calls += 1
+        self.messages = list(messages)
+        for i, text in enumerate(self.deltas):
+            if self.fail_after is not None and i == self.fail_after:
+                raise LLMError("Ollama no responde en http://x: arráncalo con `ollama serve`.")
+            yield Delta(text)
+        if self.fail_after is not None and self.fail_after >= len(self.deltas):
+            raise LLMError("Ollama no responde en http://x: arráncalo con `ollama serve`.")
+        if self.finished is not None:
+            yield self.finished
+
+
+class Tick:
+    """Reloj que avanza 0,1 s cada vez que se lee: tiempos deterministas."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        self.now += 0.1
+        return self.now

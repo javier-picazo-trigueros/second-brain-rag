@@ -288,3 +288,20 @@ def test_context_budget_defaults(tmp_path: Path) -> None:
 def test_related_budget_must_leave_room_for_the_main_context(tmp_path: Path) -> None:
     with pytest.raises(ValidationError, match="related_budget_tokens"):
         _settings(tmp_path, context_budget_tokens=1000, related_budget_tokens=1000)
+
+
+# --- API ----------------------------------------------------------------------------------------
+
+
+def test_api_defaults_bind_to_loopback_only(tmp_path: Path) -> None:
+    s = _settings(tmp_path)
+    assert (s.api_host, s.api_port, s.api_cors_origins) == ("127.0.0.1", 8000, [])
+
+
+def test_cors_origins_are_read_from_a_semicolon_separated_variable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("BRAIN_VAULT_PATH", str(tmp_path))
+    monkeypatch.setenv("BRAIN_API_CORS_ORIGINS", "http://localhost:5173; http://127.0.0.1:5173")
+    s = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert s.api_cors_origins == ["http://localhost:5173", "http://127.0.0.1:5173"]

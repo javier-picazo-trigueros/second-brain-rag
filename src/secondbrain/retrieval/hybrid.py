@@ -119,9 +119,15 @@ class HybridRetriever:
             with_cosine.append(replace(note, cosine=cosine))
         values = [n.cosine for n in with_cosine if n.cosine is not None]
         if not values:
-            return with_cosine
+            # Con cosenos reales, una nota sin ninguno ni siquiera entró en el denso: no pasa.
+            return [] if cosines else with_cosine
         floor = max(self._s.min_note_cosine, max(values) - self._s.cosine_margin)
-        return [n for n in with_cosine if n.cosine is None or n.cosine >= floor]
+        keep_unknown = not cosines  # sin cosenos (store de pruebas) no hay base para descartar
+        return [
+            n
+            for n in with_cosine
+            if (n.cosine is None and keep_unknown) or (n.cosine is not None and n.cosine >= floor)
+        ]
 
     def _copy_index(self) -> tuple[dict[str, str], dict[str, tuple[str, ...]]]:
         """Para cada nota con copias exactas: su ruta canónica y las demás ubicaciones."""

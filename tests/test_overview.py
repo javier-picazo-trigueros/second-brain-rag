@@ -169,7 +169,7 @@ def test_normal_questions_go_to_the_hybrid_retriever(routed: Any) -> None:
 
 
 def test_subject_overview_lists_the_subject_notes(routed: Any) -> None:
-    router, base, store = routed
+    router, base, _ = routed
     result = router.search("¿De qué trata la asignatura de discretas?", k=5)
     assert result.mode == "overview" and base.calls == []
     assert {n.path for n in result.notes} == {
@@ -179,7 +179,7 @@ def test_subject_overview_lists_the_subject_notes(routed: Any) -> None:
 
 
 def test_topic_overview_keeps_only_that_topic(routed: Any) -> None:
-    router, base, _ = routed
+    router, _, _ = routed
     result = router.search("¿Qué se da en el tema 5 de discretas?", k=5)
     assert [n.path for n in result.notes] == ["3º/Discretas/Tema 5 Grafos.md"]
 
@@ -203,3 +203,72 @@ def test_hit_type_is_a_plain_hit(tmp_path: Path, manifest: Manifest) -> None:
     store = OutlineStore([chunk("3º/DM/A.md", 0, "T")])
     (note,) = OverviewBuilder(settings(tmp_path), store, manifest).build(["3º/DM/A.md"], 0).notes
     assert isinstance(note.chunks[0], Hit)
+
+
+# --- copias, tope por tema y preguntas que cruzan asignaturas --------------------------------
+
+
+def test_copies_collapse_inside_the_requested_notes_only(
+    tmp_path: Path, manifest: Manifest
+) -> None:
+    # La copia de DIS tiene la ruta más corta, pero se pidió la asignatura Redes.
+    add(manifest, "3º/DIS/A.md", group="g")
+    add(manifest, "3º/Redes/Apuntes/A.md", group="g")
+    store = OutlineStore([chunk("3º/DIS/A.md", 0, "T"), chunk("3º/Redes/Apuntes/A.md", 0, "T")])
+    result = OverviewBuilder(settings(tmp_path), store, manifest).build(
+        ["3º/Redes/Apuntes/A.md"], 0
+    )
+    assert [n.path for n in result.notes] == ["3º/Redes/Apuntes/A.md"]
+    assert result.notes[0].also_in == ("3º/DIS/A.md",)
+
+
+def test_the_cap_spreads_over_topics_before_repeating_one(
+    tmp_path: Path, manifest: Manifest
+) -> None:
+    sizes = {
+        "3º/D/Tema 1 a.md": 10,
+        "3º/D/Tema 1 b.md": 50,
+        "3º/D/Tema 1 c.md": 5,
+        "3º/D/Tema 2 a.md": 7,
+        "3º/D/Tema 3 a.md": 6,
+    }
+    for path, n in sizes.items():
+        manifest.upsert(path, "h", n)
+        manifest.set_meta(path, (), None)
+    store = OutlineStore([chunk(p, 0, "T") for p in sizes])
+    s = settings(tmp_path, overview_max_notes=3, overview_per_topic=1)
+    result = OverviewBuilder(s, store, manifest).build(list(sizes), 0)
+    assert [n.title for n in result.notes] == ["Tema 1 b", "Tema 2 a", "Tema 3 a"]
+
+
+def test_questions_naming_two_subjects_search_each_one(tmp_path: Path, manifest: Manifest) -> None:
+    for p in ("3º/Discretas/A.md", "3º/DM/B.md", "3º/Redes/C.md"):
+        add(manifest, p)
+    calls: list[tuple[str, Sequence[str] | None]] = []
+
+    class PerSubject:
+        def search(
+            self,
+            query: str,
+            k: int = 5,
+            *,
+            with_graph: bool = True,
+            only_paths: Sequence[str] | None = None,
+        ) -> SearchResult:
+            calls.append((query, only_paths))
+            from secondbrain.retrieval.hybrid import NoteHit
+
+            path = (only_paths or ["?"])[0]
+            note = NoteHit(
+                path, path, 1.0, 1.0, (Hit(0.5, {"note_path": path, "text": "t"}),), (), 3
+            )
+            return SearchResult([note], [], 0.7)
+
+    router = IntentRetriever(
+        settings(tmp_path), PerSubject(), OutlineStore([]), manifest, aliases={}
+    )
+    result = router.search("¿Qué relación hay entre discretas y redes?", k=4)
+    assert sorted(p[0] for _, p in calls if p) == ["3º/Discretas/A.md", "3º/Redes/C.md"]
+    assert {n.path for n in result.notes} == {"3º/Discretas/A.md", "3º/Redes/C.md"}
+    assert result.mode == "search" and result.related == []
+    assert result.top_similarity == 0.7

@@ -179,3 +179,18 @@ def test_topic_notes_match_by_name_or_folder(index: SubjectIndex) -> None:
     assert so is not None
     assert "3º/SISTEMAS/Tema-3.1 Procesos e Hilos v2021.md" in index.topic_notes(so, 3)
     assert "3º/SISTEMAS/Tema 3 - Seguridad en Sistemas IT.md" in index.topic_notes(so, 3)
+
+
+def test_detect_all_returns_every_named_subject_in_question_order(index: SubjectIndex) -> None:
+    found = index.detect_all("relación entre data mining y sistemas operativos")
+    assert [s.name for s in found] == ["Data Mining", "Sistemas Operativos"]
+
+
+def test_detect_all_ignores_an_alias_inside_a_longer_one(index: SubjectIndex) -> None:
+    # "sistemas" por sí solo no es una asignatura aparte cuando va dentro de "sistemas operativos"
+    found = index.detect_all("qué se da en sistemas operativos")
+    assert [s.name for s in found] == ["Sistemas Operativos"]
+
+
+def test_detect_all_of_a_question_without_subjects_is_empty(index: SubjectIndex) -> None:
+    assert index.detect_all("receta de paella") == []

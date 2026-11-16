@@ -10,7 +10,7 @@ from typing import Any, Protocol
 
 from secondbrain.config import Settings
 from secondbrain.domain import Hit
-from secondbrain.retrieval.hybrid import HybridRetriever, NoteHit, SearchResult, canonical_key
+from secondbrain.retrieval.hybrid import NoteHit, SearchResult, canonical_key
 from secondbrain.retrieval.intent import detect_intent
 from secondbrain.retrieval.subjects import (
     SubjectIndex,
@@ -25,6 +25,7 @@ _COURSE = re.compile(r"^\d+º$")
 _EXERCISE = re.compile(
     r"\b(?:exercis\w*|ejercicio\w*|solution|solucion\w*|taller|practic\w*|lab\w*|examen|test)\b"
 )
+_TOPIC = re.compile(r"(?<![0-9a-z])(?:tema|unidad|unit|capitulo)\s*0?\d+(?: \d+)?")
 _NO_SUMMARY = "Sin resumen."
 _HEADING_LEVELS = 2  # solo los dos primeros niveles de cada encabezado
 
@@ -34,7 +35,14 @@ class OutlineSource(Protocol):
 
 
 class Searcher(Protocol):
-    def search(self, query: str, k: int = 5, *, with_graph: bool = True) -> SearchResult: ...
+    def search(
+        self,
+        query: str,
+        k: int = 5,
+        *,
+        with_graph: bool = True,
+        only_paths: Sequence[str] | None = None,
+    ) -> SearchResult: ...
 
 
 def _natural_key(text: str) -> list[object]:
@@ -56,11 +64,11 @@ class OverviewBuilder:
         self, notes: Sequence[str], headings: int, max_chars: int | None = None
     ) -> SearchResult:
         """Una «nota» sintética por cada nota real, sin copias exactas y dentro del tope."""
+        counts = self._manifest.chunk_counts()
         reps, copies = self._collapse(notes)
-        chosen = self._choose(reps)
+        chosen = self._choose(reps, counts)
         outline = self._store.outline(chosen)
         concepts = self._manifest.note_concepts()
-        counts = self._manifest.chunk_counts()
         hits: list[NoteHit] = []
         for i, path in enumerate(chosen):
             own = sorted(
@@ -97,23 +105,40 @@ class OverviewBuilder:
         canonical: dict[str, str] = {}
         others: dict[str, tuple[str, ...]] = {}
         for group in self._manifest.duplicate_groups():
-            rep = min(group, key=canonical_key)
+            asked = [p for p in group if p in wanted]
+            if not asked:
+                continue
+            rep = min(asked, key=canonical_key)  # solo entre las notas pedidas, no de otra carpeta
             others[rep] = tuple(p for p in group if p != rep)
-            for path in group:
+            for path in asked:
                 canonical[path] = rep
-        reps = dict.fromkeys(canonical.get(p, p) for p in notes if p in wanted)
+        reps = dict.fromkeys(canonical.get(p, p) for p in notes)
         return list(reps), others
 
-    def _choose(self, reps: list[str]) -> list[str]:
-        """Si sobran notas, primero la teoría y luego los ejercicios; siempre en orden natural."""
+    def _choose(self, reps: list[str], counts: Mapping[str, int]) -> list[str]:
+        """Si sobran notas: teoría antes que ejercicios y repartidas por tema (las más grandes
+        de cada «tema N» primero); el resultado va siempre en orden natural."""
 
         def title(path: str) -> str:
             return PurePosixPath(path).stem
 
-        ranked = sorted(
-            reps, key=lambda p: (bool(_EXERCISE.search(norm(title(p)))), _natural_key(title(p)))
-        )
-        kept = ranked[: self._s.overview_max_notes]
+        by_size = sorted(reps, key=lambda p: (-counts.get(p, 0), p))
+        seen: dict[str, int] = {}
+        first: list[str] = []
+        rest: list[str] = []
+        for path in by_size:
+            if _EXERCISE.search(norm(title(path))):
+                rest.append(path)
+                continue
+            topic = _TOPIC.search(norm(path))
+            key = topic.group(0) if topic else None
+            if key is not None and seen.get(key, 0) >= self._s.overview_per_topic:
+                rest.append(path)
+                continue
+            if key is not None:
+                seen[key] = seen.get(key, 0) + 1
+            first.append(path)
+        kept = (first + rest)[: self._s.overview_max_notes]
         return sorted(kept, key=lambda p: _natural_key(title(p)))
 
     @staticmethod
@@ -140,7 +165,7 @@ class IntentRetriever:
     def __init__(
         self,
         settings: Settings,
-        base: HybridRetriever | Searcher,
+        base: Searcher,
         store: OutlineSource,
         manifest: Manifest,
         aliases: Mapping[str, SubjectSpec] | None = None,
@@ -175,4 +200,18 @@ class IntentRetriever:
                     self._s.overview_headings_subject,
                     self._s.overview_text_chars,
                 )
+        named = index.detect_all(query)
+        if intent.kind == "search" and len(named) >= 2:
+            return self._cross(query, k, [index.notes_of(s) for s in named])
         return self._base.search(query, k, with_graph=with_graph)
+
+    def _cross(self, query: str, k: int, groups: list[list[str]]) -> SearchResult:
+        """Pregunta que cruza asignaturas: se busca en cada una y se intercalan los resultados,
+        para que una no tape a la otra."""
+        per = max(1, -(-k // len(groups)))
+        results = [self._base.search(query, per, with_graph=False, only_paths=g) for g in groups]
+        notes: list[NoteHit] = []
+        for rank in range(per):
+            notes.extend(r.notes[rank] for r in results if rank < len(r.notes))
+        sims = [r.top_similarity for r in results if r.top_similarity is not None]
+        return SearchResult(notes, [], max(sims) if sims else None)

@@ -129,6 +129,26 @@ class SubjectIndex:
                         best = (*rank, subject)
         return best[2] if best else None
 
+    def detect_all(self, question: str) -> list[Subject]:
+        """Todas las asignaturas que nombra la pregunta, en orden de aparición.
+
+        Un alias contenido en otro más largo (p. ej. «sistemas» en «sistemas operativos») no cuenta.
+        """
+        text = f" {norm(question)} "
+        spans: list[tuple[int, int, Subject]] = []
+        for subject in self._subjects:
+            for alias in subject.aliases:
+                start = text.find(f" {alias} ")
+                if start >= 0:
+                    spans.append((start, start + len(alias) + 2, subject))
+        accepted: list[tuple[int, int, Subject]] = []
+        for start, end, subject in sorted(spans, key=lambda s: s[0] - s[1]):  # más largos primero
+            if all(end <= a or start >= b for a, b, _ in accepted) and all(
+                subject is not other for _, _, other in accepted
+            ):
+                accepted.append((start, end, subject))
+        return [subject for _, _, subject in sorted(accepted, key=lambda s: s[0])]
+
     def notes_of(self, subject: Subject) -> list[str]:
         return list(self._notes[subject.name])
 

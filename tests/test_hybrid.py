@@ -325,9 +325,15 @@ def test_cutoff_happens_before_taking_top_k(build: Build) -> None:
     assert paths(r.search("q", k=2)) == ["a.md", "c.md"]
 
 
-def test_unknown_cosine_keeps_the_note(build: Build) -> None:
+def test_unknown_cosine_is_looked_up_for_that_note(build: Build) -> None:
+    best = {"b.md": hit("b.md", 0.66), "c.md": hit("c.md", 0.30)}
+    r, _ = build(three_notes(), cosines={"a.md": 0.70}, best=best)
+    assert paths(r.search("q")) == ["a.md", "b.md"]
+
+
+def test_a_note_with_no_cosine_at_all_is_dropped_when_others_have_one(build: Build) -> None:
     r, _ = build(three_notes(), cosines={"a.md": 0.70})
-    assert paths(r.search("q")) == ["a.md", "b.md", "c.md"]
+    assert paths(r.search("q")) == ["a.md"]
 
 
 def test_cosine_is_exposed_on_the_note(build: Build) -> None:

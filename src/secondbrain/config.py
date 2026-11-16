@@ -81,6 +81,7 @@ class Settings(BaseSettings):
     aliases_path: Path = Path("data/aliases.toml")
     overview_max_notes: int = Field(22, ge=1)
     overview_text_chars: int = Field(350, ge=100)  # texto por nota en una visión de asignatura
+    overview_per_topic: int = Field(2, ge=1)  # notas por «tema N» antes de repetir tema
     overview_headings_subject: int = Field(5, ge=0)
     overview_headings_topic: int = Field(25, ge=0)
 

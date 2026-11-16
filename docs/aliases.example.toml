@@ -1,0 +1,19 @@
+# Ejemplo FICTICIO del mapa de alias. Cópialo a `data/aliases.toml` (esa carpeta está ignorada por
+# git) y ajústalo a las carpetas de tu vault.
+#
+# La asignatura de una nota es su carpeta de segundo nivel (`curso/ASIGNATURA/...`). Cada carpeta
+# funciona sola con su propio nombre; este fichero solo hace falta cuando hablas de otra manera.
+#
+#   aliases  = cómo nombras la asignatura al preguntar (sin mayúsculas ni acentos).
+#   folders  = carpetas de asignatura que forman esta (se fusionan aunque cambie la mayúscula
+#              o el curso).
+#   include  = fragmentos de ruta extra, para notas sueltas guardadas en otra carpeta.
+
+[subjects."Álgebra Lineal"]
+aliases = ["álgebra lineal", "algebra", "algebra lineal"]
+folders = ["ALGEBRA"]
+
+[subjects."Estructuras de Datos"]
+aliases = ["estructuras de datos", "eda"]
+folders = ["Estructuras"]
+include = ["Optativas/Estructuras - "]   # notas de esta asignatura guardadas en otra carpeta

@@ -1,0 +1,3 @@
+* text=auto
+# Los fixtures no se normalizan: su hash y su codificación (UTF-16, CRLF) forman parte de los tests.
+tests/fixtures/** -text

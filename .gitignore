@@ -1,0 +1,27 @@
+# entornos y caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# datos locales y secretos
+.env
+data/
+qdrant_storage/
+node_modules/
+!tests/fixtures/vault/node_modules/
+frontend/dist/
+
+# SO / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

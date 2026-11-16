@@ -17,6 +17,11 @@ from secondbrain.store.manifest import Manifest
 from secondbrain.store.qdrant import VectorStore
 
 
+def _warm_up(retriever: HybridRetriever) -> None:
+    """Una búsqueda de prueba: carga bge-m3 en memoria, el modelo BM25 y la conexión a Qdrant."""
+    retriever.search("calentamiento", k=1, with_graph=False)
+
+
 def build_services(settings: Settings | None = None) -> AppServices:
     """Cablea los servicios reales. No exige que Ollama ni Qdrant estén arrancados: si no lo
     están, `/health` lo cuenta y las demás rutas responden 503 con cómo arrancarlos."""
@@ -37,6 +42,7 @@ def build_services(settings: Settings | None = None) -> AppServices:
         health=health.check,
         reindex=ReindexManager(lambda progress: indexer.sync(on_progress=progress)),
         points=store.count,
+        warmup=lambda: _warm_up(retriever),
     )
 
 

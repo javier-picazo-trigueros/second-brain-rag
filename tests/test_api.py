@@ -57,6 +57,7 @@ def make_api(env: Env) -> Iterator[MakeApi]:
         *,
         retriever: Any = None,
         reindex_run: Callable[..., SyncReport] | None = None,
+        warmup: Callable[[], None] | None = None,
         ollama: Callable[[httpx.Request], httpx.Response] = ollama_ok,
         **settings: Any,
     ) -> Api:
@@ -78,6 +79,7 @@ def make_api(env: Env) -> Iterator[MakeApi]:
             health=health.check,
             reindex=reindex,
             points=env.store.count,
+            warmup=warmup,
         )
         return Api(TestClient(create_app(services), base_url="http://localhost"), env, llm)
 
@@ -391,3 +393,30 @@ def test_a_weak_match_is_flagged_as_low_confidence_by_default(make_api: MakeApi)
     events = sse(make_api().client.post("/ask", json={"question": "estrategias"}).text)
     assert "confianza_baja" in events[-1][1]["warnings"]
     assert events[0][1]["confidence"] == "baja"
+
+
+# --- precalentamiento -------------------------------------------------------------------------
+
+
+def test_startup_warms_up_the_search_in_the_background(make_api: MakeApi) -> None:
+    import threading
+
+    called = threading.Event()
+    api = make_api(warmup=called.set)
+    with api.client:
+        assert called.wait(timeout=5)
+
+
+def test_a_failed_warmup_does_not_stop_the_api(make_api: MakeApi) -> None:
+    import threading
+
+    tried = threading.Event()
+
+    def broken() -> None:
+        tried.set()
+        raise httpx.ConnectError("Ollama no responde")
+
+    api = make_api(warmup=broken)
+    with api.client:
+        assert tried.wait(timeout=5)
+        assert api.client.get("/health").status_code == 200

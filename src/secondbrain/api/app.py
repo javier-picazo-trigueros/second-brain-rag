@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Callable, Iterator
+import threading
+from collections.abc import AsyncIterator, Callable, Iterator
+from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
 from pathlib import PurePosixPath
 from typing import Any, Protocol
@@ -73,6 +75,7 @@ class AppServices:
     health: Callable[[], HealthReport]
     reindex: ReindexManager
     points: Callable[[], int]  # chunks indexados en Qdrant
+    warmup: Callable[[], None] | None = None  # precalienta embedder, BM25 y Qdrant al arrancar
 
 
 def _title(path: str) -> str:
@@ -131,10 +134,26 @@ def _sse_error(message: str) -> str:
     return f"event: error\ndata: {json.dumps({'message': message}, ensure_ascii=False)}\n\n"
 
 
+def _run_warmup(warmup: Callable[[], None]) -> None:
+    try:
+        warmup()
+    except (httpx.HTTPError, ResponseHandlingException) as exc:
+        # Ollama o Qdrant aún no están: la primera pregunta cargará lo que falte.
+        log.warning("No se pudo precalentar la búsqueda: %s", exc)
+
+
 def create_app(services: AppServices) -> FastAPI:
     settings = services.settings
     manifest = services.manifest
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        if services.warmup is not None:
+            threading.Thread(target=_run_warmup, args=(services.warmup,), daemon=True).start()
+        yield
+
     app = FastAPI(
+        lifespan=lifespan,
         title="Segundo cerebro",
         version=__version__,
         description="RAG local sobre un vault de Obsidian. Solo escucha en localhost.",

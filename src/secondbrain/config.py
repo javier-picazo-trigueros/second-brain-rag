@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     embed_model: str = "bge-m3"
     embed_batch_size: int = Field(8, ge=1, le=128)
     embed_on_cpu: bool = False
-    embed_keep_alive: str = "30s"
+    embed_keep_alive: str = "30m"  # el embedder de consulta (CPU) no se descarga entre preguntas
 
     qdrant_url: str = "http://127.0.0.1:6333"
     collection: str = "vault_chunks"

@@ -36,3 +36,9 @@ Para usar otra ruta: `$env:BRAIN_VENV = "D:\venvs\brain"`.
 
 Copia `.env.example` a `.env` y ajusta `BRAIN_VAULT_PATH`. Los datos de Qdrant viven en el volumen
 Docker `qdrant_data`, nunca en el repo. El vault se trata como solo lectura.
+
+## Licencia
+
+Este proyecto se distribuye bajo la [PolyForm Noncommercial License 1.0.0](LICENSE). Se puede ver,
+usar y modificar con fines no comerciales. Para cualquier uso comercial, contacta con el autor,
+Javier Picazo Trigueros.

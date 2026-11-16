@@ -125,5 +125,21 @@ class VectorStore:
         )
         return [Hit(score=p.score, payload=dict(p.payload or {})) for p in res.points]
 
+    def search_note(self, note_path: str, query_dense: list[float], limit: int = 1) -> list[Hit]:
+        """Los chunks de una nota más cercanos a la consulta (solo ranking denso)."""
+        res = self._client.query_points(
+            self._name,
+            query=query_dense,
+            using=DENSE,
+            query_filter=models.Filter(
+                must=[
+                    models.FieldCondition(key="note_path", match=models.MatchValue(value=note_path))
+                ]
+            ),
+            limit=limit,
+            with_payload=True,
+        )
+        return [Hit(score=p.score, payload=dict(p.payload or {})) for p in res.points]
+
     def count(self) -> int:
         return self._client.count(self._name, exact=True).count

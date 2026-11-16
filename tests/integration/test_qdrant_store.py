@@ -131,3 +131,21 @@ def test_search_respects_limit(store: VectorStore) -> None:
     chunks = [_chunk(f"n{i}.md", f"texto numero {i}") for i in range(5)]
     store.upsert_chunks(chunks, [[1, 0, 0, 0]] * 5)
     assert len(store.search("texto", [1, 0, 0, 0], limit=3)) == 3
+
+
+def test_search_note_returns_the_best_chunk_of_that_note_only(store: VectorStore) -> None:
+    store.upsert_chunks(
+        [
+            _chunk("a.md", "poco relacionado", 0),
+            _chunk("a.md", "muy relacionado", 1),
+            _chunk("b.md", "idéntico a la consulta", 0),
+        ],
+        [[0, 1, 0, 0], [1, 0, 0, 0], [1, 0, 0, 0]],
+    )
+    (hit,) = store.search_note("a.md", [1, 0, 0, 0], limit=1)
+    assert hit.payload["note_path"] == "a.md"
+    assert hit.payload["text"] == "muy relacionado"
+
+
+def test_search_note_of_unknown_note_is_empty(store: VectorStore) -> None:
+    assert store.search_note("no-existe.md", [1, 0, 0, 0]) == []

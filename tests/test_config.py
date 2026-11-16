@@ -278,3 +278,13 @@ def test_out_of_range_llm_parameters_are_rejected(tmp_path: Path, field: str, va
 def test_llm_settings_do_not_change_the_index_fingerprint(tmp_path: Path) -> None:
     other = _settings(tmp_path, llm_model="otro", llm_num_ctx=4096)
     assert other.index_fingerprint == _settings(tmp_path).index_fingerprint
+
+
+def test_context_budget_defaults(tmp_path: Path) -> None:
+    s = _settings(tmp_path)
+    assert (s.context_budget_tokens, s.related_budget_tokens) == (4500, 800)
+
+
+def test_related_budget_must_leave_room_for_the_main_context(tmp_path: Path) -> None:
+    with pytest.raises(ValidationError, match="related_budget_tokens"):
+        _settings(tmp_path, context_budget_tokens=1000, related_budget_tokens=1000)

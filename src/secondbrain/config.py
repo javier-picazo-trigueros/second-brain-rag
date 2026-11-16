@@ -73,6 +73,11 @@ class Settings(BaseSettings):
     big_note_quota: int = Field(2, ge=0)  # máximo de notas grandes en el top-k...
     quota_override_ratio: float = Field(0.9, gt=0, le=1)  # ...salvo que casi igualen al primero
 
+    # Contexto que se da al LLM (tokens estimados). El total del prompt más la respuesta debe caber
+    # en `llm_num_ctx`: sistema ~450 + contexto + pregunta ~700 + `llm_max_tokens`.
+    context_budget_tokens: int = Field(4500, ge=500)
+    related_budget_tokens: int = Field(800, ge=0)  # parte del anterior reservada a las pistas
+
     # Grafo de conceptos
     graph_fanout_cap: int = Field(5, ge=1)  # vecinas máximas por concepto
     graph_budget: int = Field(4, ge=0)  # notas relacionadas máximas por búsqueda
@@ -105,6 +110,8 @@ class Settings(BaseSettings):
     def _min_below_max(self) -> Settings:
         if self.chunk_min_chars >= self.chunk_max_chars:
             raise ValueError("chunk_min_chars debe ser menor que chunk_max_chars")
+        if self.related_budget_tokens >= self.context_budget_tokens:
+            raise ValueError("related_budget_tokens debe ser menor que context_budget_tokens")
         return self
 
     def is_excluded(self, rel_path: str) -> bool:

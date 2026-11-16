@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
 from pydantic import ValidationError
 
-from secondbrain.config import Settings
+from secondbrain.config import PROJECT_ROOT, Settings, load_settings
 
 
 @pytest.fixture(autouse=True)
@@ -56,7 +58,7 @@ def test_embed_batch_size_is_bounded(tmp_path: Path) -> None:
 
 
 def test_bm25_cache_lives_under_data(tmp_path: Path) -> None:
-    assert _settings(tmp_path).bm25_cache_dir == Path("data/fastembed_cache")
+    assert _settings(tmp_path).bm25_cache_dir == PROJECT_ROOT / "data" / "fastembed_cache"
 
 
 def test_fingerprint_is_stable(tmp_path: Path) -> None:
@@ -183,3 +185,73 @@ def test_search_and_exclusion_settings_do_not_change_the_fingerprint(
     assert (
         _settings(tmp_path, **override).index_fingerprint == _settings(tmp_path).index_fingerprint
     )
+
+
+# --- rutas ancladas a la raíz del proyecto (el MCP se lanza desde cualquier directorio) --------
+
+
+def test_project_root_is_the_repository_root() -> None:
+    assert (PROJECT_ROOT / "pyproject.toml").is_file()
+    assert (PROJECT_ROOT / "src" / "secondbrain").is_dir()
+
+
+def test_relative_data_paths_resolve_from_the_project_root_not_the_cwd(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    elsewhere = tmp_path / "otro"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    s = _settings(tmp_path)
+    assert s.manifest_path == PROJECT_ROOT / "data" / "manifest.sqlite"
+    assert s.bm25_cache_dir == PROJECT_ROOT / "data" / "fastembed_cache"
+
+
+def test_relative_overrides_are_anchored_too(tmp_path: Path) -> None:
+    s = _settings(tmp_path, manifest_path=Path("otra/m.sqlite"))
+    assert s.manifest_path == PROJECT_ROOT / "otra" / "m.sqlite"
+
+
+def test_absolute_paths_are_kept_as_given(tmp_path: Path) -> None:
+    s = _settings(tmp_path, manifest_path=tmp_path / "m.sqlite")
+    assert s.manifest_path == tmp_path / "m.sqlite"
+
+
+def test_default_env_file_is_the_project_one() -> None:
+    assert Settings.model_config["env_file"] == PROJECT_ROOT / ".env"
+
+
+def test_load_settings_reads_the_file_named_by_brain_env_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    env_file = tmp_path / "mi.env"
+    lines = [f"BRAIN_VAULT_PATH={vault}", "BRAIN_CHUNK_MAX_CHARS=1234"]
+    env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    elsewhere = tmp_path / "otro"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    monkeypatch.setenv("BRAIN_ENV_FILE", str(env_file))
+    s = load_settings()
+    assert (s.vault_path, s.chunk_max_chars) == (vault.resolve(), 1234)
+
+
+def test_settings_resolve_the_same_paths_from_another_working_directory(tmp_path: Path) -> None:
+    elsewhere = tmp_path / "otro"
+    elsewhere.mkdir()
+    code = (
+        "from secondbrain.config import load_settings;"
+        "s = load_settings(); print(s.manifest_path); print(s.bm25_cache_dir)"
+    )
+    env = {
+        **os.environ,
+        "BRAIN_VAULT_PATH": str(tmp_path),
+        "BRAIN_ENV_FILE": str(tmp_path / "no.env"),
+    }
+    out = subprocess.run(
+        [sys.executable, "-c", code], cwd=elsewhere, env=env, capture_output=True, text=True
+    )
+    assert out.returncode == 0, out.stderr
+    manifest, cache = out.stdout.splitlines()
+    assert Path(manifest) == PROJECT_ROOT / "data" / "manifest.sqlite"
+    assert Path(cache) == PROJECT_ROOT / "data" / "fastembed_cache"

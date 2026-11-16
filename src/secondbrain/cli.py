@@ -11,7 +11,7 @@ import typer
 from pydantic import ValidationError
 from qdrant_client.http.exceptions import ResponseHandlingException
 
-from secondbrain.config import Settings
+from secondbrain.config import Settings, load_settings
 from secondbrain.embeddings.ollama import OllamaEmbedder
 from secondbrain.ingest.indexer import Indexer, SyncReport
 from secondbrain.ingest.watcher import WatcherService
@@ -42,7 +42,7 @@ def _fail(message: str) -> NoReturn:
 
 def _build() -> Services:
     try:
-        settings = Settings()  # type: ignore[call-arg]
+        settings = load_settings()
     except ValidationError as exc:
         problems = "\n".join(
             f"  BRAIN_{'_'.join(str(p) for p in e['loc']).upper()}: {e['msg']}"

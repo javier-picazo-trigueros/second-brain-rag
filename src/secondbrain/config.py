@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import Annotated, Any
@@ -10,9 +11,16 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from secondbrain.ingest.chunker import CHUNKER_VERSION
 
+# Raíz del repositorio (src/secondbrain/config.py -> ../..). Las rutas relativas y el .env se
+# resuelven desde aquí y no desde el directorio de trabajo: Claude Code lanza el servidor MCP
+# desde otro directorio.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="BRAIN_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="BRAIN_", env_file=PROJECT_ROOT / ".env", extra="ignore"
+    )
 
     vault_path: Path
     exclude_dirs: frozenset[str] = frozenset(
@@ -74,6 +82,11 @@ class Settings(BaseSettings):
             return [part.strip() for part in v.split(";") if part.strip()]
         return v
 
+    @field_validator("manifest_path", "bm25_cache_dir")
+    @classmethod
+    def _anchor_to_project_root(cls, v: Path) -> Path:
+        return v if v.is_absolute() else PROJECT_ROOT / v
+
     @field_validator("vault_path")
     @classmethod
     def _vault_exists(cls, v: Path) -> Path:
@@ -116,3 +129,9 @@ class Settings(BaseSettings):
             f"chunker-v{CHUNKER_VERSION}",
         )
         return hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
+
+
+def load_settings() -> Settings:
+    """Configuración de la aplicación: `.env` de la raíz del proyecto, o el de `BRAIN_ENV_FILE`."""
+    env_file = os.environ.get("BRAIN_ENV_FILE")
+    return Settings(_env_file=env_file or PROJECT_ROOT / ".env")  # type: ignore[call-arg]

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -15,7 +16,7 @@ def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(key)
 
 
-def _settings(vault: Path, **overrides: object) -> Settings:
+def _settings(vault: Path, **overrides: Any) -> Settings:
     return Settings(_env_file=None, vault_path=vault, **overrides)  # type: ignore[call-arg]
 
 

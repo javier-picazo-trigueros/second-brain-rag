@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from secondbrain.domain import Chunk
+from secondbrain.domain import Chunk, Hit
 
 Events = list[tuple[str, str]]
 
@@ -41,6 +41,28 @@ class FakeStore:
     def delete_note(self, note_path: str) -> None:
         self.events.append(("delete", note_path))
         self.chunks.pop(note_path, None)
+
+    def ensure_collection(self) -> None:
+        self.events.append(("ensure_collection", ""))
+
+    def search(
+        self, query: str, query_dense: list[float], limit: int = 8, prefetch: int = 40
+    ) -> list[Hit]:
+        terms = [t for t in query.lower().split() if t]
+        hits: list[Hit] = []
+        for chunks in self.chunks.values():
+            for c in chunks:
+                score = float(sum(c.text.lower().count(t) for t in terms))
+                if score > 0:
+                    payload = {
+                        "note_path": c.note_path,
+                        "note_title": c.note_title,
+                        "heading_path": " > ".join(c.heading_path),
+                        "page": c.page,
+                        "text": c.text,
+                    }
+                    hits.append(Hit(score=score, payload=payload))
+        return sorted(hits, key=lambda h: -h.score)[:limit]
 
     @property
     def notes(self) -> set[str]:

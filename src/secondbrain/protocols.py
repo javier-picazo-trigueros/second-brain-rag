@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from secondbrain.domain import Chunk
+from secondbrain.domain import Chunk, Hit
 
 
 class Embedder(Protocol):
@@ -19,6 +19,14 @@ class Embedder(Protocol):
 
 
 class Store(Protocol):
+    def ensure_collection(self) -> None: ...
+
     def upsert_chunks(self, chunks: list[Chunk], dense: list[list[float]]) -> None: ...
 
     def delete_note(self, note_path: str) -> None: ...
+
+    def search(
+        self, query: str, query_dense: list[float], limit: int = 8, prefetch: int = 40
+    ) -> list[Hit]: ...
+
+    def count(self) -> int: ...

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 
 import httpx
 import pytest
+
+from tests.env import Env
 
 FIXTURE_VAULT = Path(__file__).parent / "fixtures" / "vault"
 OLLAMA_URL = "http://localhost:11434"
@@ -15,6 +18,13 @@ EMBED_MODEL = "bge-m3"
 def vault() -> Path:
     """Vault de ejemplo. Los tests nunca tocan el vault real."""
     return FIXTURE_VAULT
+
+
+@pytest.fixture
+def env(tmp_path: Path, vault: Path) -> Iterator[Env]:
+    e = Env(tmp_path, vault)
+    yield e
+    e.manifest.close()
 
 
 def _services_problem() -> str | None:

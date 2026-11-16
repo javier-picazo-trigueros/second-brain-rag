@@ -140,7 +140,14 @@ class MarkerRetriever:
     def __init__(self) -> None:
         self.calls: list[str] = []
 
-    def search(self, query: str, k: int = 5, *, with_graph: bool = True) -> SearchResult:
+    def search(
+        self,
+        query: str,
+        k: int = 5,
+        *,
+        with_graph: bool = True,
+        only_paths: Sequence[str] | None = None,
+    ) -> SearchResult:
         self.calls.append(query)
         return SearchResult([], [], 0.9)
 

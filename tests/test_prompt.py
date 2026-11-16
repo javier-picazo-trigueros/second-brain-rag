@@ -77,3 +77,24 @@ def test_the_whole_prompt_plus_the_answer_fits_in_the_context_window(tmp_path: P
     messages = build_messages("¿" + "pregunta larga " * 5000 + "?", ctx)
     prompt_tokens = sum(estimate_tokens(m.content) for m in messages)
     assert prompt_tokens + s.llm_max_tokens <= s.llm_num_ctx
+
+
+# --- ajustes tras ver respuestas reales del modelo -------------------------------
+
+
+def test_the_prompt_forbids_copying_the_subject_and_course_after_a_citation() -> None:
+    assert "No añadas asignatura ni curso" in SYSTEM_PROMPT
+
+
+def test_the_prompt_gives_a_fixed_template_for_suggesting_nearby_notes() -> None:
+    # Con la frase anterior el modelo la copiaba literalmente en la respuesta.
+    assert "Podrías mirar:" in SYSTEM_PROMPT
+    assert "Puedes añadir" not in SYSTEM_PROMPT
+
+
+def test_the_prompt_forbids_extrapolating_beyond_the_sources() -> None:
+    assert "No extrapoles" in SYSTEM_PROMPT
+
+
+def test_the_prompt_asks_for_the_page_right_next_to_the_citation() -> None:
+    assert "pegado a la cita" in SYSTEM_PROMPT

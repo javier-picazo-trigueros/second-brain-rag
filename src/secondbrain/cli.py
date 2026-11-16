@@ -8,6 +8,7 @@ from typing import Annotated, NoReturn
 
 import httpx
 import typer
+import uvicorn
 from pydantic import ValidationError
 from qdrant_client.http.exceptions import ResponseHandlingException
 
@@ -40,9 +41,9 @@ def _fail(message: str) -> NoReturn:
     raise typer.Exit(_EXIT_ENVIRONMENT)
 
 
-def _build() -> Services:
+def _settings() -> Settings:
     try:
-        settings = load_settings()
+        return load_settings()
     except ValidationError as exc:
         problems = "\n".join(
             f"  BRAIN_{'_'.join(str(p) for p in e['loc']).upper()}: {e['msg']}"
@@ -52,6 +53,10 @@ def _build() -> Services:
             f"Configuración inválida:\n{problems}\n"
             "Copia .env.example a .env y ajusta BRAIN_VAULT_PATH."
         )
+
+
+def _build() -> Services:
+    settings = _settings()
 
     embedder = OllamaEmbedder(settings)
     try:
@@ -205,6 +210,39 @@ def stats() -> None:
     typer.echo(
         f"notas={notes} chunks_manifest={chunks} puntos_qdrant={svc.store.count()} "
         f"grupos_de_copias={len(svc.manifest.duplicate_groups())} conceptos={len(concepts)}"
+    )
+
+
+_LOOPBACK = frozenset({"127.0.0.1", "localhost", "::1"})
+
+
+@app.command()
+def serve(
+    host: Annotated[
+        str | None, typer.Option(help="Dirección (por defecto BRAIN_API_HOST).")
+    ] = None,
+    port: Annotated[int | None, typer.Option(help="Puerto (por defecto BRAIN_API_PORT).")] = None,
+    allow_remote: Annotated[
+        bool, typer.Option("--allow-remote", help="Permite escuchar fuera de esta máquina.")
+    ] = False,
+) -> None:
+    """Arranca la API HTTP (solo en localhost salvo que se pida otra cosa)."""
+    settings = _settings()
+    bind = host or settings.api_host
+    if bind not in _LOOPBACK:
+        if not allow_remote:
+            _fail(
+                f"Escuchar en {bind} expondría tus apuntes a la red y la API no tiene "
+                "autenticación. Si es lo que quieres, añade --allow-remote."
+            )
+        typer.echo(f"AVISO: escuchando en {bind} sin autenticación.", err=True)
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    uvicorn.run(
+        "secondbrain.api.main:create_app_from_env",
+        factory=True,
+        host=bind,
+        port=port or settings.api_port,
+        log_level="info",
     )
 
 

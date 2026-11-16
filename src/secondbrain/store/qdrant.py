@@ -14,7 +14,7 @@ _KEYWORD_INDEXES = ("note_path", "tags", "asignatura", "curso")
 
 
 class VectorStore:
-    def __init__(self, settings: Settings, dim: int) -> None:
+    def __init__(self, settings: Settings, dim: int | None = None) -> None:
         self._client = QdrantClient(url=settings.qdrant_url)
         settings.bm25_cache_dir.mkdir(parents=True, exist_ok=True)
         use_system_trust_store()  # antivirus que inspecciona HTTPS: ver secondbrain.net
@@ -32,6 +32,10 @@ class VectorStore:
         return self._name
 
     def ensure_collection(self) -> None:
+        if self._dim is None:
+            raise RuntimeError(
+                "No se conoce la dimensión de los embeddings: este VectorStore es de solo lectura."
+            )
         if self._client.collection_exists(self._name):
             vectors = self._client.get_collection(self._name).config.params.vectors
             size = vectors[DENSE].size if isinstance(vectors, dict) else None

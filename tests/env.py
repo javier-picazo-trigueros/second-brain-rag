@@ -34,4 +34,6 @@ class Env:
         return Indexer(self.settings(**overrides), self.embedder, self.store, self.manifest)
 
     def write(self, rel: str, text: str) -> None:
-        (self.vault / rel).write_text(text, encoding="utf-8", newline="")
+        path = self.vault / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8", newline="")

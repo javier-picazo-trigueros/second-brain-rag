@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import logging
+import threading
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 from typing import Annotated, NoReturn
 
 import httpx
@@ -11,14 +13,18 @@ from qdrant_client.http.exceptions import ResponseHandlingException
 
 from secondbrain.config import Settings
 from secondbrain.embeddings.ollama import OllamaEmbedder
-from secondbrain.ingest.indexer import Indexer
+from secondbrain.ingest.indexer import Indexer, SyncReport
+from secondbrain.ingest.watcher import WatcherService
 from secondbrain.protocols import Embedder, Store
+from secondbrain.retrieval.graph import ConceptGraph
+from secondbrain.retrieval.hybrid import HybridRetriever, NoteHit, RelatedNote
 from secondbrain.store.manifest import Manifest
 from secondbrain.store.qdrant import VectorStore
 
 app = typer.Typer(no_args_is_help=True, help="Segundo cerebro local (RAG sobre Obsidian)")
 
 _EXIT_ENVIRONMENT = 2
+_SNIPPET = 160
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,48 +74,138 @@ def _build() -> Services:
     return Services(settings, embedder, store, Manifest(settings.manifest_path))
 
 
+def _summary(report: SyncReport) -> str:
+    return (
+        f"indexadas={report.indexed} sin_cambios={report.unchanged} vacias={report.empty} "
+        f"borradas={report.deleted} fallos={len(report.failed)}"
+    )
+
+
 @app.command()
 def index() -> None:
     """Sincroniza el vault con el índice (solo notas nuevas, cambiadas o borradas)."""
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     svc = _build()
     report = Indexer(svc.settings, svc.embedder, svc.store, svc.manifest).sync()
-    typer.echo(
-        f"indexadas={report.indexed} sin_cambios={report.unchanged} vacias={report.empty} "
-        f"borradas={report.deleted} fallos={len(report.failed)}"
-    )
+    typer.echo(_summary(report))
     for path, err in report.failed:
         typer.echo(f"  FALLO {path}: {err}", err=True)
     if report.failed:
         raise typer.Exit(1)
 
 
+def _echo_note(position: int, note: NoteHit) -> None:
+    first = note.chunks[0].payload
+    page = f" (p. {first['page']})" if first.get("page") is not None else ""
+    snippet = str(first["text"]).replace("\n", " ")[:_SNIPPET]
+    typer.echo(f"{position:>2}. {note.score:.3f}  {note.path}  [{first['heading_path']}]{page}")
+    typer.echo(f"      {snippet}")
+    if note.also_in:
+        typer.echo(f"      también en: {', '.join(note.also_in)}")
+
+
+def _echo_related(rel: RelatedNote) -> None:
+    typer.echo(f"  - {rel.path}  (vía: {', '.join(rel.via)})")
+    detail = rel.resumen or rel.snippet
+    if detail:
+        typer.echo(f"      {detail.replace(chr(10), ' ')[:_SNIPPET]}")
+
+
 @app.command()
 def search(
     query: str,
-    k: Annotated[int, typer.Option("--k", "-k", help="Número de resultados.")] = 5,
+    k: Annotated[int, typer.Option("--k", "-k", help="Número de notas.")] = 5,
+    graph: Annotated[
+        bool, typer.Option("--graph/--no-graph", help="Notas relacionadas por el grafo.")
+    ] = True,
 ) -> None:
-    """Búsqueda híbrida (vectorial + BM25, fusión RRF)."""
+    """Búsqueda híbrida (vectorial + BM25), una entrada por nota, y relacionadas por el grafo."""
     svc = _build()
-    hits = svc.store.search(query, svc.embedder.embed_query(query), limit=k)
-    if not hits:
+    retriever = HybridRetriever(svc.settings, svc.embedder, svc.store, svc.manifest)
+    result = retriever.search(query, k=k, with_graph=graph)
+    if not result.notes:
         typer.echo("Sin resultados.")
         return
-    for h in hits:
-        p = h.payload
-        page = f" (p. {p['page']})" if p.get("page") is not None else ""
-        snippet = str(p["text"]).replace("\n", " ")[:160]
+    for position, note in enumerate(result.notes, start=1):
+        _echo_note(position, note)
+    if result.related:
+        typer.echo("\nRelacionadas por el grafo:")
+        for rel in result.related:
+            _echo_related(rel)
+
+
+def _resolve_note(paths: set[str], wanted: str) -> list[str]:
+    """Rutas que casan con lo escrito: ruta exacta, o título (sin distinguir mayúsculas)."""
+    if wanted in paths:
+        return [wanted]
+    title = wanted.casefold()
+    return sorted(p for p in paths if PurePosixPath(p).stem.casefold() == title)
+
+
+@app.command()
+def graph(
+    note: Annotated[str, typer.Argument(help="Ruta relativa o título de la nota.")],
+    limit: Annotated[int, typer.Option("--limit", "-n", help="Vecinas a mostrar.")] = 10,
+) -> None:
+    """Conceptos de una nota y las notas con las que se conecta en el grafo."""
+    svc = _build()
+    note_concepts = svc.manifest.note_concepts()
+    matches = _resolve_note(set(note_concepts), note)
+    if not matches:
+        typer.echo(f"No encuentro ninguna nota «{note}» en el índice.", err=True)
+        raise typer.Exit(1)
+    if len(matches) > 1:
+        typer.echo(f"«{note}» es ambiguo, indica la ruta completa:", err=True)
+        for path in matches:
+            typer.echo(f"  {path}", err=True)
+        raise typer.Exit(1)
+    path = matches[0]
+    g = ConceptGraph(note_concepts)
+    typer.echo(f"Nota: {path}")
+    typer.echo(f"Conceptos: {', '.join(g.concepts_of(path)) or '(ninguno)'}")
+    related = g.expand(
+        [(path, 1.0)],
+        fanout_cap=svc.settings.graph_fanout_cap,
+        budget=limit,
+        min_idf=svc.settings.graph_min_idf,
+    )
+    typer.echo("Relacionadas:" if related else "Sin notas relacionadas.")
+    for rel in related:
+        typer.echo(f"  {rel.score:.3f}  {rel.path}  (vía: {', '.join(rel.via)})")
+
+
+@app.command()
+def watch() -> None:
+    """Sincroniza el índice y lo mantiene al día mientras editas el vault (Ctrl+C para salir)."""
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    svc = _build()
+    if not svc.settings.embed_on_cpu:
         typer.echo(
-            f"{h.score:.3f}  {p['note_path']}  [{p['heading_path']}]{page}\n       {snippet}"
+            "Consejo: con BRAIN_EMBED_ON_CPU=true el embedder no compite con el LLM por la VRAM.",
+            err=True,
         )
+    indexer = Indexer(svc.settings, svc.embedder, svc.store, svc.manifest)
+    typer.echo(_summary(indexer.sync()))
+    service = WatcherService(indexer, svc.settings)
+    typer.echo(f"Vigilando {svc.settings.vault_path} ...")
+    stop = threading.Event()
+    try:
+        service.run(stop)
+    except KeyboardInterrupt:
+        stop.set()
+        typer.echo("Detenido.")
 
 
 @app.command()
 def stats() -> None:
-    """Notas y chunks indexados."""
+    """Notas, chunks, copias exactas y conceptos del índice."""
     svc = _build()
     notes, chunks = svc.manifest.totals()
-    typer.echo(f"notas={notes} chunks_manifest={chunks} puntos_qdrant={svc.store.count()}")
+    concepts = {c for cs in svc.manifest.note_concepts().values() for c in cs}
+    typer.echo(
+        f"notas={notes} chunks_manifest={chunks} puntos_qdrant={svc.store.count()} "
+        f"grupos_de_copias={len(svc.manifest.duplicate_groups())} conceptos={len(concepts)}"
+    )
 
 
 if __name__ == "__main__":

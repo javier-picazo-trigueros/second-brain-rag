@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import threading
 from dataclasses import dataclass
-from pathlib import PurePosixPath
 from typing import Annotated, NoReturn
 
 import httpx
@@ -16,6 +15,7 @@ from secondbrain.config import Settings, load_settings
 from secondbrain.embeddings.ollama import OllamaEmbedder
 from secondbrain.ingest.indexer import Indexer, SyncReport
 from secondbrain.ingest.watcher import WatcherService
+from secondbrain.notes import resolve_note
 from secondbrain.protocols import Embedder, Store
 from secondbrain.retrieval.graph import ConceptGraph
 from secondbrain.retrieval.hybrid import HybridRetriever, NoteHit, RelatedNote
@@ -139,14 +139,6 @@ def search(
             _echo_related(rel)
 
 
-def _resolve_note(paths: set[str], wanted: str) -> list[str]:
-    """Rutas que casan con lo escrito: ruta exacta, o título (sin distinguir mayúsculas)."""
-    if wanted in paths:
-        return [wanted]
-    title = wanted.casefold()
-    return sorted(p for p in paths if PurePosixPath(p).stem.casefold() == title)
-
-
 @app.command()
 def graph(
     note: Annotated[str, typer.Argument(help="Ruta relativa o título de la nota.")],
@@ -155,7 +147,7 @@ def graph(
     """Conceptos de una nota y las notas con las que se conecta en el grafo."""
     svc = _build()
     note_concepts = svc.manifest.note_concepts()
-    matches = _resolve_note(set(note_concepts), note)
+    matches = resolve_note(note_concepts, note)
     if not matches:
         typer.echo(f"No encuentro ninguna nota «{note}» en el índice.", err=True)
         raise typer.Exit(1)

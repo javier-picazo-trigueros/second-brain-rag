@@ -81,7 +81,9 @@ def test_a_note_can_be_read_with_its_neighbours(client: TestClient) -> None:
 
 
 def test_ask_answers_with_verified_citations_using_the_real_model(client: TestClient) -> None:
-    response = client.post("/ask", json={"question": "¿Qué política por defecto se usa en iptables?"})
+    response = client.post(
+        "/ask", json={"question": "¿Qué política por defecto se usa en iptables?"}
+    )
     parsed = events(response.text)
     names = [n for n, _ in parsed]
     assert names[0] == "sources" and names[-1] == "done", parsed[-1]

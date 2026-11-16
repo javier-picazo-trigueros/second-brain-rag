@@ -203,3 +203,76 @@ def test_a_closed_bracket_longer_than_any_title_is_plain_text(size: int) -> None
     out += stream.finish()
     assert out == text
     assert stream.report.invalid == []
+
+
+# --- páginas con paréntesis intermedios, rangos y listas (visto en respuestas reales) ---
+
+
+def test_a_parenthetical_between_the_citation_and_the_page_is_kept_and_the_page_checked() -> None:
+    text, report = validate_citations("Cuenta [[Semáforos]] (EDA, 3º) (p. 7).", SOURCES)
+    assert text == "Cuenta [[Semáforos]] (EDA, 3º) (p. 7)."
+    assert [(c.path, c.page) for c in report.citations] == [("1º/SO/Semáforos.md", 7)]
+
+
+def test_a_wrong_page_after_a_parenthetical_is_flagged() -> None:
+    text, report = validate_citations("Cuenta [[Semáforos]] (EDA, 3º) (p. 99).", SOURCES)
+    assert text == "Cuenta [[Semáforos]] (EDA, 3º) (p. 99 no verificada)."
+    assert report.bad_pages == [("1º/SO/Semáforos.md", 99)]
+
+
+@pytest.mark.parametrize(
+    "expression", ["(p. 7-9)", "(pp. 7, 9)", "(págs. 7 y 9)", "(p. 7\u20139)", "(p.7;9)"]
+)
+def test_ranges_and_lists_of_known_pages_are_accepted(expression: str) -> None:
+    text, report = validate_citations(f"[[Semáforos]] {expression}", SOURCES)
+    assert text == f"[[Semáforos]] {expression}"
+    assert report.bad_pages == [] and report.citations[0].page == 7
+
+
+@pytest.mark.parametrize(
+    ("expression", "shown", "bad"),
+    [("(p. 7-8)", "7-8", [8]), ("(pp. 3, 7)", "3, 7", [3]), ("(p. 2-3)", "2-3", [2, 3])],
+)
+def test_a_range_or_list_with_an_unknown_page_is_flagged(
+    expression: str, shown: str, bad: list[int]
+) -> None:
+    text, report = validate_citations(f"[[Semáforos]] {expression}", SOURCES)
+    assert text == f"[[Semáforos]] (p. {shown} no verificada)"
+    assert [page for _, page in report.bad_pages] == bad
+    assert report.citations[0].page is None or report.citations[0].page in (7, 9)
+
+
+def test_unrelated_parentheses_after_a_citation_are_left_alone() -> None:
+    text, report = validate_citations("[[Semáforos]] (ver más) y algo (p. 5) suelto", SOURCES)
+    assert text == "[[Semáforos]] (ver más) y algo (p. 5) suelto"
+    assert report.bad_pages == []
+
+
+def test_a_long_parenthetical_is_not_treated_as_a_decoration() -> None:
+    long = "(" + "x" * 60 + ")"
+    text, report = validate_citations(f"[[Semáforos]] {long} (p. 99)", SOURCES)
+    assert text == f"[[Semáforos]] {long} (p. 99)"  # la página no está pegada a la cita
+    assert report.bad_pages == []
+
+
+PAGE_SAMPLES = [
+    "Cuenta [[Semáforos]] (EDA, 3º) (p. 7) y [[OpenMP]] (Alto rendimiento, 4º) (p. 3).",
+    "Rango [[Semáforos]] (p. 7-9) y lista [[Semáforos]] (pp. 7, 99) y [[Semáforos]] (p. 2-3).",
+    "Termina con paréntesis [[Semáforos]] (EDA, 3º)",
+    "Termina a medias [[Semáforos]] (EDA, 3º) (p. 7",
+    "Dos decoraciones [[Semáforos]] (a) (b) (p. 7)",
+]
+
+
+@pytest.mark.parametrize("sample", PAGE_SAMPLES)
+@pytest.mark.parametrize("size", [1, 2, 3, 5, 8, 1000])
+def test_streaming_matches_the_full_validation_for_page_expressions(sample: str, size: int) -> None:
+    expected, expected_report = validate_citations(sample, SOURCES)
+    stream = CitationStream(SOURCES)
+    pieces = [stream.feed(sample[i : i + size]) for i in range(0, len(sample), size)]
+    pieces.append(stream.finish())
+    assert "".join(pieces) == expected
+    assert stream.report.bad_pages == expected_report.bad_pages
+    assert [(c.path, c.page) for c in stream.report.citations] == [
+        (c.path, c.page) for c in expected_report.citations
+    ]

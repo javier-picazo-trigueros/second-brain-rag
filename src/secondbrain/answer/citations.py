@@ -7,9 +7,13 @@ from dataclasses import dataclass, field
 from secondbrain.answer.context import Source
 
 _MAX_RAW = 200  # una cita [[...]] más larga que esto no se considera cita
-_PAGE = re.compile(r"(\s*)\((?:p|p[áa]g)\.?\s*(\d+)\)", re.I)
-_PAGE_PREFIX = re.compile(r"\((?:p|p[áa]?g?)?\.?\s*\d*", re.I)
-_MAX_PAGE_GAP = 2  # espacios admitidos entre "]]" y "(p. N)"
+# "(p. 7)", "(pp. 7, 9)", "(págs. 7 y 9)", "(p. 7-9)": se comprueban todos los números citados.
+_PAGE_EXPR = re.compile(
+    r"\s*(?:pp?|p[áa]gs?)\.?\s*(?P<nums>\d+(?:\s*(?:[-\u2013,;]|y)\s*\d+)*)\s*", re.I
+)
+_MAX_PAGE_GAP = 2  # espacios admitidos antes de cada paréntesis posterior a la cita
+_MAX_GROUP = 40  # un paréntesis más largo que esto no se considera una anotación
+_MAX_GROUPS = 2  # p. ej. "[[Nota]] (EDA, 3º) (p. 7)": una anotación y la página
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,32 +126,57 @@ class CitationStream:
         return "".join(out)
 
     def _page_suffix(self, source: Source, rest: str, *, final: bool) -> tuple[str, int] | None:
-        """Texto que sustituye a `(p. N)` tras una cita válida y cuántos caracteres consume.
+        """Texto que sustituye al sufijo posterior a una cita válida y cuántos caracteres consume.
 
-        Devuelve None si aún no se puede decidir porque faltan tokens.
+        El sufijo son hasta `_MAX_GROUPS` paréntesis: las anotaciones (p. ej. "(EDA, 3º)") pasan
+        tal cual y la página "(p. N)" se comprueba contra las páginas del contexto. Devuelve None
+        si aún no se puede decidir porque pueden faltar tokens.
         """
-        match = _PAGE.match(rest)
-        if match is None:
-            if not final and self._could_become_page(rest):
-                return None
-            self._add_citation(source, None)
-            return "", 0
-        page = int(match.group(2))
-        if page in source.pages:
-            self._add_citation(source, page)
-            return match.group(0), match.end()
-        self.report.bad_pages.append((source.path, page))
+        position = 0
+        kept = ""
+        for _ in range(_MAX_GROUPS):
+            tail = rest[position:]
+            group = tail.lstrip(" \t")
+            gap = len(tail) - len(group)
+            if gap > _MAX_PAGE_GAP:
+                break
+            if not group:
+                if not final:
+                    return None  # puede venir un paréntesis en los próximos tokens
+                break
+            if not group.startswith("("):
+                break
+            close = group.find(")")
+            if close == -1:
+                if not final and len(group) <= _MAX_GROUP + 2:
+                    return None  # paréntesis sin cerrar: se espera
+                break
+            inner = group[1:close]
+            if "(" in inner or "\n" in inner or len(inner) > _MAX_GROUP:
+                break
+            end = position + gap + close + 1
+            match = _PAGE_EXPR.fullmatch(inner)
+            if match is None:
+                kept += rest[position:end]
+                position = end
+                continue
+            return self._check_pages(source, kept, rest[position : position + gap], match, end)
         self._add_citation(source, None)
-        return f"{match.group(1)}(p. {page} no verificada)", match.end()
+        return kept, position
 
-    @staticmethod
-    def _could_become_page(rest: str) -> bool:
-        stripped = rest.lstrip()
-        if len(rest) - len(stripped) > _MAX_PAGE_GAP:
-            return False
-        if not stripped:
-            return True
-        return ")" not in stripped and _PAGE_PREFIX.fullmatch(stripped) is not None
+    def _check_pages(
+        self, source: Source, kept: str, space: str, match: re.Match[str], end: int
+    ) -> tuple[str, int]:
+        numbers = [int(n) for n in re.findall(r"\d+", match.group("nums"))]
+        unknown = [n for n in numbers if n not in source.pages]
+        if not unknown:
+            self._add_citation(source, numbers[0])
+            original = f"{space}({match.string})"
+            return kept + original, end
+        self.report.bad_pages.extend((source.path, n) for n in unknown)
+        self._add_citation(source, None)
+        shown = match.group("nums").strip()
+        return f"{kept}{space}(p. {shown} no verificada)", end
 
 
 def validate_citations(text: str, sources: Sequence[Source]) -> tuple[str, CitationReport]:

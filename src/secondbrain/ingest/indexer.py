@@ -36,13 +36,17 @@ class Indexer:
         self._manifest = manifest
         self._fingerprint = settings.index_fingerprint
 
+    def _rel(self, abs_path: Path) -> str:
+        return abs_path.relative_to(self._s.vault_path).as_posix()
+
     def iter_note_paths(self) -> Iterator[Path]:
         for root, dirs, files in os.walk(self._s.vault_path):
             # Poda en sitio: no se entra en node_modules, .obsidian, _conceptos...
             dirs[:] = sorted(d for d in dirs if d not in self._s.exclude_dirs)
             for f in sorted(files):
-                if f.lower().endswith(".md") and f not in self._s.exclude_files:
-                    yield Path(root) / f
+                path = Path(root) / f
+                if f.lower().endswith(".md") and not self._s.is_excluded(self._rel(path)):
+                    yield path
 
     def index_file(self, abs_path: Path) -> Status:
         note = parse_note(abs_path, self._s.vault_path)

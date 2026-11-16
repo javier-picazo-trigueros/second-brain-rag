@@ -245,3 +245,28 @@ def test_concepts_of_a_removed_note_disappear(env: Env) -> None:
     (env.vault / CARRERA).unlink()
     idx.sync()
     assert CARRERA not in env.manifest.note_concepts()
+
+
+# --- exclusión por patrones ----------------------------------------------------------------------
+
+
+def test_excluded_globs_are_not_indexed(env: Env) -> None:
+    report = env.indexer(exclude_globs=["3º/*"]).sync()
+    assert env.store.notes.isdisjoint({"3º/REDES/Network layers.md", SIN_TEXTO})
+    assert (report.indexed, report.empty) == (8, 0)  # 3º aporta 1 nota con texto y 1 sin texto
+    assert "3º/REDES/Network layers.md" not in env.manifest.paths()
+
+
+def test_adding_an_exclusion_removes_the_notes_on_the_next_sync(env: Env) -> None:
+    env.indexer().sync()
+    assert "3º/REDES/Network layers.md" in env.store.notes
+    report = env.indexer(exclude_globs=["3º/REDES/*"]).sync()
+    assert report.deleted == 1
+    assert "3º/REDES/Network layers.md" not in env.store.notes
+
+
+def test_removing_an_exclusion_indexes_the_notes_again(env: Env) -> None:
+    env.indexer(exclude_globs=["3º/REDES/*"]).sync()
+    report = env.indexer().sync()
+    assert report.indexed == 1
+    assert "3º/REDES/Network layers.md" in env.store.notes

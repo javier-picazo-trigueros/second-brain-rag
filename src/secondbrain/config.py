@@ -92,7 +92,7 @@ class Settings(BaseSettings):
     # Respuestas
     answer_k: int = Field(5, ge=1)  # notas que se recuperan para responder
     # Coseno mínimo del mejor chunk para considerar fiable el contexto. Es un aviso, no un bloqueo.
-    confidence_threshold: float = Field(0.5, ge=0, le=1)
+    confidence_threshold: float = Field(0.6, ge=0, le=1)
 
     # Grafo de conceptos
     graph_fanout_cap: int = Field(5, ge=1)  # vecinas máximas por concepto

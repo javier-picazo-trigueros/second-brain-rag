@@ -28,7 +28,9 @@ IPTABLES = "4º/Seguridad/Cortafuegos con iptables.md"
 
 
 @pytest.fixture(scope="module")
-def params(vault: Path, tmp_path_factory: pytest.TempPathFactory) -> Iterator[StdioServerParameters]:
+def params(
+    vault: Path, tmp_path_factory: pytest.TempPathFactory
+) -> Iterator[StdioServerParameters]:
     tmp = tmp_path_factory.mktemp("mcp")
     elsewhere = tmp / "otro-directorio"
     elsewhere.mkdir()

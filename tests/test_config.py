@@ -310,3 +310,9 @@ def test_cors_origins_are_read_from_a_semicolon_separated_variable(
 def test_mcp_output_is_bounded_by_default(tmp_path: Path) -> None:
     s = _settings(tmp_path)
     assert (s.mcp_max_chars, s.mcp_snippet_chars) == (20_000, 400)
+
+
+def test_confidence_threshold_default_comes_from_the_calibration(tmp_path: Path) -> None:
+    # Calibrado con 14 preguntas sobre temas presentes (mín. 0,605) y 13 sobre temas ausentes
+    # (máx. 0,604): el margen es mínimo, por eso la confianza es un aviso y nunca un bloqueo.
+    assert _settings(tmp_path).confidence_threshold == 0.6

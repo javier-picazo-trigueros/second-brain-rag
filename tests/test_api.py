@@ -138,7 +138,8 @@ def test_stats(make_api: MakeApi) -> None:
 
 
 def test_search_returns_notes_chunks_and_related(make_api: MakeApi) -> None:
-    body = make_api().client.post("/search", json={"query": "estrategias"}).json()
+    api = make_api(confidence_threshold=0.5)
+    body = api.client.post("/search", json={"query": "estrategias"}).json()
     first = body["notes"][0]
     assert first["path"] == CARRERA and first["title"] == "Condiciones de carrera"
     assert first["asignatura"] == "SISTEMAS OPERATIVOS" and first["curso"] == "1º"
@@ -193,7 +194,9 @@ def test_search_says_how_to_start_qdrant_when_it_is_down(make_api: MakeApi) -> N
 
 
 def test_ask_streams_sources_tokens_and_done(make_api: MakeApi) -> None:
-    response = make_api().client.post("/ask", json={"question": "estrategias"})
+    response = make_api(confidence_threshold=0.5).client.post(
+        "/ask", json={"question": "estrategias"}
+    )
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/event-stream")
     assert response.headers["cache-control"] == "no-cache"
@@ -379,3 +382,12 @@ def test_stats_does_not_run_the_full_health_check(make_api: MakeApi) -> None:
 
     make_api(ollama=counting).client.get("/stats")
     assert calls == []
+
+
+def test_a_weak_match_is_flagged_as_low_confidence_by_default(make_api: MakeApi) -> None:
+    # El store de pruebas devuelve una similitud de 0,5, por debajo del umbral calibrado (0,6).
+    body = make_api().client.post("/search", json={"query": "estrategias"}).json()
+    assert body["top_similarity"] == 0.5 and body["confidence"] == "baja"
+    events = sse(make_api().client.post("/ask", json={"question": "estrategias"}).text)
+    assert "confianza_baja" in events[-1][1]["warnings"]
+    assert events[0][1]["confidence"] == "baja"

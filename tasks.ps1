@@ -1,13 +1,13 @@
 ﻿#requires -Version 5.1
 <#
 .SYNOPSIS
-  Tareas del proyecto. Uso: .\tasks.ps1 <install|test|lint|typecheck|up|index|watch|dev>
+  Tareas del proyecto. Uso: .\tasks.ps1 <install|test|lint|typecheck|up|index|watch|serve|dev>
 .NOTES
   El venv vive fuera del repo (OneDrive). Se puede cambiar con $env:BRAIN_VENV.
 #>
 param(
     [Parameter(Mandatory = $true, Position = 0)]
-    [ValidateSet("install", "test", "lint", "typecheck", "up", "index", "watch", "dev")]
+    [ValidateSet("install", "test", "lint", "typecheck", "up", "index", "watch", "serve", "dev")]
     [string]$Task,
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$Rest
@@ -66,6 +66,10 @@ switch ($Task) {
     "watch" {
         Assert-Venv
         Invoke-Checked $Py (@("-m", "secondbrain.cli", "watch") + $Rest)
+    }
+    "serve" {
+        Assert-Venv
+        Invoke-Checked $Py (@("-m", "secondbrain.cli", "serve") + $Rest)
     }
     "dev" {
         Assert-Venv

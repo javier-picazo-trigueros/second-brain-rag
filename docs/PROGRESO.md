@@ -9,7 +9,7 @@ Se actualiza en cada checkpoint.
 | 0. Andamiaje | Terminada, aprobada y publicada (`main`) |
 | 1. Parser, chunking, indexación incremental | Terminada, aprobada y publicada (`main`) |
 | 2. Grafo, búsqueda híbrida y watcher | Terminada, aprobada y publicada (`main`) |
-| 3a. Respuesta, API y MCP (sin interfaz) | Plan pendiente de aprobación |
+| 3a. Respuesta, API y MCP (sin interfaz) | Checkpoint pendiente de aprobación (rama `feat/fase-3a-respuesta-api-mcp`, sin merge ni push) |
 | 3b. Interfaz web | Pendiente (esquemas y tokens de diseño antes de programar) |
 | 4. Evals | Pendiente |
 
@@ -180,6 +180,108 @@ encontró en una búsqueda. El índice real no se tocó (23.236 puntos antes y d
 `brain index`: `indexadas=0 sin_cambios=1000` en ~20 s (rellena conceptos y huellas sin embeber nada).
 `brain stats`: `notas=1000 chunks_manifest=23236 puntos_qdrant=23236 grupos_de_copias=128 conceptos=915`.
 
+## Fase 3a: resultado
+
+Módulos (TDD): `answer/llm.py` (chat de Ollama en streaming), `answer/context.py` (contexto con
+presupuesto de tokens), `answer/prompt.py`, `answer/citations.py` (validación de citas, también en
+streaming), `answer/pipeline.py`, `api/` (FastAPI: `app`, `schemas`, `health`, `reindex`, `main`),
+`mcp_server.py`, `notes.py`; `brain serve`; rutas ancladas a la raíz del proyecto.
+
+Verificación: 607 tests en verde (incluidos los de integración con Ollama y Qdrant reales: la API
+completa con el modelo real y el servidor MCP como proceso stdio lanzado desde otro directorio),
+cobertura total 98 %, `ruff` y `mypy --strict` sin errores. Las pruebas de mutación sobre el validador de
+citas detectaron un hueco (el límite de longitud de una cita cerrada) que se cubrió con un test.
+
+### Dependencias y entorno
+
+- `fastapi==0.163.1`, `uvicorn==0.54.0` y `mcp==2.3.0` fijadas en `pyproject.toml`. `mcp` 2.x cambió
+  su API respecto a 1.x (`MCPServer` en lugar de `FastMCP`, hints en `snake_case`, `ToolError` para
+  errores con mensaje visible).
+- `pip` no podía leer `pypi.org/simple/mcp/` con el escudo web del antivirus activo (respuesta HTTP
+  corrupta, reproducible y solo para ese paquete); se instaló con el escudo desactivado
+  temporalmente y se reactivó después. El resto de PyPI funcionaba.
+- `.env` y `data/` se resuelven desde la raíz del proyecto, no desde el directorio de trabajo
+  (el MCP lo lanza el cliente desde otro sitio). Esto destapó que un test leía el `.env` real:
+  toda la suite está ahora aislada de él.
+
+### Presupuesto de tokens y rendimiento (medido con el índice real)
+
+- Tokens por caracteres: 3,29-3,85 medidos con Ollama sobre chunks reales; se estima con 3,0.
+  Sobre 4 prompts reales el estimador sobreestimó entre +9 % y +21 % y nunca se quedó corto.
+- Prompts reales de 3.600-4.050 tokens con 4.500 de tope de contexto; el test fija que prompt más
+  respuesta (1.024) nunca supera 8.192 ni en el peor caso.
+- Latencia (arranque en frío / en caliente): recuperación 2,0 s / 0,15-0,25 s (la primera consulta
+  carga el embedder en CPU); primer token 7,1 s / 1,8-2,1 s; total 8,8 s / 2,0-5,7 s; carga del modelo
+  3,2-6,4 s; generación 45-50 tok/s.
+- VRAM (`nvidia-smi` muestreado cada 0,4 s durante cada respuesta): 0 MiB base, **pico 4.915 MiB** con
+  `qwen2.5:7b` (4.791 MiB según Ollama) y `num_ctx=8192`; `bge-m3` en CPU ocupa 0 MiB. Quedan ~3.270 MiB
+  libres de los 8.188.
+
+### Calibración de la confianza (coseno denso del mejor chunk)
+
+Con consultas **verificadas contra el índice** (cada tema comprobado por escaneo de los 23.236 chunks):
+
+| Grupo | n | mín. | mediana | máx. |
+|---|--:|--:|--:|--:|
+| Presentes en el vault | 14 | 0,605 | 0,684 | 0,778 |
+| Ausentes, mismo ámbito técnico | 8 | 0,443 | 0,550 | 0,604 |
+| Ausentes, otro ámbito | 5 | 0,441 | 0,462 | 0,513 |
+| Mencionados de pasada (1-8 chunks) | 5 | 0,477 | 0,511 | 0,567 |
+
+No hay umbral que separe perfectamente (0,604 frente a 0,605). Con 0,60 se aceptan el 100 % de los
+presentes y 1 de 13 ausentes; es el valor por defecto (`BRAIN_CONFIDENCE_THRESHOLD`). Es un aviso
+(`confianza_baja`), nunca un bloqueo.
+
+### Preguntas reales (respuesta, citas y avisos)
+
+Cuatro preguntas contra el índice real a través de `/ask`, tres rondas (tras cada ronda se corrigió lo
+observado). Resultado de la última, que es la que refleja el código actual:
+
+1. **Dentro del vault** (política por defecto de iptables): la afirmación principal (`DROP`) cita la
+   página correcta y está respaldada. La segunda frase (conexiones establecidas y relacionadas) cita una
+   nota cuyo chunk contiene `RELATED` pero **no** `ESTABLISHED`: respaldo parcial con cita formalmente
+   válida.
+2. **Cruza asignaturas** (carreras de datos en Sistemas Operativos y en OpenMP): el modelo respondió «No lo
+   encuentro en el vault» y sugirió dos notas. En rondas anteriores dio una respuesta parcial con notas
+   mal asignadas a la asignatura. La recuperación trajo evidencia sobre todo de una asignatura y la teoría
+   de la otra solo como pista. Es el caso más débil.
+3. **Trampa** (tema ausente: *borrow checker* de Rust): «No lo encuentro en el vault.», con
+   `confianza_baja` (0,566).
+4. **Extra, mencionado de pasada** (Kubernetes): «No lo encuentro en el vault.», con `confianza_baja`. El modelo
+   citó una página inexistente de una nota sin páginas y el validador la marcó `(p. 7 no verificada)`.
+
+Con una sola ejecución por pregunta y un modelo no determinista, estas respuestas **no demuestran
+fiabilidad**: la medición seria es la Fase 4 (evals).
+
+### Problemas encontrados y corregidos durante el checkpoint
+
+- **Mi comprobación de «tema ausente» era errónea.** Afirmé que Kubernetes tenía 0 notas en el vault
+  basándome en un `grep` que no estaba leyendo los ficheros; el escaneo del índice dio 7 notas. Las
+  calibraciones y la pregunta trampa se rehicieron con comprobaciones contra el índice.
+- El modelo copiaba la cabecera del contexto detrás de sus citas (`[[Nota]] (EDA, 3º) | encabezado | p. 21`):
+  la página dejaba de ir pegada y no se verificaba. Se separó el título citable de los metadatos
+  (en una línea etiquetada) y el validador acepta ahora paréntesis intermedios, rangos y listas.
+- El modelo repetía literalmente la frase del prompt para sugerir notas; se sustituyó por una plantilla
+  fija («Podrías mirar: [[Título]]»). Se añadió «No extrapoles».
+
+### Límites conocidos de la 3a
+
+- **Una cita válida no implica una afirmación respaldada.** Se verifica que la nota y la página existen en
+  el contexto, no que lo afirmado salga de ahí. Mitigación posible (3b/4): exigir una cita literal
+  corta y comprobar que aparece en el chunk citado.
+- **Recuperación en preguntas que cruzan asignaturas**: falta diversificar por asignatura/curso.
+- **`contexto_recortado`** aparece casi siempre: el último chunk de evidencia se trunca para caber.
+- **MCP:** lo que devuelve sale de la máquina hacia el cliente (documentado en el README).
+
+## Decisiones aprobadas (Fase 3a)
+
+1. **Citas inválidas:** se marcan en el texto como `[cita no verificada: X]`.
+2. **Raíz del proyecto:** `.env` y `data/` se resuelven desde ahí, con test desde otro directorio.
+3. **Dependencias:** `fastapi`, `uvicorn` y `mcp` con versiones fijadas; instalación normal de pip con el
+   escudo web del antivirus desactivado temporalmente.
+4. **`/ask` sin estado** en la 3a; el historial y la reescritura de la pregunta van en la 3b.
+5. **Privacidad del MCP:** aceptada y documentada en el README.
+
 ## Decisiones aprobadas (Fase 2)
 
 1. **Libros:** capas 1-3 activas por defecto (un hueco por nota con prefetch ampliado, penalización
@@ -213,6 +315,6 @@ Sobre el diseño de `referencia_fase1.md`:
 
 ## Siguiente paso
 
-Fase 3a: pipeline de respuesta con citas validadas, API FastAPI y servidor MCP, sin interfaz. Después,
-Fase 3b (interfaz web), para la que se presentan antes los esquemas de pantalla y los tokens de diseño.
-La capa agéntica (PydanticAI) va al final de la 3b o en la Fase 4, según la fiabilidad del pipeline.
+Aprobar el checkpoint de la 3a (merge a `main` y push). Después, la 3b (interfaz web): primero los
+esquemas de pantalla y los tokens de diseño, y esperar el visto bueno antes de programar. La capa
+agéntica (PydanticAI) va al final de la 3b o en la Fase 4, según la fiabilidad del pipeline.

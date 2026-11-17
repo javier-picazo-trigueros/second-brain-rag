@@ -16,16 +16,17 @@ Kind = Literal["search", "overview_subject", "overview_topic"]
 
 # Sobre el texto normalizado (sin acentos ni signos) y con las abreviaturas expandidas.
 _OVERVIEW = re.compile(
-    r"\b(?:"
+    r"(?:"
     r"de que (?:trata|tratan|va|vamos|se trata|iba|es)|"
-    r"que (?:se )?(?:da|ve|explica|explican|estudia|estudian|entra|entran|contiene|incluye|abarca|cubre|"
-    r"aprende|aprendo|aprenden|temas|contenidos|unidades|apartados|bloques|lecciones)|"
+    r"que (?:se )?(?:da|ve|explica|explican|estudia|estudian|entra|entran|contiene|incluye|abarca|"
+    r"cubre|aprende|aprendo|aprenden|temas|contenidos|unidades|apartados|bloques|lecciones)|"
     r"(?:cuantos|cuantas|cuales|numero de|lista de|listado de|enumera\w*)\W+(?:\w+\W+){0,3}?"
     r"(?:temas|unidades|apartados|bloques|lecciones|topics)|"
     r"(?:resum\w*|sintetiza\w*|temario|programa|vision general|esquema|sinopsis|indice|guion)|"
     r"en que consiste|que cosas destacarias|"
-    r"(?:explica\w*|habla\w*|cuenta\w*|descri\w*|presenta\w*) (?:me )?(?:de |sobre )?(?:la |el )?(?:asignatura|materia|tema|temario)"
-    r")\b"
+    r"(?:explica\w*|habla\w*|cuenta\w*|descri\w*|presenta\w*) (?:me )?(?:de |sobre )?"
+    r"(?:la |el )?(?:asignatura|materia|tema|temario)"
+    r")"
 )
 # «la asignatura de X»: nombrar la asignatura como tal ya es pedir una visión general.
 _NOUN = re.compile(r"\b(?:asignatura|materia|temario)\b")
@@ -38,8 +39,8 @@ _ABBREVIATIONS = (
 )
 # Preguntas concretas aunque nombren una asignatura: no son visión general.
 _CONCRETE = re.compile(
-    r"\b(?:como|por que|para que|cual es la diferencia|diferencia|define|definicion|ejemplo|calcula\w*|"
-    r"implementa\w*|demuestra\w*|resuelve\w*|que es (?:un|una|el|la))\b"
+    r"(?:como|por que|para que|cual es la diferencia|diferencia|define|definicion|ejemplo|"
+    r"calcula\w*|implementa\w*|demuestra\w*|resuelve\w*|que es (?:un|una|el|la))"
 )
 
 

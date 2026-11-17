@@ -14,6 +14,7 @@ import {
   filtersFromParams,
   highlight,
   paramsFromState,
+  plainSnippet,
   type Filters,
 } from "../lib/search";
 
@@ -21,7 +22,7 @@ const DEBOUNCE_MS = 350;
 const SNIPPET_CHARS = 260;
 
 function snippet(text: string): string {
-  const flat = text.replace(/\s+/g, " ").trim();
+  const flat = plainSnippet(text);
   if (flat.length <= SNIPPET_CHARS) return flat;
   return `${flat.slice(0, SNIPPET_CHARS).replace(/\s\S*$/, "")} …`;
 }

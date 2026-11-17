@@ -6,6 +6,7 @@ import {
   filtersFromParams,
   highlight,
   paramsFromState,
+  plainSnippet,
   toggleValue,
 } from "./search";
 
@@ -87,5 +88,31 @@ describe("toggleValue and filtersActive", () => {
   it("knows when any filter is on", () => {
     expect(filtersActive(EMPTY_FILTERS)).toBe(false);
     expect(filtersActive({ ...EMPTY_FILTERS, tags: ["x"] })).toBe(true);
+  });
+});
+
+describe("plainSnippet", () => {
+  it("drops emphasis, headings, quotes and code marks but keeps the words", () => {
+    expect(plainSnippet("**Table of sources** **1.** # Título\n> cita `código`")).toBe("Table of sources 1. Título cita código");
+  });
+
+  it("keeps the text of links and the label of wikilinks, and drops embeds", () => {
+    expect(plainSnippet("ver [la guía](http://x.org) y [[Tema 5|grafos]] o [[Otra#Apartado]] ![[imagen.png]] fin")).toBe(
+      "ver la guía y grafos o Otra fin",
+    );
+    expect(plainSnippet("![foto](a.png) texto")).toBe("texto");
+  });
+
+  it("does not eat underscores inside words", () => {
+    expect(plainSnippet("mi_variable_larga y __negrita__")).toBe("mi_variable_larga y negrita");
+  });
+
+  it("turns list bullets and table pipes into plain spacing", () => {
+    expect(plainSnippet("- uno\n- dos\n| a | b |")).toBe("uno dos a b");
+  });
+
+  it("collapses whitespace and handles empty text", () => {
+    expect(plainSnippet("  a \n\n  b\t c ")).toBe("a b c");
+    expect(plainSnippet("")).toBe("");
   });
 });

@@ -102,6 +102,10 @@ const scenarios = [
   { name: "confianza-baja", run: async (page) => ask(page, "¿Qué es un montículo?") },
   { name: "no-lo-encuentro", run: async (page) => ask(page, "¿Cómo funciona el borrow checker de Rust?") },
   { name: "error", run: async (page) => { await page.getByRole("textbox", { name: "Tu pregunta" }).fill("hola"); await page.getByRole("textbox", { name: "Tu pregunta" }).press("Enter"); await page.getByRole("alert").waitFor(); } },
+  { name: "buscar-inicio", url: "buscar", run: async (page) => { await page.getByRole("button", { name: /^Redes \(/ }).waitFor(); } },
+  { name: "buscar-resultados", url: "buscar?q=clasificaci%C3%B3n%20y%20regresi%C3%B3n", run: async (page) => { await page.getByRole("status").filter({ hasText: /nota/ }).waitFor(); } },
+  { name: "buscar-filtrado", url: "buscar?q=clasificaci%C3%B3n%20y%20regresi%C3%B3n&asig=Data%20Mining", run: async (page) => { await page.getByRole("status").filter({ hasText: /nota/ }).waitFor(); } },
+  { name: "buscar-vacio", url: "buscar?q=xqzvbn%20wkjtr", run: async (page) => { await page.getByRole("status").filter({ hasText: /nota/ }).waitFor(); } },
   { name: "estado", run: async (page) => {
       const menu = page.getByRole("button", { name: "Abrir navegación" }); // en pantallas pequeñas la navegación es un cajón
       if (await menu.isVisible()) await menu.click();
@@ -119,9 +123,10 @@ for (const scheme of ["light", "dark"]) {
       await page.route("**/ask", (route) =>
         route.fulfill({ status: 200, contentType: "text/event-stream", body: ASKS[askFor[scenario.name] ?? "respuesta"] }));
       await page.route("**/notes/**", (route) => route.fulfill({ json: NOTE }));
-      await page.goto(BASE);
-      await page.getByRole("textbox", { name: "Tu pregunta" }).waitFor();
+      await page.goto(BASE + (scenario.url ?? ""));
+      if (!scenario.url) await page.getByRole("textbox", { name: "Tu pregunta" }).waitFor();
       await scenario.run(page);
+      await page.waitForTimeout(200);
       await page.screenshot({ path: join(outDir, `${scenario.name}-${width}-${scheme}.png`) });
       const axe = await new AxeBuilder({ page }).analyze();
       summary.push({

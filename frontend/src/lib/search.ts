@@ -76,3 +76,22 @@ export function highlight(text: string, query: string): Segment[] {
   }
   return segments;
 }
+
+/** El texto de un fragmento sin las marcas de Markdown, para mostrarlo como una frase corrida. */
+export function plainSnippet(markdown: string): string {
+  return markdown
+    .replace(/!\[\[[^\]]*\]\]/g, " ") // incrustaciones de Obsidian
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ") // imágenes
+    .replace(/\[\[([^\]|#]+)(?:#[^\]|]*)?\|([^\]]+)\]\]/g, "$2") // [[destino|etiqueta]]
+    .replace(/\[\[([^\]|#]+)(?:#[^\]]*)?\]\]/g, "$1") // [[destino]] y [[destino#apartado]]
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1") // [texto](url)
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+    .replace(/^\s{0,3}>\s?/gm, "")
+    .replace(/^\s*[-*+]\s+/gm, "")
+    .replace(/`+/g, "")
+    .replace(/\*{1,3}/g, "")
+    .replace(/(?<![\p{L}\p{N}])_{1,3}|_{1,3}(?![\p{L}\p{N}])/gu, "")
+    .replace(/\|/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}

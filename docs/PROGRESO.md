@@ -10,7 +10,8 @@ Se actualiza en cada checkpoint.
 | 1. Parser, chunking, indexación incremental | Terminada, aprobada y publicada (`main`) |
 | 2. Grafo, búsqueda híbrida y watcher | Terminada, aprobada y publicada (`main`) |
 | 3a. Respuesta, API y MCP (sin interfaz) | Terminada, aprobada y publicada (`main`) |
-| 3b. Interfaz web | Plan (esquemas y tokens de diseño) pendiente de aprobación |
+| 3b. Interfaz web | En curso (rama `feat/fase-3b-interfaz`): marco, Preguntar y Estado hechos |
+| Corrección de calidad | En curso (rama `fix/calidad-respuestas`): recuperación, citas, prompt, latencia y bugs de la interfaz; pendiente de aprobación |
 | 4. Evals | Pendiente |
 
 ## Fase 0: resultado
@@ -272,6 +273,76 @@ fiabilidad**: la medición seria es la Fase 4 (evals).
 - **Recuperación en preguntas que cruzan asignaturas**: falta diversificar por asignatura/curso.
 - **`contexto_recortado`** aparece casi siempre: el último chunk de evidencia se trunca para caber.
 - **MCP:** lo que devuelve sale de la máquina hacia el cliente (documentado en el README).
+
+## Corrección de calidad de las respuestas (rama `fix/calidad-respuestas`)
+
+Motivo: probando la interfaz con el vault real salieron fuentes irrelevantes, respuestas de una frase,
+citas que se rompían con títulos con corchetes, visión general inservible y bugs de la interfaz.
+Se midió antes de tocar nada (solo lectura sobre el índice) y después de cada cambio con el conjunto de
+preguntas de referencia (`brain golden`; 21 preguntas: 8 concretas, 4 de visión general de asignatura,
+4 de «tema N», 2 cruzadas y 3 trampas). El fichero con nombres reales es local e ignorado por git.
+
+### Diagnóstico (causas medidas)
+
+- El score RRF solo ordena: una nota con coseno 0,47 quedó primera con 1,00. El coseno denso del mejor
+  chunk de cada nota sí separa lo relevante (≥ 0,62) de lo que no (≤ 0,49).
+- `asignatura` del frontmatter es la subcarpeta inmediata (`images`, `Parte1`, `TEMA 2`...) o falta (190
+  de 953 notas). La carpeta de segundo nivel (`curso/ASIGNATURA/...`) es siempre correcta.
+- Los títulos con corchetes rompían `[[Título]]`; el modelo inventaba rangos de página.
+- «Contexto recortado» salía casi siempre: avisaba de notas de relleno.
+- Latencia: recuperación en caliente 100-220 ms; el embedder de consulta se descargaba a los 30 s
+  (recarga de 1,85 s). La generación iba a 9-14 tok/s porque la GPU estaba compartida con otro
+  proceso al 100 %; con la GPU libre vuelve a ~50 tok/s.
+
+### Qué cambia
+
+| Área | Cambio |
+|---|---|
+| Relevancia | Una nota es evidencia solo si el coseno de su mejor chunk llega a 0,55 y no queda más de 0,12 por debajo del mejor (`BRAIN_MIN_NOTE_COSINE`, `BRAIN_COSINE_MARGIN`). Sin evidencia, «No lo encuentro» sin llamar al modelo. |
+| Asignaturas | Carpeta de asignatura como asignatura canónica; mapa de alias opcional en `data/aliases.toml` (ejemplo en `docs/aliases.example.toml`). |
+| Visión general | «De qué trata X» y «qué se da en el tema N»: se resumen las notas de la asignatura o tema (resumen, conceptos y apartados), sin copias exactas, repartidas por tema. |
+| Preguntas cruzadas | Si nombran dos asignaturas, se busca en cada una y se intercalan los resultados. |
+| Citas | Identificadores `[S1]`, `[S2]`... por fragmento. El título y la página los pone el sistema; la interfaz funde chips consecutivos de una misma nota («Nota · p. 6, 7»). |
+| Prompt | Respuestas completas y estructuradas (~300 palabras), permiso para relacionar fuentes, recordatorio de citar al final del mensaje, plantilla para visión general. |
+| Latencia | `embed_keep_alive` 30 min y precalentamiento de la búsqueda al arrancar la API. |
+| Interfaz | La conversación vive sobre las rutas (no se pierde al ir a Estado) con historial de la sesión; tarjetas de fuentes con título, asignatura y página separados; sin texto de ayuda dentro de la respuesta; asignatura mostrada = carpeta. |
+
+### Resultados (conjunto de preguntas de referencia)
+
+Recuperación (qué notas ve el modelo; recall/precisión frente a las esperadas):
+
+| Tipo | n | Recall | Precisión | Ruido (notas) | Top-1 |
+|---|---|---|---|---|---|
+| concrete | 8 | 0,85 → 0,85 | 0,71 → 0,81 | 1,38 → 0,88 | 0,88 → 0,88 |
+| overview_subject | 4 | 0,26 → 1,00 | 0,61 → 0,98 | 1,75 → 0,50 | 0,00 → 0,00 |
+| overview_topic | 4 | 0,58 → 1,00 | 0,25 → 1,00 | 3,50 → 0,00 | 0,25 → 0,75 |
+| cross | 2 | 0,50 → 0,75 | 0,62 → 1,00 | 1,50 → 0,00 | 1,00 → 1,00 |
+| trap | 3 | 1,00 → 1,00 | 0,00 → 0,00 | 5,00 → 0,33 | 0,00 → 0,00 |
+| TOTAL | 21 | 0,68 → 0,92 | 0,50 → 0,78 | 2,38 → 0,48 | 0,48 → 0,57 |
+
+Respuestas (medias; «antes» con la GPU compartida, «después» con la GPU libre):
+
+| | Antes | Después |
+|---|---|---|
+| Longitud (caracteres) | 440 | 1.052 |
+| Tokens de salida | 129 | 318 |
+| Citas válidas / no verificadas | 22 / 3 | 119 / 0 |
+| Recuperación | 151 ms | 148 ms |
+| Primer token | 9,5 s | 1,3 s |
+| Total | 26 s | 7,3 s |
+| Trampas respondidas «No lo encuentro» | 3/3 | 3/3 |
+
+La mejora de latencia total se debe sobre todo a haber liberado la GPU, no al código: no es atribuible a
+los cambios. El top-1 de las visiones generales es 0 por construcción (no hay un «primero»).
+
+### Límites conocidos
+
+- Una cita válida sigue sin garantizar que la nota respalde la frase (comprobación de respaldo por frase:
+  Fase 4).
+- Copias casi idénticas con nombres distintos (`Nota`, `Nota (1)`) no se funden si su contenido difiere.
+- `3º/SISTEMAS` mezcla sistemas operativos con integración y cloud: el mapa de alias las une por pedido
+  del usuario; una visión general de «sistemas operativos» incluye también esos temas.
+- Los umbrales (0,55 / 0,12) están calibrados con 21 preguntas; hay que revisarlos si cambia el vault.
 
 ## Decisiones aprobadas (Fase 3a)
 

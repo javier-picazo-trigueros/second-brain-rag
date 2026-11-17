@@ -20,8 +20,8 @@ PATHS = [
     "2º/SISTEMAS OPERATIVOS/Tema-3.3 Procesos e Hilos en C v2021.md",
     "3º/SISTEMAS/Tema-3.1 Procesos e Hilos v2021.md",
     "3º/SISTEMAS/Tema 3 - Seguridad en Sistemas IT.md",
-    "3º/Redes/RSD_25-26__Tema4_V4.md",
-    "3º/Redes/RSD_25-26__Tema5_V2.md",
+    "3º/Redes/Redes_Tema4_V4.md",
+    "3º/Redes/Redes_Tema5_V2.md",
     "Suelta.md",
 ]
 

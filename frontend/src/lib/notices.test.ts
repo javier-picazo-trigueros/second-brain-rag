@@ -91,3 +91,19 @@ describe("summarizeNotices", () => {
     expect(summarizeNotices(notices)).toBe("1 cita no verificada · Confianza baja");
   });
 });
+
+describe("respuesta_contradictoria", () => {
+  it("explains that what the model wrote was discarded", () => {
+    const [notice] = describeNotices(done({ warnings: ["respuesta_contradictoria"] }));
+    expect(notice).toMatchObject({ code: "respuesta_contradictoria", tone: "caution" });
+    expect(notice!.title).toBe("Respuesta descartada");
+    expect(notice!.detail).toContain("no lo encuentra");
+  });
+
+  it("goes first, before the other warnings", () => {
+    const codes = describeNotices(done({ warnings: ["confianza_baja", "respuesta_contradictoria"] })).map(
+      (n) => n.code,
+    );
+    expect(codes[0]).toBe("respuesta_contradictoria");
+  });
+});

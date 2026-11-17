@@ -1,7 +1,7 @@
 # Ejemplo FICTICIO del formato. Copia este fichero a `golden.local.yaml` (ignorado por git) y
 # sustituye las preguntas y los fragmentos de ruta por los de tu propio vault.
 #
-# `kind`: concrete | overview_subject | overview_topic | cross | trap
+# `kind`: concrete | overview_subject | overview_topic | exercises | cross | trap
 # `expect`: fragmentos de ruta que deberían aparecer entre las notas de evidencia
 #           (sin mayúsculas ni acentos; "a|b" = cualquiera de las dos alternativas).
 # `acceptable`: notas válidas pero no imprescindibles (no cuentan como ruido).
@@ -22,6 +22,11 @@ questions:
     kind: overview_topic
     question: "¿Qué se da en el tema 3 de Álgebra?"
     expect: ["Algebra/Tema 3"]
+  - id: ejemplo-ejercicios
+    kind: exercises
+    question: "Resuélveme los ejercicios del tema 3 de Álgebra paso a paso"
+    expect: ["Algebra/Ejercicios Tema 3", "Algebra/Ejercicios Tema 3 - solucion"]
+    acceptable: ["Algebra/Tema 3"]
   - id: ejemplo-cruzada
     kind: cross
     question: "¿Qué relación hay entre Álgebra y Estructuras de datos?"

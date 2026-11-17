@@ -12,6 +12,7 @@ export interface Notice {
 }
 
 const ORDER = [
+  "respuesta_contradictoria",
   "citas_no_verificadas",
   "sin_citas",
   "solo_pistas",
@@ -51,6 +52,15 @@ function build(code: string, done: DoneEvent): Notice | null {
           "En el texto aparecen marcadas con «?».",
       };
     }
+    case "respuesta_contradictoria":
+      return {
+        code,
+        tone: "caution",
+        title: "Respuesta descartada",
+        detail:
+          "El modelo escribió contenido y después dijo que no lo encuentra en tus apuntes; " +
+          "se ha descartado lo escrito porque no es de fiar.",
+      };
     case "sin_citas":
       return {
         code,

@@ -7,6 +7,7 @@ describe("mayHaveMath", () => {
   it.each([
     ["Un texto sin fórmulas", false],
     ["Vale $x$", true],
+    ["Una lista (con paréntesis) y array[0]", false],
     [String.raw`Sea \(x\)`, true],
     [String.raw`Sea \[x\]`, true],
   ])("%s", (text, expected) => {

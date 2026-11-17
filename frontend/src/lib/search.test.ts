@@ -93,7 +93,8 @@ describe("toggleValue and filtersActive", () => {
 
 describe("plainSnippet", () => {
   it("drops emphasis, headings, quotes and code marks but keeps the words", () => {
-    expect(plainSnippet("**Table of sources** **1.** # Título\n> cita `código`")).toBe("Table of sources 1. Título cita código");
+    const text = "**Table of sources** **1.**\n# Título\n> cita `código`";
+    expect(plainSnippet(text)).toBe("Table of sources 1. Título cita código");
   });
 
   it("keeps the text of links and the label of wikilinks, and drops embeds", () => {

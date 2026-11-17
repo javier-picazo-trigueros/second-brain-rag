@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import {
   previewGenerated,
@@ -95,7 +96,8 @@ function Dialog({ markdown, subject, topic, sources, onClose }: Props & { onClos
     }
   }
 
-  return (
+  // En el `body`: el texto de la respuesta está en un contenedor animado que ataría el «fixed» a él.
+  return createPortal(
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div aria-hidden="true" className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div
@@ -185,6 +187,7 @@ function Dialog({ markdown, subject, topic, sources, onClose }: Props & { onClos
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

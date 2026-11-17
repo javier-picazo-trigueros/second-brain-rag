@@ -138,6 +138,16 @@ for (const scheme of ["light", "dark"]) {
         pantalla: scenario.name, ancho: width, tema: scheme,
         axe: axe.violations.map((v) => ({ id: v.id, impacto: v.impact, nodos: v.nodes.length, ejemplo: v.nodes[0]?.target })),
         desbordeHorizontal: await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth),
+        // Citas contiguas en la misma línea: deben quedar al menos 3 px entre ellas («[2][1]» no es «21»).
+        chipsPegados: await page.evaluate(() => {
+          const boxes = [...document.querySelectorAll(".answer-text .cite")].map((e) => e.getBoundingClientRect());
+          let stuck = 0;
+          for (let i = 1; i < boxes.length; i++) {
+            const a = boxes[i - 1], b = boxes[i];
+            if (Math.abs(a.top - b.top) < 4 && b.left >= a.right - 1 && b.left - a.right < 3) stuck++;
+          }
+          return stuck;
+        }),
       });
       await context.close();
     }
@@ -145,6 +155,6 @@ for (const scheme of ["light", "dark"]) {
 }
 await browser.close();
 writeFileSync(join(outDir, "resumen.json"), JSON.stringify(summary, null, 2));
-const bad = summary.filter((s) => s.axe.length > 0 || s.desbordeHorizontal);
+const bad = summary.filter((s) => s.axe.length > 0 || s.desbordeHorizontal || s.chipsPegados > 0);
 console.log(`${summary.length} capturas; con problemas: ${bad.length}`);
 console.log(JSON.stringify(bad, null, 2));

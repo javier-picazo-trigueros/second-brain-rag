@@ -61,8 +61,21 @@ describe("answerToMarkdown", () => {
 
   it("keeps chips of different notes separate, in order", () => {
     const { markdown, refs } = answerToMarkdown("[S1][S3][S2]", FRAGMENTS);
-    expect(markdown).toBe("[Semáforos · p. 7](cite:0)[Hilos](cite:1)[Semáforos · p. 9](cite:2)");
+    expect(markdown).toBe(
+      "[Semáforos · p. 7](cite:0) [Hilos](cite:1) [Semáforos · p. 9](cite:2)",
+    );
     expect(refs.map((r) => (r.kind === "valid" ? r.label : r.kind))).toEqual(["Semáforos", "Hilos", "Semáforos"]);
+  });
+
+  it("separates adjacent chips of different notes so \"[2][1]\" never reads as \"21\"", () => {
+    const { markdown } = answerToMarkdown("Dato [S3][S1].", FRAGMENTS);
+    expect(markdown).toBe("Dato [Hilos](cite:0) [Semáforos · p. 7](cite:1).");
+    // el texto visible (sin la sintaxis del enlace) deja un espacio entre los dos
+    expect(markdown.replace(/\[[^\]]*\]\(cite:\d+\)/g, "N")).toBe("Dato N N.");
+  });
+
+  it("does not add a separator between merged citations of the same note", () => {
+    expect(answerToMarkdown("[S2][S1]", FRAGMENTS).markdown).toBe("[Semáforos · p. 7, 9](cite:0)");
   });
 
   it("does not merge citations separated by text", () => {

@@ -52,6 +52,9 @@ export function citedSources(text: string, fragments: FragmentInfo[]): CitedSour
   return out;
 }
 
+// Entre chips contiguos va un espacio fino real: sin él, «[2][1]» se lee y se copia como «21».
+const CHIP_SEPARATOR = " ";
+
 function escapeLinkText(text: string): string {
   return text.replace(/[\\`*_[\]]/g, (c) => `\\${c}`);
 }
@@ -111,7 +114,7 @@ export function answerToMarkdown(text: string, fragments: FragmentInfo[]): Answe
     const ids = [...run.matchAll(ID)].map((m) => m[1]!);
     return mergeRun(ids, byId)
       .map((ref) => link(ref.kind === "valid" && ref.path !== null ? { ...ref, number: numbers.get(ref.path) ?? null } : ref))
-      .join("");
+      .join(CHIP_SEPARATOR);
   });
   return { markdown, refs };
 }

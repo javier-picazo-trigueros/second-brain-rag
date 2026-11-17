@@ -10,8 +10,9 @@ Se actualiza en cada checkpoint.
 | 1. Parser, chunking, indexación incremental | Terminada, aprobada y publicada (`main`) |
 | 2. Grafo, búsqueda híbrida y watcher | Terminada, aprobada y publicada (`main`) |
 | 3a. Respuesta, API y MCP (sin interfaz) | Terminada, aprobada y publicada (`main`) |
-| 3b. Interfaz web | Checkpoint 1 hecho (marco, Preguntar con el diseño aprobado, Estado, API sirve `dist`); falta Buscar y Nota (checkpoint 2) |
-| Corrección de calidad | En curso (rama `fix/calidad-respuestas`): recuperación, citas, prompt, latencia y bugs de la interfaz; pendiente de aprobación |
+| 3b. Interfaz web, checkpoint 1 | Terminada, aprobada y publicada (`main`): marco, Preguntar con el diseño aprobado, Estado, API que sirve `dist` |
+| 3b. Interfaz web, checkpoint 2 | Plan (Buscar, Nota, enlaces, «Abrir en Obsidian», KaTeX) pendiente de aprobación |
+| Corrección de calidad | Terminada, aprobada y publicada (`main`): recuperación, citas `[S#]`, visión general, prompt, latencia y bugs de la interfaz |
 | 4. Evals | Pendiente |
 
 ## Fase 0: resultado
@@ -378,8 +379,7 @@ nuevo no arrancaba, así que las primeras respuestas de la interfaz salían con 
 - Copias casi idénticas con nombres distintos (`Nota`, `Nota (1)`) no se funden si su contenido difiere.
 - `3º/SISTEMAS` mezcla sistemas operativos con integración y cloud: el mapa de alias las une por pedido
   del usuario; una visión general de «sistemas operativos» incluye también esos temas.
-- La visión general puede añadir un último «tema» inventado a partir de la última fuente aunque el dato
-  diga 7 (visto una vez); el dato exacto va primero en el contexto y en las instrucciones.
+- Ver «Pendiente para la Fase 4» (tema inventado en la visión general y formato de párrafos).
 - Los umbrales (0,55 / 0,12) están calibrados con 28 preguntas; hay que revisarlos si cambia el vault.
 
 ## Fase 3b, checkpoint 1: interfaz (marco, Preguntar y Estado)
@@ -401,6 +401,23 @@ nuevo no arrancaba, así que las primeras respuestas de la interfaz salían con 
   desbordaba a 768 px.
 - **Límites**: las fórmulas de las notas se muestran en texto (sin KaTeX); las copias casi idénticas con
   nombre distinto se muestran como fuentes separadas.
+
+## Pendiente para la Fase 4
+
+Lo que se sabe y se ha dejado a propósito para la Fase de evals, con su medida en el golden set:
+
+1. **«Finalmente» inventado en la visión general.** Con el dato «7 temas», el modelo a veces añade un
+   último tema (p. ej. «finalmente, los sistemas de machine learning…») a partir de la última fuente
+   (visto en 2 de 3 ejecuciones de la misma pregunta). Medirlo: comparar los temas que lista la
+   respuesta con la lista del dato; corregir con un validador posterior o con un formato más rígido.
+2. **Formato de párrafos pedido.** «Un par de párrafos» pasa al modelo como instrucción explícita, pero
+   el resultado fue un párrafo largo más el cierre «Destacaría:», no exactamente dos. Añadir al golden
+   set una métrica de formato (nº de párrafos y ausencia de listas cuando se piden párrafos).
+3. Diversificación por asignatura (prioridad 1) y comprobación de respaldo por frase (valid ≠ respaldada).
+4. Orden de recuperación en preguntas concretas (p. ej. «proceso vs hilo»: recall 0,33): combinar el
+   RRF con el coseno de la nota, y afinar α, cuota de notas grandes y umbral relativo.
+5. Copias casi idénticas con nombre distinto (`Nota`, `Nota (1)`) que hoy salen como fuentes separadas.
+6. Revisar los umbrales de relevancia (0,55 / 0,12) si cambia el vault.
 
 ## Decisiones aprobadas (Fase 3a)
 
@@ -450,7 +467,6 @@ Sobre el diseño de `referencia_fase1.md`:
 
 ## Siguiente paso
 
-Fase 3b (interfaz web): se presentan los esquemas de cada pantalla (Preguntar, Buscar, Nota, Estado), los
-tokens de diseño y cómo se muestran los avisos (confianza baja, citas no verificadas, «no lo encuentro en
-el vault»), y se espera el visto bueno antes de programar. Después, Fase 4 (evals), con la diversificación
-por asignatura como prioridad 1 y la comprobación de respaldo por frase.
+Checkpoint 2 de la 3b (Buscar y Nota): filtros y facetas en `/search`, resolución de `[[enlaces]]` por
+título, «Abrir en Obsidian» y fórmulas LaTeX con KaTeX empaquetado en local. Se presenta el plan y se
+espera el visto bueno antes de programar. Después, Fase 4 (evals) con lo de «Pendiente para la Fase 4».

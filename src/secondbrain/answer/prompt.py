@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import re
+
 from secondbrain.answer.context import BuiltContext
 from secondbrain.answer.llm import Message
+from secondbrain.retrieval.subjects import norm
 
 NOT_FOUND = "No lo encuentro en el vault."
 QUESTION_MAX_CHARS = 2000
@@ -52,6 +55,27 @@ TOPIC_PROMPT = (
 )
 
 
+_NUMBERS = {"un par de": 2, "un": 1, "dos": 2, "tres": 3, "cuatro": 4}
+_PARAGRAPHS = re.compile(r"\b(un par de|un|dos|tres|cuatro|[1-4])\s+parrafos?\b")
+
+
+def format_request(question: str) -> str:
+    """Instrucción explícita si la pregunta pide un número de párrafos («en un par de párrafos»).
+
+    Un modelo de 7B ignora esa petición cuando solo va en la pregunta, entre muchas otras cosas.
+    """
+    match = _PARAGRAPHS.search(norm(question))
+    if match is None:
+        return ""
+    word = match.group(1)
+    n = int(word) if word.isdigit() else _NUMBERS[word]
+    noun = "párrafo" if n == 1 else "párrafos"
+    return (
+        f"FORMATO PEDIDO: exactamente {n} {noun} de texto corrido, sin listas ni subtítulos; "
+        "mantén las citas [S#] y los datos exactos del índice."
+    )
+
+
 def build_messages(question: str, context: BuiltContext) -> list[Message]:
     asked = question.strip()
     if len(asked) > QUESTION_MAX_CHARS:
@@ -59,7 +83,9 @@ def build_messages(question: str, context: BuiltContext) -> list[Message]:
     sources = context.text or "FUENTES: (no se ha recuperado ninguna nota)"
     extra = {"overview": OVERVIEW_PROMPT, "overview_topic": TOPIC_PROMPT}.get(context.mode, "")
     system = SYSTEM_PROMPT + extra
+    requested = format_request(asked)
+    tail = f"{requested}\n\n{REMINDER}" if requested else REMINDER
     return [
         Message("system", system),
-        Message("user", f"{sources}\n\nPREGUNTA: {asked}\n\n{REMINDER}"),
+        Message("user", f"{sources}\n\nPREGUNTA: {asked}\n\n{tail}"),
     ]

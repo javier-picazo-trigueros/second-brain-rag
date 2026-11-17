@@ -3,8 +3,16 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from secondbrain.answer.context import build_context, estimate_tokens
-from secondbrain.answer.prompt import NOT_FOUND, QUESTION_MAX_CHARS, SYSTEM_PROMPT, build_messages
+from secondbrain.answer.prompt import (
+    NOT_FOUND,
+    QUESTION_MAX_CHARS,
+    REMINDER,
+    SYSTEM_PROMPT,
+    build_messages,
+)
 from secondbrain.config import Settings
 from secondbrain.domain import Hit
 from secondbrain.retrieval.hybrid import NoteHit, RelatedNote, SearchResult
@@ -152,3 +160,35 @@ def test_the_subject_template_demands_the_index_topics_and_sentences_per_topic()
     assert "ni más ni menos" in OVERVIEW_PROMPT
     assert "dos o tres frases" in OVERVIEW_PROMPT and "no una lista de títulos" in OVERVIEW_PROMPT
     assert "un par de párrafos" in OVERVIEW_PROMPT
+
+
+@pytest.mark.parametrize(
+    ("question", "n"),
+    [
+        ("dime de q trata la asignatura sabes en un par de parrafos cuantos temas tiene todo", 2),
+        ("explicalo en dos párrafos", 2),
+        ("resúmelo en tres parrafos por favor", 3),
+        ("en un parrafo", 1),
+        ("hazme 4 párrafos sobre grafos", 4),
+    ],
+)
+def test_a_requested_number_of_paragraphs_becomes_an_explicit_instruction(
+    tmp_path: Path, question: str, n: int
+) -> None:
+    from secondbrain.answer.context import BuiltContext
+
+    ctx = BuiltContext("FUENTES (evidencia):", (), 5, 0, "overview", ())
+    user = build_messages(question, ctx)[1].content
+    word = "párrafo" if n == 1 else "párrafos"
+    assert f"FORMATO PEDIDO: exactamente {n} {word} de texto corrido" in user
+    assert user.endswith(REMINDER)  # el recordatorio de citas sigue yendo el último
+
+
+@pytest.mark.parametrize(
+    "question", ["de q va el tema 5", "qué es un hilo", "cuantos temas tiene ia 2"]
+)
+def test_without_a_format_request_nothing_is_added(tmp_path: Path, question: str) -> None:
+    from secondbrain.answer.context import BuiltContext
+
+    ctx = BuiltContext("FUENTES (evidencia):", (), 5, 0, "search", ())
+    assert "FORMATO PEDIDO" not in build_messages(question, ctx)[1].content

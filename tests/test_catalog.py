@@ -160,3 +160,37 @@ def test_links_are_read_once_per_index_state(tmp_path: Path, manifest: Manifest)
     catalog.backlinks("a/Tema 1.md")
     catalog.backlinks("a/Tema 2.md")
     assert meta.link_calls == 1
+
+
+def _copies(manifest: Manifest) -> None:
+    for p in ("1º/D/Tema 5.md", "3º/D/Tema 5.md", "3º/C/Tema 5.md"):
+        manifest.upsert(p, "h", 2)
+        manifest.set_meta(p, (), "g")
+
+
+def test_among_exact_copies_the_one_nearest_to_the_linking_note_wins(
+    tmp_path: Path, manifest: Manifest
+) -> None:
+    _copies(manifest)
+    catalog = with_links(tmp_path, manifest)
+    assert catalog.resolve_link("Tema 5", near="3º/D/Resumen.md") == ["3º/D/Tema 5.md"]
+    assert catalog.resolve_link("Tema 5", near="3º/C/Otra.md") == ["3º/C/Tema 5.md"]
+    assert catalog.resolve_link("Tema 5", near="1º/D/Otra.md") == ["1º/D/Tema 5.md"]
+
+
+def test_without_a_reference_note_the_canonical_copy_is_used(
+    tmp_path: Path, manifest: Manifest
+) -> None:
+    _copies(manifest)
+    catalog = with_links(tmp_path, manifest)
+    assert catalog.resolve_link("Tema 5") == catalog.resolve_link("Tema 5", near=None)
+    assert len(catalog.resolve_link("Tema 5")) == 1
+
+
+def test_proximity_never_hides_a_different_note_with_the_same_title(
+    tmp_path: Path, manifest: Manifest
+) -> None:
+    _copies(manifest)
+    add(manifest, "3º/D/Otra carpeta/Tema 5.md")  # contenido distinto: no es una copia
+    found = with_links(tmp_path, manifest).resolve_link("Tema 5", near="3º/D/x.md")
+    assert sorted(found) == ["3º/D/Otra carpeta/Tema 5.md", "3º/D/Tema 5.md"]

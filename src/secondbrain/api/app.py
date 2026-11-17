@@ -342,7 +342,7 @@ def create_app(services: AppServices, static_dir: Path | None = None) -> FastAPI
             body=parsed.body,
             related=neighbours(clean, related) if related else [],
             resolved_links=(
-                {t: services.catalog.resolve_link(t) for t in parsed.links}
+                {t: services.catalog.resolve_link(t, near=clean) for t in parsed.links}
                 if services.catalog
                 else {}
             ),

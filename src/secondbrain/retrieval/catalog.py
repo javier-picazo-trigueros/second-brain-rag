@@ -7,7 +7,7 @@ cuando cambia el conjunto de notas del índice (el vault puede cambiar con la AP
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import PurePosixPath
 from typing import Protocol
 
@@ -92,16 +92,37 @@ class Catalog:
 
     # --- enlaces [[...]] ----------------------------------------------------------------------
 
-    def resolve_link(self, target: str) -> list[str]:
+    def resolve_link(self, target: str, near: str | None = None) -> list[str]:
         """Notas a las que apunta `[[target]]`: ruta exacta (con o sin `.md`) o título sin
-        distinguir mayúsculas. Las copias exactas cuentan como una (se da la ruta canónica);
-        con títulos repetidos devuelve todas las candidatas, para que la interfaz desambigüe."""
+        distinguir mayúsculas. Las copias exactas cuentan como una: se da la más cercana a la nota
+        `near` que enlaza (misma carpeta, mismo curso) o, sin ella, la canónica. Con títulos
+        repetidos de notas distintas devuelve todas, para que la interfaz desambigüe."""
         self._refresh()
         key = target.strip()
         found = [c for c in (key, f"{key}.md") if c in self._paths][:1]
         if not found:
             found = self._by_title.get(key.casefold(), [])
-        return sorted(dict.fromkeys(self._canonical.get(p, p) for p in found))
+        groups: dict[str, list[str]] = {}
+        for path in found:
+            groups.setdefault(self._canonical.get(path, path), []).append(path)
+        chosen = [min(members, key=self._ranker(rep, near)) for rep, members in groups.items()]
+        return sorted(chosen)
+
+    @staticmethod
+    def _shared_prefix(a: str, b: str) -> int:
+        n = 0
+        for x, y in zip(a.split("/")[:-1], b.split("/")[:-1], strict=False):
+            if x != y:
+                break
+            n += 1
+        return n
+
+    def _ranker(self, rep: str, near: str | None) -> Callable[[str], tuple[int, bool, int, str]]:
+        def rank(path: str) -> tuple[int, bool, int, str]:
+            shared = self._shared_prefix(near, path) if near else 0
+            return (-shared, path != rep, len(path), path)
+
+        return rank
 
     def backlinks(self, path: str) -> list[str]:
         """Notas que enlazan a esta (o a una copia exacta suya), sin ella misma."""

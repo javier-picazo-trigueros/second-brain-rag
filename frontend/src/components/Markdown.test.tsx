@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
 import { describe, expect, it, vi } from "vitest";
@@ -131,5 +131,79 @@ describe("heading levels of a note body", () => {
   it("leaves the levels alone when no base is given", () => {
     const { container } = render(<Markdown>{"# A\n\n### B\n"}</Markdown>);
     expect(levels(container)).toEqual(["h1:A", "h3:B"]);
+  });
+});
+
+describe("math (KaTeX, local)", () => {
+  const rendered = (container: HTMLElement) => waitFor(() => expect(container.querySelector(".katex")).not.toBeNull());
+
+  it("renders inline $...$ as KaTeX once the module has loaded", async () => {
+    const { container } = render(<Markdown>{"La energía es $E = mc^2$ siempre."}</Markdown>);
+    await rendered(container);
+    expect(container.querySelector(".katex-display")).toBeNull();
+    expect(container.textContent).toContain("siempre.");
+  });
+
+  it("renders $$...$$ as display math", async () => {
+    const { container } = render(<Markdown>{String.raw`$$\frac{a}{b} = \sum_{i=1}^{n} x_i$$`}</Markdown>);
+    await waitFor(() => expect(container.querySelector(".katex-display")).not.toBeNull());
+  });
+
+  it("accepts the parenthesis and bracket delimiters that models like to write", async () => {
+    const { container } = render(<Markdown>{String.raw`Sea \(x^2\) y
+
+\[\int_0^1 x\,dx\]
+`}</Markdown>);
+    await waitFor(() => expect(container.querySelector(".katex-display")).not.toBeNull());
+    expect(container.querySelectorAll(".katex").length).toBe(2);
+  });
+
+  it("leaves dollars inside code alone", async () => {
+    const { container } = render(<Markdown>{"En código `$x$` y\n\n```\n$$y$$\n```\n"}</Markdown>);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(container.querySelector(".katex")).toBeNull();
+    expect(container.textContent).toContain("$x$");
+    expect(container.textContent).toContain("$$y$$");
+  });
+
+  it("does not load or run math for text without formulas", () => {
+    const { container } = render(<Markdown>{"Texto **normal** sin fórmulas."}</Markdown>);
+    expect(container.querySelector("strong")).not.toBeNull();
+    expect(container.querySelector(".katex")).toBeNull();
+  });
+
+  it("shows invalid TeX without crashing the page", async () => {
+    const { container } = render(<Markdown>{String.raw`Mal: $\frac{1$ y luego texto`}</Markdown>);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(container.textContent).toContain("luego texto");
+  });
+
+  it("never turns TeX into a link, script or remote resource (trust off)", async () => {
+    const evil = String.raw`$\href{javascript:alert(1)}{click}$ $\url{https://x.test}$ $\includegraphics{https://x.test/a.png}$ $\htmlClass{big}{y}$`;
+    const { container } = render(<Markdown>{evil}</Markdown>);
+    await new Promise((r) => setTimeout(r, 100));
+    expect(container.querySelector("a[href^='javascript']")).toBeNull();
+    expect(container.querySelector("a[href^='http']")).toBeNull();
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector(".big")).toBeNull();
+  });
+
+  it("keeps a [[wikilink]] working next to a formula", async () => {
+    const api: WikiLinkApi = { resolved: { Tema: ["a/Tema.md"] }, open: vi.fn() };
+    const { container } = render(
+      <WikiLinkContext.Provider value={api}>
+        <Markdown wikilinks>{"Ver [[Tema]] con $a+b$."}</Markdown>
+      </WikiLinkContext.Provider>,
+    );
+    await rendered(container);
+    expect(screen.getByRole("link", { name: "Tema" })).toBeInTheDocument();
+  });
+
+  it("has no accessibility violations with a formula", async () => {
+    const { container } = render(<Markdown>{String.raw`Dato $x^2$ y
+
+$$y=\frac{1}{2}$$`}</Markdown>);
+    await rendered(container);
+    expect(await axe(container)).toHaveNoViolations();
   });
 });

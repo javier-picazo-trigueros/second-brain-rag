@@ -1,10 +1,11 @@
-import type { ComponentProps, ReactNode } from "react";
+import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 
 import { rehypeHeadingIds } from "../lib/rehypeHeadingIds";
+import { mayHaveMath } from "../lib/mathDetect"; // ligero: KaTeX solo se carga si hace falta
 import { rehypeHeadingLevels } from "../lib/rehypeHeadingLevels";
 import { remarkWikilinks } from "../lib/remarkWikilinks";
 import { WikiEmbed, WikiLink } from "./WikiLink";
@@ -21,7 +22,7 @@ const schema = {
   protocols: { ...defaultSchema.protocols, href: [...(defaultSchema.protocols?.href ?? []), ...INTERNAL] },
   attributes: {
     ...defaultSchema.attributes,
-    code: [...(defaultSchema.attributes?.code ?? []), ["className", /^language-[\w-]+$/]],
+    code: [...(defaultSchema.attributes?.code ?? []), ["className", /^(?:language-[\w-]+|math-inline|math-display)$/]],
   },
 };
 
@@ -67,6 +68,23 @@ interface MarkdownProps {
   headingBase?: number;
 }
 
+type MathModule = typeof import("../lib/math");
+
+/** Carga KaTeX (y su CSS y fuentes locales) solo la primera vez que un texto lleva fórmulas. */
+function useMath(text: string): MathModule | null {
+  const wanted = mayHaveMath(text);
+  const [math, setMath] = useState<MathModule | null>(null);
+  useEffect(() => {
+    if (!wanted || math !== null) return;
+    let cancelled = false;
+    void import("../lib/math").then((m) => !cancelled && setMath(m));
+    return () => {
+      cancelled = true;
+    };
+  }, [wanted, math]);
+  return wanted ? math : null;
+}
+
 export function Markdown({
   children,
   components = noteComponents,
@@ -74,19 +92,25 @@ export function Markdown({
   wikilinks = false,
   headingBase,
 }: MarkdownProps) {
+  const math = useMath(children);
   return (
     <ReactMarkdown
-      remarkPlugins={wikilinks ? [remarkGfm, remarkWikilinks] : [remarkGfm]}
+      remarkPlugins={[
+        remarkGfm,
+        ...(math ? [math.remarkMathPlugin] : []),
+        ...(wikilinks ? [remarkWikilinks] : []),
+      ]}
       rehypePlugins={[
         [rehypeSanitize, schema],
         rehypeHeadingIds, // tras el saneado, que cambiaría los ids
         ...(headingBase ? [() => rehypeHeadingLevels(headingBase)] : []),
+        ...(math ? [math.rehypeKatexPlugin] : []), // tras el saneado: su HTML es generado, no del texto
         ...(highlight ? [rehypeHighlight] : []),
       ]}
       urlTransform={urlTransform}
       components={components}
     >
-      {children}
+      {math ? math.normalizeDelimiters(children) : children}
     </ReactMarkdown>
   );
 }

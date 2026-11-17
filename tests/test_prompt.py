@@ -192,3 +192,7 @@ def test_without_a_format_request_nothing_is_added(tmp_path: Path, question: str
 
     ctx = BuiltContext("FUENTES (evidencia):", (), 5, 0, "search", ())
     assert "FORMATO PEDIDO" not in build_messages(question, ctx)[1].content
+
+
+def test_the_prompt_asks_for_formulas_in_latex_with_dollar_delimiters() -> None:
+    assert "LaTeX" in SYSTEM_PROMPT and "$...$" in SYSTEM_PROMPT and "$$...$$" in SYSTEM_PROMPT

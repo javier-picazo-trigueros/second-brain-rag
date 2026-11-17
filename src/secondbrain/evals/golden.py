@@ -86,16 +86,33 @@ def load_golden(path: Path) -> list[GoldenQuestion]:
     return out
 
 
-def score_retrieval(question: GoldenQuestion, retrieved: Sequence[str]) -> RetrievalScore:
+def score_retrieval(
+    question: GoldenQuestion,
+    retrieved: Sequence[str],
+    families: Mapping[str, Sequence[str]] | None = None,
+) -> RetrievalScore:
+    """Puntúa la recuperación. `families` (ruta -> todas las rutas de su familia de copias) hace
+    que una nota y sus copias valgan un único acierto o un único ruido, y que una familia case con
+    una expectativa si lo hace cualquiera de sus miembros."""
     paths = tuple(retrieved)
-    covered = sum(1 for e in question.expect if any(matches(p, e) for p in paths))
+    units: list[tuple[str, ...]] = []  # una por familia, en el orden de la primera aparición
+    seen: set[tuple[str, ...]] = set()
+    for path in paths:
+        members = tuple(sorted(families.get(path, (path,)))) if families else (path,)
+        if members not in seen:
+            seen.add(members)
+            units.append(members)
+
+    def hit(unit: tuple[str, ...], patterns: Sequence[str]) -> bool:
+        return any(matches(p, e) for p in unit for e in patterns)
+
+    covered = sum(1 for e in question.expect if any(hit(u, (e,)) for u in units))
     recall = covered / len(question.expect) if question.expect else 1.0
-    good = [
-        p for p in paths if any(matches(p, e) for e in (*question.expect, *question.acceptable))
-    ]
-    precision = len(good) / len(paths) if paths else 0.0
-    top1 = bool(paths) and any(matches(paths[0], e) for e in question.expect)
-    return RetrievalScore(recall, precision, len(paths) - len(good), top1, paths)
+    wanted = (*question.expect, *question.acceptable)
+    good = [u for u in units if hit(u, wanted)]
+    precision = len(good) / len(units) if units else 0.0
+    top1 = bool(units) and hit(units[0], question.expect)
+    return RetrievalScore(recall, precision, len(units) - len(good), top1, paths)
 
 
 def score_answer(

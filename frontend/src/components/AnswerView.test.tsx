@@ -18,7 +18,20 @@ const fragments: FragmentInfo[] = [
   },
 ];
 
+const TWO_NOTES: FragmentInfo[] = [
+  ...fragments,
+  { id: "S2", label: "Hilos", path: "1º/SO/Hilos.md", title: "Hilos", kind: "evidence", page: 3, heading: null },
+];
+
 describe("AnswerView", () => {
+  it("keeps adjacent chips of different notes apart in the text, as in \"6 7\" not \"67\"", () => {
+    const { container } = render(<AnswerView text="Dato [S2][S1]." fragments={TWO_NOTES} onOpenNote={() => {}} />);
+    const chips = [...container.querySelectorAll(".cite")];
+    expect(chips.map((c) => c.textContent)).toEqual(["1", "2"]);
+    expect(container.textContent).toContain("1 2");
+    expect(container.textContent).not.toMatch(/12/);
+  });
+
   it("renders markdown", () => {
     render(<AnswerView text={"Hay **dos** cosas:\n\n- una\n- otra"} fragments={fragments} onOpenNote={() => {}} />);
     expect(screen.getByText("dos").tagName).toBe("STRONG");

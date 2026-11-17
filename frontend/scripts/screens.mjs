@@ -58,6 +58,14 @@ const sources = (over = {}) => ({
   type: "sources", sources: SOURCES, fragments: FRAGMENTS, confidence: "alta", similarity: 0.71, dropped_notes: 0, ...over,
 });
 
+const FORMULAS = String.raw`La media es $\bar{x} = \frac{1}{n}\sum_{i=1}^{n} x_i$ [S1].
+
+La varianza:
+
+$$\sigma^2 = \frac{1}{n}\sum_{i=1}^{n}(x_i - \bar{x})^2$$
+
+Y la identidad de Euler, con otros delimitadores: \(e^{i\pi}+1=0\).`;
+
 const ASKS = {
   respuesta: sse([
     sources(),
@@ -74,6 +82,11 @@ const ASKS = {
     { type: "token", text: "No lo encuentro en el vault.\n\nPodrías mirar: [S3]" },
     done({ answer: "No lo encuentro en el vault.\n\nPodrías mirar: [S3]", not_found: true, warnings: ["confianza_baja"], confidence: "baja", similarity: 0.52, citations: [FRAGMENTS[2]] }),
   ]),
+  formulas: sse([
+    sources(),
+    { type: "token", text: FORMULAS },
+    done({ answer: FORMULAS, citations: [FRAGMENTS[0]] }),
+  ]),
   error: sse([{ type: "error", message: "Ollama no responde en http://localhost:11434: arráncalo con `ollama serve`." }]),
 };
 const NOTE = {
@@ -81,6 +94,9 @@ const NOTE = {
   frontmatter: {}, tags: ["complejidad", "analisis"], concepts: ["notacion-asintotica", "caso-peor"], links: [],
   body: "# Complejidad\n\nLa **complejidad** mide cuántos recursos usa un algoritmo.\n\n## Página 3\n\nNotación asintótica: $O(n)$, $\\Omega(n)$.\n\n```python\ndef suma(xs):\n    return sum(xs)\n```",
   related: [{ path: "Estructuras/Tema 2.md", title: "Tema 2 · Listas, pilas y colas", score: 1.2, via: ["complejidad"] }],
+  resolved_links: {},
+  backlinks: [],
+  obsidian_url: "obsidian://open?vault=Cerebro&file=Estructuras%2FTema%201",
 };
 
 async function ask(page, text) {
@@ -91,6 +107,25 @@ async function ask(page, text) {
   await page.waitForTimeout(250);
 }
 
+// Notas reales del vault para fotografiar (opcional): rutas relativas separadas por «;», con `?p=N`
+// si se quiere una página, p. ej. BRAIN_SHOT_NOTES="1º/Asignatura/Tema 1.md;1º/Asignatura/Tema 2.md?p=3"
+const REAL_NOTES = (process.env.BRAIN_SHOT_NOTES ?? "")
+  .split(";")
+  .map((item) => item.trim())
+  .filter(Boolean)
+  .map((item, index) => {
+    const [path, query] = item.split("?");
+    const url = `nota/${path.split("/").map(encodeURIComponent).join("/")}${query ? `?${query}` : ""}`;
+    return {
+      name: `nota-real-${index + 1}`,
+      url,
+      real: true,
+      run: async (page) => {
+        await page.getByRole("link", { name: "Abrir en Obsidian" }).waitFor();
+      },
+    };
+  });
+
 const scenarios = [
   { name: "inicio", run: async () => {} },
   { name: "respuesta", run: async (page) => ask(page, "¿De qué trata la asignatura de Estructuras de Datos?") },
@@ -99,15 +134,28 @@ const scenarios = [
       await page.getByRole("button", { name: /Fuente 1: Tema 1/ }).first().click();
       await page.getByRole("heading", { name: /Tema 1 · Complejidad/, level: 2 }).waitFor();
   } },
+  { name: "respuesta-formulas", run: async (page) => {
+      await ask(page, "¿Cuál es la fórmula de la media y la varianza?");
+      await page.locator(".katex-display").waitFor();
+      const loaded = await page.evaluate(async () => { await document.fonts.ready; return document.fonts.check("1em KaTeX_Main") && document.fonts.check("1em KaTeX_Math"); });
+      if (!loaded || (await page.locator(".katex").count()) < 3) throw new Error("KaTeX no se ha renderizado o sus fuentes no cargaron");
+  } },
   { name: "confianza-baja", run: async (page) => ask(page, "¿Qué es un montículo?") },
   { name: "no-lo-encuentro", run: async (page) => ask(page, "¿Cómo funciona el borrow checker de Rust?") },
   { name: "error", run: async (page) => { await page.getByRole("textbox", { name: "Tu pregunta" }).fill("hola"); await page.getByRole("textbox", { name: "Tu pregunta" }).press("Enter"); await page.getByRole("alert").waitFor(); } },
+  { name: "paleta-acciones", run: async (page) => { await page.keyboard.press("Control+K"); await page.getByRole("dialog").waitFor(); } },
+  { name: "paleta-resultados", run: async (page) => { await page.keyboard.press("Control+K"); await page.getByRole("combobox").fill("clasificación y regresión"); await page.getByRole("option", { name: /Ver todos/ }).waitFor(); await page.getByRole("status").filter({ hasText: "Buscando" }).waitFor({ state: "detached" }); } },
+  { name: "buscar-inicio", url: "buscar", run: async (page) => { await page.getByRole("button", { name: /^Redes \(/ }).waitFor(); } },
+  { name: "buscar-resultados", url: "buscar?q=clasificaci%C3%B3n%20y%20regresi%C3%B3n", run: async (page) => { await page.getByRole("status").filter({ hasText: /nota/ }).waitFor(); } },
+  { name: "buscar-filtrado", url: "buscar?q=clasificaci%C3%B3n%20y%20regresi%C3%B3n&asig=Data%20Mining", run: async (page) => { await page.getByRole("status").filter({ hasText: /nota/ }).waitFor(); } },
+  { name: "buscar-vacio", url: "buscar?q=xqzvbn%20wkjtr", run: async (page) => { await page.getByRole("status").filter({ hasText: /nota/ }).waitFor(); } },
+  ...REAL_NOTES,
   { name: "estado", run: async (page) => {
       const menu = page.getByRole("button", { name: "Abrir navegación" }); // en pantallas pequeñas la navegación es un cajón
       if (await menu.isVisible()) await menu.click();
       await page.getByRole("link", { name: "Estado" }).click(); await page.getByRole("heading", { name: "Ollama" }).waitFor(); } },
 ];
-const askFor = { respuesta: "respuesta", "respuesta-nota": "respuesta", "confianza-baja": "confianza", "no-lo-encuentro": "nolo", error: "error" };
+const askFor = { respuesta: "respuesta", "respuesta-formulas": "formulas", "respuesta-nota": "respuesta", "confianza-baja": "confianza", "no-lo-encuentro": "nolo", error: "error" };
 
 const browser = await chromium.launch({ executablePath: EDGE, headless: true });
 const summary = [];
@@ -118,16 +166,27 @@ for (const scheme of ["light", "dark"]) {
       const page = await context.newPage();
       await page.route("**/ask", (route) =>
         route.fulfill({ status: 200, contentType: "text/event-stream", body: ASKS[askFor[scenario.name] ?? "respuesta"] }));
-      await page.route("**/notes/**", (route) => route.fulfill({ json: NOTE }));
-      await page.goto(BASE);
-      await page.getByRole("textbox", { name: "Tu pregunta" }).waitFor();
+      if (!scenario.real) await page.route("**/notes/**", (route) => route.fulfill({ json: NOTE }));
+      await page.goto(BASE + (scenario.url ?? ""));
+      if (!scenario.url) await page.getByRole("textbox", { name: "Tu pregunta" }).waitFor();
       await scenario.run(page);
+      await page.waitForTimeout(200);
       await page.screenshot({ path: join(outDir, `${scenario.name}-${width}-${scheme}.png`) });
       const axe = await new AxeBuilder({ page }).analyze();
       summary.push({
         pantalla: scenario.name, ancho: width, tema: scheme,
         axe: axe.violations.map((v) => ({ id: v.id, impacto: v.impact, nodos: v.nodes.length, ejemplo: v.nodes[0]?.target })),
         desbordeHorizontal: await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth),
+        // Citas contiguas en la misma línea: deben quedar al menos 3 px entre ellas («[2][1]» no es «21»).
+        chipsPegados: await page.evaluate(() => {
+          const boxes = [...document.querySelectorAll(".answer-text .cite")].map((e) => e.getBoundingClientRect());
+          let stuck = 0;
+          for (let i = 1; i < boxes.length; i++) {
+            const a = boxes[i - 1], b = boxes[i];
+            if (Math.abs(a.top - b.top) < 4 && b.left >= a.right - 1 && b.left - a.right < 3) stuck++;
+          }
+          return stuck;
+        }),
       });
       await context.close();
     }
@@ -135,6 +194,6 @@ for (const scheme of ["light", "dark"]) {
 }
 await browser.close();
 writeFileSync(join(outDir, "resumen.json"), JSON.stringify(summary, null, 2));
-const bad = summary.filter((s) => s.axe.length > 0 || s.desbordeHorizontal);
+const bad = summary.filter((s) => s.axe.length > 0 || s.desbordeHorizontal || s.chipsPegados > 0);
 console.log(`${summary.length} capturas; con problemas: ${bad.length}`);
 console.log(JSON.stringify(bad, null, 2));

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 from secondbrain.evals.golden import (
@@ -21,13 +21,14 @@ def run_golden(
     retrieve: Retrieve,
     answer: Answer | None = None,
     note: str = "",
+    families: Mapping[str, Sequence[str]] | None = None,
 ) -> dict[str, Any]:
     """Evalúa cada pregunta. `retrieve` devuelve las rutas de evidencia que verá el modelo;
     `answer` (opcional, usa el LLM) devuelve las métricas de la respuesta."""
     rows: list[dict[str, Any]] = []
     answers: list[tuple[GoldenQuestion, AnswerScore]] = []
     for q in questions:
-        score = score_retrieval(q, retrieve(q.question))
+        score = score_retrieval(q, retrieve(q.question), families)
         row: dict[str, Any] = {
             "id": q.id,
             "kind": q.kind,

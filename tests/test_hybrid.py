@@ -8,6 +8,7 @@ import pytest
 
 from secondbrain.config import Settings
 from secondbrain.domain import Hit
+from secondbrain.retrieval.families import CopyFamilies
 from secondbrain.retrieval.hybrid import HybridRetriever
 from secondbrain.store.manifest import Manifest
 from tests.fakes import FakeEmbedder, ScriptedStore
@@ -18,6 +19,11 @@ Build = Callable[..., tuple[HybridRetriever, ScriptedStore]]
 def hit(path: str, score: float, text: str = "texto del chunk", **payload: Any) -> Hit:
     base = {"note_path": path, "heading_path": "Tema", "page": None, "text": text}
     return Hit(score, {**base, **payload})
+
+
+def _folder_subject(path: str) -> str | None:
+    parts = path.split("/")
+    return parts[1] if len(parts) > 2 else None
 
 
 @pytest.fixture
@@ -33,6 +39,7 @@ def build(tmp_path: Path) -> Any:
         best: dict[str, Hit] | None = None,
         dense: float | None = 0.6,
         cosines: dict[str, float] | None = None,
+        versions: bool = False,
         **overrides: Any,
     ) -> tuple[HybridRetriever, ScriptedStore]:
         settings = Settings(_env_file=None, vault_path=tmp_path, **overrides)  # type: ignore[call-arg]
@@ -48,7 +55,8 @@ def build(tmp_path: Path) -> Any:
             manifest.upsert(path, "h", n)
             manifest.set_meta(path, (concepts or {}).get(path, []), group_of.get(path))
         store = ScriptedStore(hits, best, dense=dense, cosines=cosines)
-        return HybridRetriever(settings, FakeEmbedder(), store, manifest), store
+        families = CopyFamilies(manifest, _folder_subject) if versions else None
+        return HybridRetriever(settings, FakeEmbedder(), store, manifest, families), store
 
     yield _build
     for m in manifests:
@@ -345,3 +353,27 @@ def test_only_paths_restricts_the_search(build: Build) -> None:
     r, store = build(three_notes())
     r.search("q", only_paths=["a.md"])
     assert store.last_only_paths == ["a.md"]
+
+
+# --- versiones de una nota (título con « (n)», contenido distinto) -----------------------------
+
+
+def test_versions_of_a_note_collapse_into_one_with_the_unsuffixed_title(build: Build) -> None:
+    hits = [hit("3º/DM/U5 (1).md", 0.9), hit("3º/DM/U5.md", 0.85), hit("3º/DM/U6.md", 0.5)]
+    r, _ = build(hits, versions=True)
+    result = r.search("q")
+    assert paths(result) == ["3º/DM/U5.md", "3º/DM/U6.md"]
+    assert result.notes[0].also_in == ("3º/DM/U5 (1).md",)
+    assert result.notes[0].title == "U5"
+
+
+def test_a_version_alone_in_the_candidates_is_shown_under_the_plain_title(build: Build) -> None:
+    r, _ = build([hit("3º/DM/U5 (1).md", 0.9), hit("3º/DM/U5.md", 0.1)], versions=True)
+    r2, _ = build([hit("3º/DM/U5 (1).md", 0.9)], versions=True, chunks={"3º/DM/U5.md": 3})
+    assert r.search("q").notes[0].path == "3º/DM/U5.md"
+    assert r2.search("q").notes[0].path == "3º/DM/U5.md"
+
+
+def test_versions_in_different_subjects_stay_separate(build: Build) -> None:
+    r, _ = build([hit("3º/DM/U5 (1).md", 0.9), hit("3º/Redes/U5.md", 0.8)], versions=True)
+    assert paths(r.search("q")) == ["3º/DM/U5 (1).md", "3º/Redes/U5.md"]

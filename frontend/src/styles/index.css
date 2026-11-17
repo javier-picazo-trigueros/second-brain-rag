@@ -210,7 +210,7 @@ body {
   min-width: 1.25rem;
   height: 1.25rem;
   padding: 0 0.375rem;
-  margin: 0 1px 0 0.1875rem;
+  margin: 0 0.125rem 0 0.1875rem;
   vertical-align: 1px;
   border: 0;
   border-radius: 999px;
@@ -320,4 +320,14 @@ body {
 /* El foco del campo de pregunta lo marca la tarjeta entera (focus-within), no un anillo interior. */
 textarea.composer-input:focus-visible {
   outline: none;
+}
+
+/* Fórmulas: una fórmula ancha se desplaza dentro de su caja, nunca desborda la página. */
+.katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.25rem 0;
+}
+.katex {
+  font-size: 1.05em;
 }

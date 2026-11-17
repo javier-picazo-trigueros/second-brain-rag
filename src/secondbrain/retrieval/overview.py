@@ -10,7 +10,8 @@ from typing import Any, Protocol
 
 from secondbrain.config import Settings
 from secondbrain.domain import Hit
-from secondbrain.retrieval.hybrid import NoteHit, SearchResult, canonical_key
+from secondbrain.retrieval.families import CopyFamilies
+from secondbrain.retrieval.hybrid import NoteHit, SearchResult
 from secondbrain.retrieval.intent import detect_intent
 from secondbrain.retrieval.subjects import (
     SubjectIndex,
@@ -55,10 +56,17 @@ def _course(path: str) -> str | None:
 
 
 class OverviewBuilder:
-    def __init__(self, settings: Settings, store: OutlineSource, manifest: Manifest) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        store: OutlineSource,
+        manifest: Manifest,
+        families: CopyFamilies | None = None,
+    ) -> None:
         self._s = settings
         self._store = store
         self._manifest = manifest
+        self._families = families or CopyFamilies(manifest)
 
     def build(
         self,
@@ -109,11 +117,11 @@ class OverviewBuilder:
         wanted = set(notes)
         canonical: dict[str, str] = {}
         others: dict[str, tuple[str, ...]] = {}
-        for group in self._manifest.duplicate_groups():
+        for group in self._families.groups():
             asked = [p for p in group if p in wanted]
             if not asked:
                 continue
-            rep = min(asked, key=canonical_key)  # solo entre las notas pedidas, no de otra carpeta
+            rep = self._families.representative(asked)  # solo entre las pedidas, no de otra carpeta
             others[rep] = tuple(p for p in group if p != rep)
             for path in asked:
                 canonical[path] = rep
@@ -189,11 +197,12 @@ class IntentRetriever:
         store: OutlineSource,
         manifest: Manifest,
         aliases: Mapping[str, SubjectSpec] | None = None,
+        families: CopyFamilies | None = None,
     ) -> None:
         self._s = settings
         self._base = base
         self._manifest = manifest
-        self._builder = OverviewBuilder(settings, store, manifest)
+        self._builder = OverviewBuilder(settings, store, manifest, families)
         self._aliases = load_aliases(settings.aliases_path) if aliases is None else aliases
         self._index_key: int | None = None
         self._index: SubjectIndex | None = None

@@ -18,6 +18,7 @@ from secondbrain.evals.golden import (
     score_answer,
 )
 from secondbrain.evals.runner import run_golden
+from secondbrain.retrieval.families import CopyFamilies
 
 golden_app = typer.Typer(no_args_is_help=True, help="Preguntas de referencia (evals/golden)")
 
@@ -45,6 +46,12 @@ def _retrieve(services: AppServices) -> Any:
         return [s.path for s in context.sources if s.kind == "evidence"]
 
     return retrieve
+
+
+def _families(services: AppServices) -> dict[str, tuple[str, ...]]:
+    """Ruta -> todas las rutas de su familia de copias (exactas y versiones)."""
+    groups = CopyFamilies.from_settings(services.settings, services.manifest).groups()
+    return {path: group for group in groups for path in group}
 
 
 def _answer(services: AppServices) -> Any:
@@ -92,6 +99,7 @@ def run(
         retrieve=_retrieve(services),
         answer=_answer(services) if answers else None,
         note=f"{note} | {gpu_note()}".strip(" |"),
+        families=_families(services),
     )
     if out is not None:
         out.parent.mkdir(parents=True, exist_ok=True)

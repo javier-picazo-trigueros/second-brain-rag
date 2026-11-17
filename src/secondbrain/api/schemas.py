@@ -64,6 +64,10 @@ class SearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=2000)
     k: int = Field(5, ge=1, le=20)
     graph: bool = True
+    # Filtros: O dentro de cada lista, Y entre listas.
+    asignaturas: list[str] = Field(default_factory=list, max_length=20)
+    cursos: list[str] = Field(default_factory=list, max_length=20)
+    tags: list[str] = Field(default_factory=list, max_length=50)
 
 
 class ChunkOut(BaseModel):
@@ -98,11 +102,28 @@ class RelatedOut(BaseModel):
     snippet: str | None = None
 
 
+class FacetValueOut(BaseModel):
+    value: str
+    count: int
+
+
+class FacetsOut(BaseModel):
+    asignaturas: list[FacetValueOut] = Field(default_factory=list)
+    cursos: list[FacetValueOut] = Field(default_factory=list)
+    tags: list[FacetValueOut] = Field(default_factory=list)
+
+
+class SubjectOut(BaseModel):
+    name: str
+    notes: int
+
+
 class SearchResponse(BaseModel):
     notes: list[NoteHitOut]
     related: list[RelatedOut]
     top_similarity: float | None = None
     confidence: str
+    facets: FacetsOut = Field(default_factory=FacetsOut)
 
 
 # --- respuesta ------------------------------------------------------------------------------
@@ -123,6 +144,11 @@ class NeighborOut(BaseModel):
     via: list[str]
 
 
+class BacklinkOut(BaseModel):
+    path: str
+    title: str
+
+
 class NoteOut(BaseModel):
     path: str
     title: str
@@ -134,6 +160,10 @@ class NoteOut(BaseModel):
     links: list[str]
     body: str
     related: list[NeighborOut]
+    # Destino de cada [[enlace]] -> notas candidatas (vacío: no existe; varias: ambiguo).
+    resolved_links: dict[str, list[str]] = Field(default_factory=dict)
+    backlinks: list[BacklinkOut] = Field(default_factory=list)
+    obsidian_url: str = ""
 
 
 class ConceptOut(BaseModel):

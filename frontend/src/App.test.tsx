@@ -31,6 +31,15 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: "Estado" })).toBeInTheDocument();
   });
 
+  it("shows Buscar at /buscar", () => {
+    render(
+      <MemoryRouter initialEntries={["/buscar"]}>
+        <App />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("heading", { level: 1, name: "Buscar" })).toBeInTheDocument();
+  });
+
   it("falls back to Preguntar on an unknown path", () => {
     render(
       <MemoryRouter initialEntries={["/nada"]}>

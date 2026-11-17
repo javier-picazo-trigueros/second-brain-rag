@@ -402,6 +402,74 @@ nuevo no arrancaba, así que las primeras respuestas de la interfaz salían con 
 - **Límites**: las fórmulas de las notas se muestran en texto (sin KaTeX); las copias casi idénticas con
   nombre distinto se muestran como fuentes separadas.
 
+## Fase 3b, checkpoint 2 (rama `feat/fase-3b-buscar-nota`, en curso)
+
+Hecho (entregas A y B1):
+
+- **`/search` con filtros y facetas.** `asignaturas`, `cursos` y `tags` son opcionales (MCP y el cliente
+  anterior no cambian). O dentro de cada lista, Y entre listas; los nombres ignoran mayúsculas y
+  acentos y usan la asignatura canónica (carpeta más alias), no el frontmatter. Las facetas cuentan
+  sobre los 20 mejores candidatos sin filtrar; los valores elegidos siguen listados con 0. `/subjects`
+  lista las asignaturas con su número de notas. Sobre el índice real: 220 ms sin filtros y ~300 ms con
+  filtros; la primera lectura de etiquetas y enlaces tarda unos segundos y se precalienta al arrancar.
+- **Pantalla Buscar**: facetas con casillas y recuentos, resultados con el fragmento sin marcas de
+  Markdown y los términos resaltados (sin distinguir acentos), estado en la URL, atajos por asignatura
+  y enlace desde «No lo encuentro».
+- **`/notes` enriquecido**: `[[enlaces]]` resueltos por título (ruta exacta o título; copias exactas
+  como una sola, la más cercana a la nota que enlaza), notas que enlazan aquí y el enlace de Obsidian.
+- **Pantalla Nota** (`/nota/<ruta>`): índice de encabezados, scroll a la página (`?p=`) o al apartado
+  (`#`), `[[enlaces]]` con tres estados (resuelto, ambiguo con selector, inexistente en gris),
+  incrustaciones y ficheros que no son notas nombrados sin cargarse, y los encabezados del cuerpo
+  recolocados bajo el título para no saltar niveles.
+- **Defectos que salieron al probar con el índice real**, corregidos con test de regresión: recargar
+  `/nota/…/x.md` daba 404 (la ruta acaba en `.md` y se tomaba por un fichero que falta), y dos copias
+  idénticas de un resumen se resolvían siempre a la de otra asignatura.
+- **Dato del vault**: de 2.994 «enlaces» solo 4 apuntan a una nota existente; el resto son conceptos
+  (que no son notas) y sintaxis de shell (`[[ -f x ]]`). La función está bien pero importa poco aquí.
+- Capturas y axe sobre la aplicación real (360/768/1280 px, claro y oscuro, 13 estados = 78): 0
+  violaciones, 0 desbordes.
+
+### Citas adyacentes y versiones de una nota (añadidos tras B1)
+
+- **Citas adyacentes.** Los chips de notas distintas van separados por un espacio fino real, de modo
+  que «[2][1]» se lee y se copia «2 1», no «21». Tests de texto (`answer.test.ts`, `AnswerView.test`)
+  y una comprobación de maquetación en `scripts/screens.mjs` (≥ 3 px entre chips contiguos).
+- **Familias de copias** (`retrieval/families.py`). Las copias exactas (mismo cuerpo) y las versiones
+  (títulos que solo difieren en « (n)» o «copia»/«copy», misma asignatura canónica, contenido distinto)
+  forman una familia que se muestra como una sola nota, en búsqueda, visión general y fuentes. La
+  representante es la de título sin sufijo y, si no la hay, la de más fragmentos. Guardas, nacidas de
+  medir sobre el índice real (la primera versión fusionaba 20 `README.md` de prácticas distintas):
+  una versión solo se une al original si este es único en la asignatura, entre versiones sin original
+  solo se unen las de una misma carpeta, y `(2024)` no es un sufijo. Resultado en el vault: 128
+  grupos de copias exactas y 7 familias con versiones no idénticas (p. ej. `DM - Unit 5 - Classification
+  - Non Rule based algorithms` y su «(1)»).
+- **Golden antes/después** (28 preguntas; `evals/results/p12_*.json`): recall 0,93 → 0,93; precisión
+  0,84 → 0,83; ruido 0,32 → 0,36; citas inválidas 0 → 0. La bajada de `dm-svm` es en parte de la medida: el
+  evaluador busca por subcadena de título y «Unit 5 - Classification» contaba dos veces (original y
+  «(1)»); ahora cuenta una y el hueco lo ocupa otra nota que pasa el corte de coseno.
+
+### B2: fórmulas, Ctrl+K y evaluador por familias
+
+- **Evaluador por familias.** El golden set cuenta una nota y sus copias o versiones como un único
+  acierto o ruido (`score_retrieval(..., families)`), y una familia casa con una expectativa si
+  cualquiera de sus miembros lo hace. Línea base buena (`evals/results/base_familias.json`) y el
+  «antes» reevaluado con la misma medida: precisión total 0,83 → 0,83. `dm-svm` (ruido por una nota de
+  AOC que pasa el corte de coseno) queda para la Fase 4; no se han tocado umbrales.
+- **KaTeX en local.** `katex`, `remark-math` y `rehype-katex`, cargados con `import()` solo si el texto
+  lleva delimitadores: el paquete principal baja de 931 KB a 660 KB y KaTeX es un chunk aparte (270 KB
+  + 30 KB de CSS, fuentes en `dist/assets`). Se aplica tras el saneado, con `trust` apagado; los
+  delimitadores `\( \)` y `\[ \]` de los modelos se convierten fuera del código y `$$x$$` solo en su
+  línea es un bloque. El prompt pide las fórmulas en LaTeX. Se comprobó en el navegador real (fuentes
+  cargadas, modo oscuro) y que no hay ninguna URL externa en `dist/`.
+- **Ctrl+K / ⌘K.** Paleta con patrón combobox/listbox: acciones rápidas sin escribir, búsqueda sin LLM
+  mientras se escribe (retardo de 200 ms), «Ver todos los resultados», Esc, foco devuelto al cerrar y
+  foco atrapado. Hay también un botón visible en la navegación.
+- **Capturas y axe**: 16 estados (96 capturas a 360/768/1280 px, claro y oscuro), 0 violaciones, 0
+  desbordes y 0 chips pegados.
+- **Fallo propio cazado por el lint**: el detector de fórmulas buscaba paréntesis sueltos por perder los
+  backslashes al escribir el fichero desde el shell; ahora tiene un test.
+
+
 ## Pendiente para la Fase 4
 
 Lo que se sabe y se ha dejado a propósito para la Fase de evals, con su medida en el golden set:

@@ -110,9 +110,23 @@ cruzan asignaturas, la recuperación puede traer evidencia de una sola; ver `doc
 ## Interfaz web
 
 React + Vite + TypeScript + Tailwind, 100 % local (fuentes incluidas en el repo, sin CDN ni telemetría).
-Pantallas: **Preguntar** (hilo de conversación, citas numeradas, fuentes, avisos) y **Estado**
-(servicios, GPU, índice, reindexado y latencia de la sesión). Buscar y la vista de nota completa
-llegan en el siguiente checkpoint.
+Pantallas: **Preguntar** (hilo de conversación, citas numeradas, fuentes, avisos), **Buscar**
+(búsqueda sin modelo, con filtros por asignatura, curso y etiqueta; O dentro de cada filtro e Y entre
+ellos, con recuentos; el estado va en la URL), **Nota** (la nota completa: índice de encabezados,
+`[[enlaces]]` resueltos por título, notas que la enlazan y «Abrir en Obsidian») y **Estado**
+(servicios, GPU, índice, reindexado y latencia de la sesión).
+
+**Fórmulas.** Las notas y las respuestas del modelo muestran LaTeX (`$x^2$`, `$$...$$`, y también
+`\(...\)` y `\[...\]`) con KaTeX, empaquetado en local (fuentes incluidas, sin CDN) y cargado solo la
+primera vez que aparece una fórmula. Va con `trust` apagado: sin `\href`, `\url` ni imágenes remotas.
+
+**Ctrl+K** (⌘K en Mac) abre una paleta para saltar a una pantalla, empezar una conversación o buscar
+una nota sin salir de donde estás. Es un cuadro de diálogo accesible con teclado completo.
+
+«Abrir en Obsidian» es un enlace `obsidian://open?vault=…&file=…` que construye la API; no ejecuta
+nada ni escribe en el vault. El nombre del vault es el de su carpeta; para otro, `BRAIN_OBSIDIAN_VAULT`.
+Un `[[enlace]]` con varias notas candidatas pregunta cuál se quiere; las copias exactas cuentan como
+una y se elige la más cercana a la nota que enlaza.
 
 ```powershell
 .\tasks.ps1 web-install   # una vez

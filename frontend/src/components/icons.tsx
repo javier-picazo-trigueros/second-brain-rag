@@ -116,3 +116,14 @@ export const RefreshIcon = (p: IconProps) => (
     <path d="M20 11a8 8 0 0 0-14.5-4M4 13a8 8 0 0 0 14.5 4M20 4v5h-5M4 20v-5h5" />
   </Svg>
 );
+export const SearchIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <circle cx="11" cy="11" r="7" />
+    <path d="m20 20-3.5-3.5" />
+  </Svg>
+);
+export const ExternalIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5" />
+  </Svg>
+);

@@ -200,3 +200,18 @@ def test_only_paths_restricts_search_and_dense_notes(store: VectorStore) -> None
     hits = store.search("semáforo", [1, 0, 0, 0], limit=10, prefetch=10, only_paths=["b.md"])
     assert {h.payload["note_path"] for h in hits} == {"b.md"}
     assert list(store.dense_notes([1, 0, 0, 0], only_paths=["b.md"])) == ["b.md"]
+
+
+def test_note_tags_gives_the_tags_of_every_note_once(store: VectorStore) -> None:
+    store.upsert_chunks(
+        [_chunk("a.md", "uno", 0), _chunk("a.md", "dos", 1), _chunk("b.md", "tres")],
+        [[1, 0, 0, 0], [1, 1, 0, 0], [0, 1, 0, 0]],
+    )
+    assert store.note_tags() == {"a.md": ("redes",), "b.md": ("redes",)}
+
+
+def test_note_links_gives_the_link_targets_of_every_note(store: VectorStore) -> None:
+    store.upsert_chunks(
+        [_chunk("a.md", "uno", 0), _chunk("b.md", "dos")], [[1, 0, 0, 0], [0, 1, 0, 0]]
+    )
+    assert store.note_links() == {"a.md": ("otra",), "b.md": ("otra",)}

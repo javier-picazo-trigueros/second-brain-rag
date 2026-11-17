@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { axe } from "vitest-axe";
@@ -47,6 +47,9 @@ const note: NoteDetail = {
   links: [],
   body: "Contenido",
   related: [],
+  resolved_links: {},
+  backlinks: [],
+  obsidian_url: "obsidian://open?vault=Cerebro&file=x",
 };
 
 beforeEach(() => {
@@ -160,8 +163,45 @@ describe("responsive navigation and new conversation", () => {
     expect(panel.className).toContain("max-lg:fixed");
   });
 
-  it("does not show «Buscar» until that screen exists", () => {
+  it("has a «Buscar» entry between Preguntar and Estado", () => {
     setup();
-    expect(screen.queryByRole("link", { name: "Buscar" })).toBeNull();
+    const links = within(screen.getByRole("navigation", { name: "Principal" })).getAllByRole("link");
+    expect(links.map((l) => l.getAttribute("aria-label"))).toEqual(["Preguntar", "Buscar", "Estado"]);
+    expect(screen.getByRole("link", { name: "Buscar" })).toHaveAttribute("href", "/buscar");
+  });
+});
+
+describe("AppShell: paleta Ctrl+K", () => {
+  it("opens with Ctrl+K from anywhere and closes with Escape, returning the focus", async () => {
+    setup();
+    const nav = screen.getByRole("link", { name: "Estado" });
+    nav.focus();
+    await userEvent.keyboard("{Control>}k{/Control}");
+    expect(screen.getByRole("dialog", { name: "Buscar o ir a…" })).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(nav).toHaveFocus();
+  });
+
+  it("opens with Cmd+K too, and Ctrl+K again toggles it closed", async () => {
+    setup();
+    await userEvent.keyboard("{Meta>}k{/Meta}");
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    await userEvent.keyboard("{Control>}k{/Control}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("has a visible button that opens it, with the shortcut in its name", async () => {
+    setup();
+    await userEvent.click(screen.getByRole("button", { name: /Búsqueda rápida/ }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("goes to a screen chosen in the palette", async () => {
+    setup();
+    await userEvent.keyboard("{Control>}k{/Control}");
+    await userEvent.click(screen.getByRole("option", { name: "Estado" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByRole("heading", { name: "Pantalla Estado" })).toBeInTheDocument();
   });
 });

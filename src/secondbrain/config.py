@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     demote_globs: Annotated[list[str], NoDecode] = Field(default_factory=list)
     demote_factor: float = Field(0.5, gt=0, le=1)
 
+    # Nombre del vault en Obsidian (enlaces «Abrir en Obsidian»); por defecto, el de la carpeta.
+    obsidian_vault: str | None = None
+
     ollama_url: str = "http://localhost:11434"
     embed_model: str = "bge-m3"
     embed_batch_size: int = Field(8, ge=1, le=128)
@@ -141,6 +144,10 @@ class Settings(BaseSettings):
         if self.related_budget_tokens >= self.context_budget_tokens:
             raise ValueError("related_budget_tokens debe ser menor que context_budget_tokens")
         return self
+
+    @property
+    def obsidian_vault_name(self) -> str:
+        return self.obsidian_vault or self.vault_path.name
 
     def is_excluded(self, rel_path: str) -> bool:
         """¿Debe ignorarse esta nota (ruta relativa al vault, con "/")?"""

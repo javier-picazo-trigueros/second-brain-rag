@@ -1,24 +1,33 @@
-import type { ComponentProps, ReactNode } from "react";
+import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 
+import { rehypeHeadingIds } from "../lib/rehypeHeadingIds";
+import { mayHaveMath } from "../lib/mathDetect"; // ligero: KaTeX solo se carga si hace falta
+import { rehypeHeadingLevels } from "../lib/rehypeHeadingLevels";
+import { remarkWikilinks } from "../lib/remarkWikilinks";
+import { WikiEmbed, WikiLink } from "./WikiLink";
+
+// Protocolos internos: `cite:` (chips de cita) y los de `[[enlaces]]` e incrustaciones de las notas.
+const INTERNAL = ["cite", "wikilink", "wikiembed"] as const;
+
 /**
- * Esquema de saneado: el predeterminado más el protocolo interno `cite:` (los chips de cita) y las
- * clases `language-*` de los bloques de código, para el resaltado. Nunca se renderiza HTML en crudo.
+ * Esquema de saneado: el predeterminado más los protocolos internos y las clases `language-*` de los
+ * bloques de código, para el resaltado. Nunca se renderiza HTML en crudo.
  */
 const schema = {
   ...defaultSchema,
-  protocols: { ...defaultSchema.protocols, href: [...(defaultSchema.protocols?.href ?? []), "cite"] },
+  protocols: { ...defaultSchema.protocols, href: [...(defaultSchema.protocols?.href ?? []), ...INTERNAL] },
   attributes: {
     ...defaultSchema.attributes,
-    code: [...(defaultSchema.attributes?.code ?? []), ["className", /^language-[\w-]+$/]],
+    code: [...(defaultSchema.attributes?.code ?? []), ["className", /^(?:language-[\w-]+|math-inline|math-display)$/]],
   },
 };
 
 export function urlTransform(url: string): string {
-  return url.startsWith("cite:") ? url : defaultUrlTransform(url);
+  return INTERNAL.some((scheme) => url.startsWith(`${scheme}:`)) ? url : defaultUrlTransform(url);
 }
 
 export function textOf(node: ReactNode): string {
@@ -30,28 +39,14 @@ export function textOf(node: ReactNode): string {
   return "";
 }
 
-/** Los encabezados «Página N» de los apuntes convertidos de PDF reciben un ancla `pagina-N`. */
-export function pageAnchor(text: string): string | undefined {
-  const match = text.trim().match(/^p[áa]gina\s+(\d+)$/i);
-  return match ? `pagina-${match[1]}` : undefined;
-}
-
 type Components = NonNullable<ComponentProps<typeof ReactMarkdown>["components"]>;
 
-function heading(Tag: "h1" | "h2" | "h3" | "h4" | "h5" | "h6") {
-  return function Heading({ children }: { children?: ReactNode }) {
-    return <Tag id={pageAnchor(textOf(children))}>{children}</Tag>;
-  };
-}
-
 export const noteComponents: Components = {
-  h1: heading("h1"),
-  h2: heading("h2"),
-  h3: heading("h3"),
-  h4: heading("h4"),
-  h5: heading("h5"),
-  h6: heading("h6"),
-  a: ({ href, children }) => <ExternalLink href={href}>{children}</ExternalLink>,
+  a: ({ href, children }) => {
+    if (href?.startsWith("wikilink:")) return <WikiLink href={href}>{children}</WikiLink>;
+    if (href?.startsWith("wikiembed:")) return <WikiEmbed>{children}</WikiEmbed>;
+    return <ExternalLink href={href}>{children}</ExternalLink>;
+  },
 };
 
 export function ExternalLink({ href, children }: { href?: string; children?: ReactNode }) {
@@ -67,17 +62,55 @@ interface MarkdownProps {
   children: string;
   components?: Components;
   highlight?: boolean;
+  /** `[[enlaces]]` de Obsidian como enlaces a notas (solo en notas, no en las respuestas). */
+  wikilinks?: boolean;
+  /** Nivel del encabezado más alto del texto (p. ej. 2 bajo un `h1`); sin él, se respetan los niveles. */
+  headingBase?: number;
 }
 
-export function Markdown({ children, components = noteComponents, highlight = false }: MarkdownProps) {
+type MathModule = typeof import("../lib/math");
+
+/** Carga KaTeX (y su CSS y fuentes locales) solo la primera vez que un texto lleva fórmulas. */
+function useMath(text: string): MathModule | null {
+  const wanted = mayHaveMath(text);
+  const [math, setMath] = useState<MathModule | null>(null);
+  useEffect(() => {
+    if (!wanted || math !== null) return;
+    let cancelled = false;
+    void import("../lib/math").then((m) => !cancelled && setMath(m));
+    return () => {
+      cancelled = true;
+    };
+  }, [wanted, math]);
+  return wanted ? math : null;
+}
+
+export function Markdown({
+  children,
+  components = noteComponents,
+  highlight = false,
+  wikilinks = false,
+  headingBase,
+}: MarkdownProps) {
+  const math = useMath(children);
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      rehypePlugins={highlight ? [[rehypeSanitize, schema], rehypeHighlight] : [[rehypeSanitize, schema]]}
+      remarkPlugins={[
+        remarkGfm,
+        ...(math ? [math.remarkMathPlugin] : []),
+        ...(wikilinks ? [remarkWikilinks] : []),
+      ]}
+      rehypePlugins={[
+        [rehypeSanitize, schema],
+        rehypeHeadingIds, // tras el saneado, que cambiaría los ids
+        ...(headingBase ? [() => rehypeHeadingLevels(headingBase)] : []),
+        ...(math ? [math.rehypeKatexPlugin] : []), // tras el saneado: su HTML es generado, no del texto
+        ...(highlight ? [rehypeHighlight] : []),
+      ]}
       urlTransform={urlTransform}
       components={components}
     >
-      {children}
+      {math ? math.normalizeDelimiters(children) : children}
     </ReactMarkdown>
   );
 }

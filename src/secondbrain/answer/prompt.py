@@ -27,7 +27,8 @@ SYSTEM_PROMPT = (
     "tus palabras sin copiar párrafos enteros, usa párrafos cortos o listas con viñetas y, si la "
     "pregunta es amplia, subtítulos en negrita. Incluye los datos concretos que den las fuentes "
     "(definiciones, pasos, fórmulas, ejemplos) y no pases de unas 300 palabras salvo que la "
-    "pregunta pida más. Si te piden relacionar o comparar temas, expón lo que dice cada fuente y "
+    "pregunta pida más. Fórmulas en LaTeX: $...$ en línea y $$...$$ en su propia línea. "
+    "Si te piden relacionar o comparar temas, expón lo que dice cada fuente y "
     "señala las conexiones que permitan; si ninguna fuente las establece, dilo en una frase en "
     "vez de rechazar la pregunta."
 )

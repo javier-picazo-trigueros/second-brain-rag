@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-import re
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from pathlib import PurePosixPath
@@ -9,11 +8,10 @@ from pathlib import PurePosixPath
 from secondbrain.config import Settings
 from secondbrain.domain import Hit
 from secondbrain.protocols import Embedder, Store
+from secondbrain.retrieval.families import CopyFamilies
 from secondbrain.retrieval.graph import ConceptGraph
 from secondbrain.store.manifest import Manifest
 
-# Sufijos típicos de las copias: "nota (1)", "nota - copia", "nota copy (2)".
-_COPY_SUFFIX = re.compile(r"\s*(\(\d+\)|[-_ ]*copia( \(\d+\))?|[-_ ]*copy( \(\d+\))?)\s*$", re.I)
 _SNIPPET_CHARS = 300
 _COSINE_LOOKUPS = 20  # notas del ranking cuyo coseno se pide aparte si falta en el denso
 
@@ -56,21 +54,22 @@ class SearchResult:
     facts: str = ""  # datos exactos del índice que se pasan al modelo (p. ej. nº de temas)
 
 
-def canonical_key(path: str) -> tuple[bool, int, str]:
-    has_suffix = bool(_COPY_SUFFIX.search(PurePosixPath(path).stem))
-    return (has_suffix, len(path), path)
-
-
 class HybridRetriever:
     """Denso + BM25 (fusión RRF en Qdrant) + ajustes en cliente + notas relacionadas por grafo."""
 
     def __init__(
-        self, settings: Settings, embedder: Embedder, store: Store, manifest: Manifest
+        self,
+        settings: Settings,
+        embedder: Embedder,
+        store: Store,
+        manifest: Manifest,
+        families: CopyFamilies | None = None,
     ) -> None:
         self._s = settings
         self._embedder = embedder
         self._store = store
         self._manifest = manifest
+        self._families = families or CopyFamilies(manifest)
 
     def search(
         self,
@@ -92,7 +91,7 @@ class HybridRetriever:
         similarity = max(cosines.values()) if cosines else self._store.dense_top(dense)
         if not hits:
             return SearchResult([], [], similarity)
-        canonical, copies = self._copy_index()
+        canonical, copies = self._families.index()
         ranked = self._relevant(self._rank(hits, canonical, copies), cosines, dense)
         if not ranked:
             return SearchResult([], [], similarity)
@@ -129,17 +128,6 @@ class HybridRetriever:
             for n in with_cosine
             if (n.cosine is None and keep_unknown) or (n.cosine is not None and n.cosine >= floor)
         ]
-
-    def _copy_index(self) -> tuple[dict[str, str], dict[str, tuple[str, ...]]]:
-        """Para cada nota con copias exactas: su ruta canónica y las demás ubicaciones."""
-        canonical: dict[str, str] = {}
-        others: dict[str, tuple[str, ...]] = {}
-        for group in self._manifest.duplicate_groups():
-            rep = min(group, key=canonical_key)
-            others[rep] = tuple(p for p in group if p != rep)
-            for path in group:
-                canonical[path] = rep
-        return canonical, others
 
     def _penalty(self, n_chunks: int) -> float:
         ratio = max(1.0, n_chunks / self._s.length_ref_chunks)

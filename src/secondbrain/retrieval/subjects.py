@@ -102,6 +102,7 @@ class SubjectIndex:
         # Un `include` mueve la nota: la reclama su asignatura y las demás no la cogen por carpeta.
         claimed = {p: s.name for s in self._subjects for p in self._paths if self._included(s, p)}
         self._notes = {s.name: self._collect(s, claimed) for s in self._subjects}
+        self._owner = {path: name for name, notes in self._notes.items() for path in notes}
 
     def _build(self, extra: Mapping[str, SubjectSpec]) -> list[Subject]:
         spelled: dict[str, Counter[str]] = {}
@@ -136,6 +137,13 @@ class SubjectIndex:
             if claimed.get(p) == subject.name
             or (norm(subject_of(p) or "") in subject.folders and p not in claimed)
         ]
+
+    def subjects(self) -> list[Subject]:
+        return list(self._subjects)
+
+    def name_of(self, path: str) -> str | None:
+        """Asignatura canónica de la nota (None si no está en una carpeta de asignatura)."""
+        return self._owner.get(path)
 
     def by_name(self, name: str) -> Subject | None:
         key = norm(name)

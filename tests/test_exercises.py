@@ -11,6 +11,7 @@ from secondbrain.answer.pipeline import (
     PARTIAL_NOTE,
     AnswerPipeline,
     DoneEvent,
+    ErrorEvent,
     SourcesEvent,
     TokenEvent,
 )
@@ -668,3 +669,123 @@ def test_the_exercise_chunks_given_to_the_model_have_their_tables_shortened(
     note = next(n for n in result.notes if n.path == solution)
     text = str(note.chunks[0].payload["text"])
     assert "22 filas más de esta tabla en la fuente" in text and "|30|" not in text
+
+
+# --- puerta de citas: sin citas, la respuesta de ejercicios se reintenta ------------------
+
+
+class SequenceLLM:
+    """Un guion distinto por llamada: la 2.ª respuesta puede corregir a la 1.ª."""
+
+    def __init__(self, scripts: Sequence[Sequence[str]]) -> None:
+        self.scripts = [list(x) for x in scripts]
+        self.calls = 0
+        self.users: list[str] = []
+        self.limits: list[int | None] = []
+
+    def stream_chat(self, messages: Sequence[Any], max_tokens: int | None = None) -> Iterator[Any]:
+        from secondbrain.answer.llm import Delta, Finished
+
+        self.users.append(messages[-1].content)
+        self.limits.append(max_tokens)
+        script = self.scripts[min(self.calls, len(self.scripts) - 1)]
+        self.calls += 1
+        for text in script:
+            yield Delta(text)
+        yield Finished(10, 10, 0.0, 1.0, 1.0, False)
+
+
+def gated(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex, scripts: Sequence[Sequence[str]]
+) -> tuple[list[Any], SequenceLLM]:
+    result, _, _ = build(tmp_path, manifest, index, texts=SOLUTION_TEXTS)
+    llm = SequenceLLM(scripts)
+    pipeline = AnswerPipeline(settings(tmp_path), FakeRetriever(result), llm)
+    return list(pipeline.ask("resuelve los ejercicios")), llm
+
+
+UNCITED = ["Paso 1: leer el enunciado.\nPaso 2: copiar el resultado."]
+CITED = ["Paso 1: leer el enunciado [S1].\nPaso 2: copiar el resultado [S2]."]
+
+
+def test_a_cited_answer_is_accepted_at_the_first_attempt(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    events, llm = gated(tmp_path, manifest, index, [CITED])
+    done = events[-1]
+    assert isinstance(done, DoneEvent) and llm.calls == 1
+    assert done.uncited_steps == 0 and "sin_citas" not in done.warnings
+
+
+def test_an_answer_without_citations_is_retried_once_with_a_warning_to_the_model(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    events, llm = gated(tmp_path, manifest, index, [UNCITED, CITED])
+    done = events[-1]
+    assert isinstance(done, DoneEvent) and llm.calls == 2
+    assert done.answer == CITED[0]
+    assert "sin_citas" not in done.warnings and done.uncited_steps == 0
+    assert "2 pasos sin cita" in llm.users[1] and "[S#]" in llm.users[1]
+    assert "AVISO" not in llm.users[0]
+    assert llm.limits[0] == llm.limits[1] == settings(tmp_path).exercises_max_tokens
+
+
+def test_steps_without_a_citation_in_an_otherwise_cited_answer_also_trigger_the_retry(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    partial = ["Paso 1: leer [S1].\nPaso 2: calcular sin fuente.\nPaso 3: otro."]
+    events, llm = gated(tmp_path, manifest, index, [partial, CITED])
+    done = events[-1]
+    assert isinstance(done, DoneEvent) and llm.calls == 2 and done.answer == CITED[0]
+    assert "2 pasos sin cita" in llm.users[1]
+
+
+def test_if_the_retry_is_no_better_the_best_attempt_is_kept_and_flagged(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    worse = ["Paso 1: nada.\nPaso 2: nada.\nPaso 3: nada."]
+    better = ["Paso 1: leer [S1].\nPaso 2: sin fuente.\n"]
+    events, llm = gated(tmp_path, manifest, index, [worse, better])
+    done = events[-1]
+    assert isinstance(done, DoneEvent) and llm.calls == 2
+    assert done.answer == better[0]
+    assert done.uncited_steps == 1 and "pasos_sin_cita" in done.warnings
+
+
+def test_it_never_retries_more_than_once(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    events, llm = gated(tmp_path, manifest, index, [UNCITED, UNCITED, CITED])
+    done = events[-1]
+    assert isinstance(done, DoneEvent) and llm.calls == 2
+    assert "sin_citas" in done.warnings
+
+
+def test_the_user_gets_the_final_text_as_it_will_be_saved(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    events, _ = gated(tmp_path, manifest, index, [UNCITED, CITED])
+    streamed = "".join(e.text for e in events if isinstance(e, TokenEvent))
+    done = events[-1]
+    assert (
+        isinstance(done, DoneEvent) and streamed == done.answer
+    )  # no se enseña el intento fallido
+    assert not any(isinstance(e, ErrorEvent) for e in events)
+
+
+def test_a_model_failure_during_the_gate_is_reported(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    result, _, _ = build(tmp_path, manifest, index)
+    pipeline = AnswerPipeline(
+        settings(tmp_path), FakeRetriever(result), ScriptedLLM(["x"], fail_after=0)
+    )
+    events = list(pipeline.ask("ejercicios"))
+    assert isinstance(events[-1], ErrorEvent)
+
+
+def test_ordinary_answers_do_not_go_through_the_gate(tmp_path: Path) -> None:
+    llm = SequenceLLM([["Un dato sin cita."], ["Otro [S1]."]])
+    pipeline = AnswerPipeline(settings(tmp_path), FakeRetriever(found(tmp_path)), llm)
+    events = list(pipeline.ask("q"))
+    assert llm.calls == 1 and isinstance(events[-1], DoneEvent)

@@ -9,7 +9,7 @@ from typing import Protocol
 
 from secondbrain.answer.citations import CitationStream
 from secondbrain.answer.context import BuiltContext, Fragment, Source, build_context
-from secondbrain.answer.llm import LLM, Delta, Finished, LLMError
+from secondbrain.answer.llm import LLM, Delta, Finished, LLMError, Message
 from secondbrain.answer.prompt import NOT_FOUND, build_messages, build_study_messages
 from secondbrain.config import Settings
 from secondbrain.retrieval.hybrid import SearchResult
@@ -281,6 +281,12 @@ class AnswerPipeline:
             )
             return
 
+        if context.mode == "exercises":
+            yield from self._ask_exercises(
+                question, context, confidence, result.top_similarity, start, retrieval_ms
+            )
+            return
+
         prefix = f"{result.ambiguity}\n\n" if result.ambiguity else ""
         if prefix:
             yield TokenEvent(prefix)  # la dice el sistema, no el modelo: no depende de que obedezca
@@ -327,6 +333,79 @@ class AnswerPipeline:
             retrieval_ms, first_token_ms, (self._clock() - start) * 1000,
         )  # fmt: skip
         yield replace(done, answer=prefix + done.answer) if prefix else done
+
+    def _ask_exercises(
+        self,
+        question: str,
+        context: BuiltContext,
+        confidence: str,
+        similarity: float | None,
+        start: float,
+        retrieval_ms: float,
+    ) -> Iterator[Event]:
+        """Ejercicios: se genera la respuesta completa y se comprueba que cada paso cita su fuente.
+        Si no (el modelo de 7B se olvida de citar), se le pide una vez más avisándole de qué falló.
+        El usuario ve solo la mejor de las dos, no el intento fallido."""
+        base = build_messages(question, context)
+        best: tuple[tuple[int, int], str, CitationStream, Finished | None] | None = None
+        nudge = ""
+        for _attempt in range(2):
+            messages = [*base[:-1], Message("user", base[-1].content + nudge)] if nudge else base
+            stream = CitationStream(context.fragments)
+            parts: list[str] = []
+            finished: Finished | None = None
+            try:
+                for item in self._llm.stream_chat(messages, self._s.exercises_max_tokens):
+                    if isinstance(item, Delta):
+                        piece = stream.feed(item.text)
+                    else:
+                        finished, piece = item, ""
+                    if piece:
+                        parts.append(piece)
+                        if _contradiction("".join(parts)):
+                            break
+                if not _contradiction("".join(parts)):
+                    parts.append(stream.finish())
+            except LLMError as exc:
+                log.warning("Fallo del modelo: %s", exc)
+                yield ErrorEvent(str(exc))
+                return
+            text = "".join(parts)
+            if _contradiction(text):
+                done = self._contradictory(
+                    text, stream, context, finished, confidence, similarity,
+                    retrieval_ms, None, (self._clock() - start) * 1000,
+                )  # fmt: skip
+                yield TokenEvent(done.answer)
+                yield done
+                return
+            uncited = _uncited_steps(text)
+            cited = len(stream.report.citations)
+            score = (0 if cited else 1, uncited)
+            if best is None or score < best[0]:
+                best = (score, text, stream, finished)
+            if cited and not uncited:
+                break
+            problems = []
+            if not cited:
+                problems.append("ninguna cita")
+            if uncited:
+                problems.append(
+                    f"{uncited} {'paso sin cita' if uncited == 1 else 'pasos sin cita'}"
+                )
+            nudge = (
+                f"\n\nAVISO: tu respuesta anterior tenía {' y '.join(problems)}. Escríbela de "
+                "nuevo: cada «Paso N» termina con su cita [S#] (copiada de las FUENTES) y los "
+                "números se copian de la solución, sin recalcular."
+            )
+        assert best is not None
+        _, text, stream, finished = best
+        first_token_ms = (self._clock() - start) * 1000
+        yield TokenEvent(text)
+        yield self._done(
+            text, stream, context, finished, confidence, similarity,
+            retrieval_ms, first_token_ms, (self._clock() - start) * 1000,
+        )  # fmt: skip
 
     def _write_study(self, plan: StudyPlan, start: float, retrieval_ms: float) -> Iterator[Event]:
         """Apuntes: una llamada al modelo por parte, con su ventana de fragmentos reales."""

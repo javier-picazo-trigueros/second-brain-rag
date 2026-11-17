@@ -26,7 +26,7 @@ questions:
   - id: ejemplo-ejercicios
     kind: exercises
     question: "Resuélveme los ejercicios del tema 3 de Álgebra paso a paso"
-    expect: ["Algebra/Ejercicios Tema 3", "Algebra/Ejercicios Tema 3 - solucion"]
+    expect: ["Algebra/Ejercicios Tema 3", "Algebra/Ejercicios Tema 3 - solucion"]  # solo el primer ejercicio
     acceptable: ["Algebra/Tema 3"]
   - id: ejemplo-apuntes
     kind: notes

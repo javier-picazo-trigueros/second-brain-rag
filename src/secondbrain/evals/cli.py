@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -108,6 +109,9 @@ def run(
 @golden_app.command("compare")
 def compare(before: Path, after: Path) -> None:
     """Tabla antes → después entre dos informes."""
+    reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if reconfigure is not None:
+        reconfigure(encoding="utf-8")  # la consola de Windows (cp1252) no tiene la flecha
     b = json.loads(before.read_text(encoding="utf-8"))
     a = json.loads(after.read_text(encoding="utf-8"))
     typer.echo(render_comparison(b["summary"], a["summary"]))

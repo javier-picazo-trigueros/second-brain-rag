@@ -16,15 +16,21 @@ SYSTEM_PROMPT = (
     "la frase: [S3]. Si varias fuentes la respaldan, [S1][S4]. Usa solo identificadores que "
     "aparezcan en las FUENTES. No escribas títulos de notas, páginas, asignaturas ni cursos: "
     "eso lo añade el sistema. Ejemplo: Un semáforo es un contador [S2].\n"
-    f"3. Si las FUENTES no bastan para responder, contesta exactamente: {NOT_FOUND} "
+    f"3. Si ninguna FUENTE trata el tema de la pregunta, contesta exactamente: {NOT_FOUND} "
     "Opcionalmente, en otra línea: Podrías mirar: [S2] (un identificador de las FUENTES).\n"
     "4. Las NOTAS RELACIONADAS son pistas automáticas, no evidencia: no afirmes nada "
     'basándote solo en ellas; menciónalas al final como "Ver también: [S7]".\n'
     "5. Responde en el idioma de la pregunta, de forma completa y bien estructurada: explica con "
     "tus palabras sin copiar párrafos enteros, usa párrafos cortos o listas con viñetas y, si la "
     "pregunta es amplia, subtítulos en negrita. Incluye los datos concretos que den las fuentes "
-    "(definiciones, pasos, fórmulas, ejemplos); no resumas en una frase lo que desarrollan."
+    "(definiciones, pasos, fórmulas, ejemplos) y no pases de unas 300 palabras salvo que la "
+    "pregunta pida más. Si te piden relacionar o comparar temas, expón lo que dice cada fuente y "
+    "señala las conexiones que permitan; si ninguna fuente las establece, dilo en una frase en "
+    "vez de rechazar la pregunta."
 )
+
+# Al final del mensaje, donde más pesa para un modelo de 7B: en respuestas largas dejaba de citar.
+REMINDER = "Recuerda: termina cada afirmación con su cita [S#] y no escribas títulos ni páginas."
 
 OVERVIEW_PROMPT = (
     "\n6. Esta es una pregunta de visión general: cada fuente es el resumen de una nota, con sus "
@@ -43,5 +49,5 @@ def build_messages(question: str, context: BuiltContext) -> list[Message]:
     system = SYSTEM_PROMPT + (OVERVIEW_PROMPT if context.mode == "overview" else "")
     return [
         Message("system", system),
-        Message("user", f"{sources}\n\nPREGUNTA: {asked}"),
+        Message("user", f"{sources}\n\nPREGUNTA: {asked}\n\n{REMINDER}"),
     ]

@@ -37,7 +37,7 @@ def test_system_prompt_marks_related_notes_as_hints_not_evidence() -> None:
 
 
 def test_system_prompt_is_small() -> None:
-    assert estimate_tokens(SYSTEM_PROMPT) <= 450
+    assert estimate_tokens(SYSTEM_PROMPT) <= 520
 
 
 def test_messages_are_system_then_user_with_context_and_question(tmp_path: Path) -> None:
@@ -47,7 +47,7 @@ def test_messages_are_system_then_user_with_context_and_question(tmp_path: Path)
     assert (system.role, user.role) == ("system", "user")
     assert system.content == SYSTEM_PROMPT
     assert "el semáforo es un contador" in user.content
-    assert user.content.rstrip().endswith("¿Qué es un semáforo?")
+    assert "PREGUNTA: ¿Qué es un semáforo?" in user.content
 
 
 def test_an_empty_context_still_produces_a_valid_prompt(tmp_path: Path) -> None:
@@ -115,4 +115,22 @@ def test_overview_questions_get_the_overview_instructions(tmp_path: Path) -> Non
 def test_the_overview_prompt_still_fits_the_window(tmp_path: Path) -> None:
     from secondbrain.answer.prompt import OVERVIEW_PROMPT
 
-    assert estimate_tokens(SYSTEM_PROMPT + OVERVIEW_PROMPT) <= 650
+    assert estimate_tokens(SYSTEM_PROMPT + OVERVIEW_PROMPT) <= 720
+
+
+def test_the_citation_reminder_comes_last_in_the_user_message(tmp_path: Path) -> None:
+    from secondbrain.answer.context import BuiltContext
+    from secondbrain.answer.prompt import REMINDER
+
+    ctx = BuiltContext("FUENTES (evidencia):", (), 5, 0, "search", ())
+    user = build_messages("¿Qué es un hilo?", ctx)[1].content
+    assert user.endswith(REMINDER) and "[S#]" in REMINDER
+
+
+def test_the_prompt_allows_relating_sources_instead_of_refusing() -> None:
+    assert "relacionar o comparar" in SYSTEM_PROMPT
+    assert "Si ninguna FUENTE trata el tema" in SYSTEM_PROMPT
+
+
+def test_the_prompt_caps_the_length_of_ordinary_answers() -> None:
+    assert "300 palabras" in SYSTEM_PROMPT

@@ -262,3 +262,10 @@ Y la fórmula \(E = mc^2\).`;
     expect(container.querySelector("pre code")).not.toBeNull();
   });
 });
+
+describe("code blocks", () => {
+  it("can be focused with the keyboard so a long line can be scrolled", () => {
+    const { container } = render(<Markdown>{"```c\nint main(void) { return 0; }\n```"}</Markdown>);
+    expect(container.querySelector("pre")).toHaveAttribute("tabindex", "0");
+  });
+});

@@ -81,6 +81,12 @@ La **complejidad** de un algoritmo mide los recursos que usa en función del tam
 
 Calcular la cota $O(\cdot)$ de un bucle anidado: se multiplican los recorridos [S3].`;
 
+const CODIGO = String.raw`Ejemplo con la familia exec [S1]:
+
+\[ \text{char* arguments[] = { "ls", "-l", "/usr/include", 0 }; execv("/bin/ls", arguments);} \]
+
+Y una fórmula de verdad: \(T(n) = O(n \log n)\) [S2].`;
+
 const ASKS = {
   respuesta: sse([
     sources(),
@@ -107,6 +113,11 @@ const ASKS = {
     { type: "progress", part: 1, total: 2, title: "Complejidad · págs. 3-5" },
     { type: "token", text: APUNTES },
     done({ answer: APUNTES, citations: FRAGMENTS.slice(0, 3), mode: "notes", subject: "Estructuras de Datos", topic: 1, completion_tokens: 1800 }),
+  ]),
+  codigo: sse([
+    sources(),
+    { type: "token", text: CODIGO },
+    done({ answer: CODIGO, citations: FRAGMENTS.slice(0, 2) }),
   ]),
   error: sse([{ type: "error", message: "Ollama no responde en http://localhost:11434: arráncalo con `ollama serve`." }]),
 };
@@ -173,6 +184,13 @@ const scenarios = [
       await page.getByRole("dialog", { name: "Guardar como nota" }).waitFor();
       await page.getByRole("button", { name: "Guardar", exact: true }).waitFor();
   } },
+  { name: "respuesta-codigo", run: async (page) => {
+      await ask(page, "¿Cómo se ejecuta un programa desde C?");
+      await page.locator(".katex").first().waitFor();
+      const code = await page.locator("[data-testid=answer] pre code").first().innerText();
+      if (!code.includes('{ "ls", "-l", "/usr/include", 0 }')) throw new Error("El código C perdió sus llaves: " + code);
+      if ((await page.locator("[data-testid=answer] .katex").count()) !== 1) throw new Error("Debe haber una sola fórmula, no el código");
+  } },
   { name: "confianza-baja", run: async (page) => ask(page, "¿Qué es un montículo?") },
   { name: "no-lo-encuentro", run: async (page) => ask(page, "¿Cómo funciona el borrow checker de Rust?") },
   { name: "error", run: async (page) => { await page.getByRole("textbox", { name: "Tu pregunta" }).fill("hola"); await page.getByRole("textbox", { name: "Tu pregunta" }).press("Enter"); await page.getByRole("alert").waitFor(); } },
@@ -188,7 +206,7 @@ const scenarios = [
       if (await menu.isVisible()) await menu.click();
       await page.getByRole("link", { name: "Estado" }).click(); await page.getByRole("heading", { name: "Ollama" }).waitFor(); } },
 ];
-const askFor = { respuesta: "respuesta", "apuntes-resultado": "apuntes", "apuntes-guardar": "apuntes", "respuesta-formulas": "formulas", "respuesta-nota": "respuesta", "confianza-baja": "confianza", "no-lo-encuentro": "nolo", error: "error" };
+const askFor = { respuesta: "respuesta", "respuesta-codigo": "codigo", "apuntes-resultado": "apuntes", "apuntes-guardar": "apuntes", "respuesta-formulas": "formulas", "respuesta-nota": "respuesta", "confianza-baja": "confianza", "no-lo-encuentro": "nolo", error: "error" };
 
 const browser = await chromium.launch({ executablePath: EDGE, headless: true });
 const summary = [];

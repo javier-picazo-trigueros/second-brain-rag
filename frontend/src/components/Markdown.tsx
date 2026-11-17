@@ -42,6 +42,8 @@ export function textOf(node: ReactNode): string {
 type Components = NonNullable<ComponentProps<typeof ReactMarkdown>["components"]>;
 
 export const noteComponents: Components = {
+  // Un bloque de código con scroll horizontal debe poder enfocarse con el teclado (axe).
+  pre: ({ children }) => <pre tabIndex={0}>{children}</pre>,
   a: ({ href, children }) => {
     if (href?.startsWith("wikilink:")) return <WikiLink href={href}>{children}</WikiLink>;
     if (href?.startsWith("wikiembed:")) return <WikiEmbed>{children}</WikiEmbed>;

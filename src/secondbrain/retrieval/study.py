@@ -19,7 +19,7 @@ from secondbrain.config import Settings
 from secondbrain.retrieval.exercises import ChunkSource, ExerciseBuilder
 from secondbrain.retrieval.families import CopyFamilies
 from secondbrain.retrieval.subjects import Subject, norm
-from secondbrain.retrieval.topics import is_guide
+from secondbrain.retrieval.topics import clean_title, is_guide, topic_key
 from secondbrain.store.manifest import Manifest
 
 _SUMMARY = re.compile(r"\b(?:resumen|resumenes|summary)\b")
@@ -57,6 +57,12 @@ def _natural(text: str) -> list[object]:
     return [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", norm(text))]
 
 
+def _syllabus_order(path: str) -> tuple[list[object], list[object]]:
+    """Orden del temario: por apartado («3.1», «3.2»…) y, a igualdad, por nombre."""
+    key = topic_key(path)
+    return _natural(key[1] if key else ""), _natural(PurePosixPath(path).stem)
+
+
 def _label(path: str, duplicated: set[str]) -> str:
     stem = PurePosixPath(path).stem
     return path.removesuffix(".md") if stem in duplicated else stem
@@ -80,9 +86,9 @@ class StudyPlanner:
         exercises, theory = self._exercises.classify(reps)
         theory = [p for p in theory if not is_guide(PurePosixPath(p).stem)]
         summaries = [p for p in theory if _SUMMARY.search(norm(PurePosixPath(p).stem))]
-        main = sorted((p for p in theory if p not in summaries), key=lambda p: _natural(p))
+        main = sorted((p for p in theory if p not in summaries), key=_syllabus_order)
         if not main:  # solo hay resumen: él es el contenido
-            main, summaries = sorted(summaries), []
+            main, summaries = sorted(summaries, key=_syllabus_order), []
         if not main:
             return None
 
@@ -158,10 +164,16 @@ class StudyPlanner:
 
     @staticmethod
     def _title(fragments: Sequence[StudyFragment]) -> str:
+        """«Nota · págs. 4-28»: dónde está lo que se va a escribir (los encabezados del PDF
+        convertido, a menudo «**ASIGNATURA**», no sirven de título)."""
         first = fragments[0]
-        heading = (first.heading or "").split(" > ")[0].strip()
-        title = heading or first.title
-        return title[:_PART_TITLE_MAX]
+        name = clean_title(first.title).replace("*", "").strip() or first.title
+        pages = [f.page for f in fragments if f.page is not None]
+        if not pages:
+            return name[:_PART_TITLE_MAX]
+        low, high = min(pages), max(pages)
+        span = f"{low}" if low == high else f"{low}-{high}"
+        return f"{name[: _PART_TITLE_MAX - 16]} · págs. {span}"
 
     def _exercise_part(
         self,

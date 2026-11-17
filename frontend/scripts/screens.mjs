@@ -83,7 +83,7 @@ const ASKS = {
     done({ answer: "No lo encuentro en el vault.\n\nPodrías mirar: [S3]", not_found: true, warnings: ["confianza_baja"], confidence: "baja", similarity: 0.52, citations: [FRAGMENTS[2]] }),
   ]),
   formulas: sse([
-    sources(),
+    sources({ fragments: FRAGMENTS.map((f, i) => (i === 0 ? { ...f, label: "Tema 5 Ejemplo de grafos [MD]", title: "Tema 5 Ejemplo de grafos [MD]" } : f)) }),
     { type: "token", text: FORMULAS },
     done({ answer: FORMULAS, citations: [FRAGMENTS[0]] }),
   ]),
@@ -139,6 +139,8 @@ const scenarios = [
       await page.locator(".katex-display").waitFor();
       const loaded = await page.evaluate(async () => { await document.fonts.ready; return document.fonts.check("1em KaTeX_Main") && document.fonts.check("1em KaTeX_Math"); });
       if (!loaded || (await page.locator(".katex").count()) < 3) throw new Error("KaTeX no se ha renderizado o sus fuentes no cargaron");
+      const text = await page.locator("[data-testid=answer]").innerText();
+      if (/cite:|\]\(|MDMD/.test(text)) throw new Error("La cita con corchetes salió como texto crudo: " + text);
   } },
   { name: "confianza-baja", run: async (page) => ask(page, "¿Qué es un montículo?") },
   { name: "no-lo-encuentro", run: async (page) => ask(page, "¿Cómo funciona el borrow checker de Rust?") },

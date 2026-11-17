@@ -66,6 +66,8 @@ interface MarkdownProps {
   wikilinks?: boolean;
   /** Nivel del encabezado más alto del texto (p. ej. 2 bajo un `h1`); sin él, se respetan los niveles. */
   headingBase?: number;
+  /** Acepta `\( \)` y `\[ \]` como fórmulas: solo para las respuestas del modelo, no para notas. */
+  latexDelimiters?: boolean;
 }
 
 type MathModule = typeof import("../lib/math");
@@ -91,6 +93,7 @@ export function Markdown({
   highlight = false,
   wikilinks = false,
   headingBase,
+  latexDelimiters = false,
 }: MarkdownProps) {
   const math = useMath(children);
   return (
@@ -110,7 +113,7 @@ export function Markdown({
       urlTransform={urlTransform}
       components={components}
     >
-      {math ? math.normalizeDelimiters(children) : children}
+      {math ? math.normalizeDelimiters(children, latexDelimiters) : children}
     </ReactMarkdown>
   );
 }

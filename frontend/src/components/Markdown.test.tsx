@@ -150,7 +150,7 @@ describe("math (KaTeX, local)", () => {
   });
 
   it("accepts the parenthesis and bracket delimiters that models like to write", async () => {
-    const { container } = render(<Markdown>{String.raw`Sea \(x^2\) y
+    const { container } = render(<Markdown latexDelimiters>{String.raw`Sea \(x^2\) y
 
 \[\int_0^1 x\,dx\]
 `}</Markdown>);
@@ -205,5 +205,16 @@ describe("math (KaTeX, local)", () => {
 $$y=\frac{1}{2}$$`}</Markdown>);
     await rendered(container);
     expect(await axe(container)).toHaveNoViolations();
+  });
+});
+
+describe("math in notes vs answers", () => {
+  it("shows an escaped [MD] in a note as plain brackets, next to a $...$ formula", async () => {
+    const { container } = render(<Markdown wikilinks>{String.raw`Resumen \[MD\] de la clase con $a+b$ y \(x\).`}</Markdown>);
+    await waitFor(() => expect(container.querySelector(".katex")).not.toBeNull());
+    expect(container.querySelectorAll(".katex")).toHaveLength(1); // solo $a+b$
+    expect(container.textContent).toContain("[MD]");
+    expect(container.textContent).toContain("(x)");
+    expect(container.querySelector(".katex-display")).toBeNull();
   });
 });

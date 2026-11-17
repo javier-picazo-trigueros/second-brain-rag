@@ -31,7 +31,7 @@ export function AnswerView({ text, fragments, streaming = false, onOpenNote }: P
 
   return (
     <div data-testid="answer" className="reading answer-text" aria-busy={streaming}>
-      <Markdown components={components}>{markdown}</Markdown>
+      <Markdown components={components} latexDelimiters>{markdown}</Markdown>
       {streaming ? (
         <span
           data-testid="cursor"

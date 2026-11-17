@@ -18,6 +18,7 @@ from secondbrain.ingest.indexer import Indexer, SyncReport
 from secondbrain.ingest.watcher import WatcherService
 from secondbrain.notes import resolve_note
 from secondbrain.protocols import Embedder, Store
+from secondbrain.retrieval.families import CopyFamilies
 from secondbrain.retrieval.graph import ConceptGraph
 from secondbrain.retrieval.hybrid import HybridRetriever, NoteHit, RelatedNote
 from secondbrain.store.manifest import Manifest
@@ -129,7 +130,8 @@ def search(
 ) -> None:
     """Búsqueda híbrida (vectorial + BM25), una entrada por nota, y relacionadas por el grafo."""
     svc = _build()
-    retriever = HybridRetriever(svc.settings, svc.embedder, svc.store, svc.manifest)
+    families = CopyFamilies.from_settings(svc.settings, svc.manifest)
+    retriever = HybridRetriever(svc.settings, svc.embedder, svc.store, svc.manifest, families)
     result = retriever.search(query, k=k, with_graph=graph)
     if not result.notes:
         typer.echo("Sin resultados.")

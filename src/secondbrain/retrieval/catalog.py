@@ -12,7 +12,7 @@ from pathlib import PurePosixPath
 from typing import Protocol
 
 from secondbrain.config import Settings
-from secondbrain.retrieval.hybrid import canonical_key
+from secondbrain.retrieval.families import CopyFamilies
 from secondbrain.retrieval.subjects import SubjectIndex, SubjectSpec, load_aliases
 from secondbrain.store.manifest import Manifest
 
@@ -32,10 +32,12 @@ class Catalog:
         manifest: Manifest,
         meta: NoteMetaSource,
         aliases: Mapping[str, SubjectSpec] | None = None,
+        families: CopyFamilies | None = None,
     ) -> None:
         self._manifest = manifest
         self._meta = meta
         self._aliases = load_aliases(settings.aliases_path) if aliases is None else aliases
+        self._families = families or CopyFamilies.from_settings(settings, manifest, self._aliases)
         self._key: int | None = None
         self._index: SubjectIndex | None = None
         self._tags: dict[str, tuple[str, ...]] | None = None
@@ -53,11 +55,7 @@ class Catalog:
             self._by_title = {}
             for path in sorted(paths):
                 self._by_title.setdefault(PurePosixPath(path).stem.casefold(), []).append(path)
-            self._canonical = {}
-            for group in self._manifest.duplicate_groups():
-                rep = min(group, key=canonical_key)
-                for member in group:
-                    self._canonical[member] = rep
+            self._canonical = self._families.index()[0]
             self._tags = None
             self._backlinks = None
             self._key = key

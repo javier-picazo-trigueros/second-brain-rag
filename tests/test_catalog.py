@@ -194,3 +194,22 @@ def test_proximity_never_hides_a_different_note_with_the_same_title(
     add(manifest, "3º/D/Otra carpeta/Tema 5.md")  # contenido distinto: no es una copia
     found = with_links(tmp_path, manifest).resolve_link("Tema 5", near="3º/D/x.md")
     assert sorted(found) == ["3º/D/Otra carpeta/Tema 5.md", "3º/D/Tema 5.md"]
+
+
+def test_an_explicit_link_to_a_version_keeps_pointing_at_that_note(
+    tmp_path: Path, manifest: Manifest
+) -> None:
+    add(manifest, "3º/DM/Unit 5.md", "3º/DM/Unit 5 (1).md")
+    catalog = make(tmp_path, manifest, Tags({}))
+    assert catalog.resolve_link("Unit 5") == ["3º/DM/Unit 5.md"]
+    assert catalog.resolve_link("Unit 5 (1)") == ["3º/DM/Unit 5 (1).md"]
+
+
+def test_backlinks_do_not_list_a_version_of_the_note_itself(
+    tmp_path: Path, manifest: Manifest
+) -> None:
+    add(manifest, "3º/DM/Unit 5.md", "3º/DM/Unit 5 (1).md", "3º/DM/Otra.md")
+    links = Tags({})
+    links.note_links = lambda: {"3º/DM/Unit 5 (1).md": ("Unit 5",), "3º/DM/Otra.md": ("Unit 5",)}  # type: ignore[method-assign]
+    catalog = make(tmp_path, manifest, links)
+    assert [b for b in catalog.backlinks("3º/DM/Unit 5.md")] == ["3º/DM/Otra.md"]

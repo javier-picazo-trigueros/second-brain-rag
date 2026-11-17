@@ -14,6 +14,7 @@ from secondbrain.config import PROJECT_ROOT, Settings, load_settings
 from secondbrain.embeddings.ollama import OllamaEmbedder
 from secondbrain.ingest.indexer import Indexer
 from secondbrain.retrieval.catalog import Catalog
+from secondbrain.retrieval.families import CopyFamilies
 from secondbrain.retrieval.hybrid import HybridRetriever
 from secondbrain.retrieval.overview import IntentRetriever
 from secondbrain.store.manifest import Manifest
@@ -37,9 +38,10 @@ def build_services(settings: Settings | None = None) -> AppServices:
     embedder = OllamaEmbedder(s)
     store = VectorStore(s, dim=None)  # solo lectura de la colección: no necesita la dimensión
     manifest = Manifest(s.manifest_path)
-    retriever = HybridRetriever(s, embedder, store, manifest)
-    answers = IntentRetriever(s, retriever, store, manifest)  # visión general o búsqueda
-    catalog = Catalog(s, manifest, store)
+    families = CopyFamilies.from_settings(s, manifest)  # copias exactas y versiones « (n)»
+    retriever = HybridRetriever(s, embedder, store, manifest, families)
+    answers = IntentRetriever(s, retriever, store, manifest, families=families)  # visión general
+    catalog = Catalog(s, manifest, store, families=families)
     indexer = Indexer(s, embedder, store, manifest)
     health = HealthChecker(s, httpx.Client(base_url=s.ollama_url), store.count)
     return AppServices(

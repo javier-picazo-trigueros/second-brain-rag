@@ -8,6 +8,7 @@ import pytest
 
 from secondbrain.config import Settings
 from secondbrain.domain import Hit
+from secondbrain.retrieval.families import CopyFamilies
 from secondbrain.retrieval.hybrid import SearchResult
 from secondbrain.retrieval.overview import IntentRetriever, OverviewBuilder
 from secondbrain.store.manifest import Manifest
@@ -406,3 +407,21 @@ def test_a_topic_overview_has_no_topic_count(tmp_path: Path, manifest: Manifest)
     )
     result = router.search("de q va el tema 2 de ia", k=5)
     assert result.mode == "overview_topic" and result.facts == ""
+
+
+def test_versions_with_a_copy_suffix_collapse_in_the_overview(
+    tmp_path: Path, manifest: Manifest
+) -> None:
+    add(manifest, "3º/DM/DM - Unit 5 - Classification.md")
+    add(manifest, "3º/DM/DM - Unit 5 - Classification (1).md")  # contenido distinto: sin grupo
+    add(manifest, "3º/DM/DM - Unit 6 - Clustering.md")
+    store = OutlineStore([chunk(p, 0, "T") for p in manifest.paths()])
+    families = CopyFamilies(manifest, lambda p: p.split("/")[1])
+    result = OverviewBuilder(settings(tmp_path), store, manifest, families).build(
+        sorted(manifest.paths()), 0
+    )
+    assert [n.path for n in result.notes] == [
+        "3º/DM/DM - Unit 5 - Classification.md",
+        "3º/DM/DM - Unit 6 - Clustering.md",
+    ]
+    assert result.notes[0].also_in == ("3º/DM/DM - Unit 5 - Classification (1).md",)

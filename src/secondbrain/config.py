@@ -61,7 +61,7 @@ class Settings(BaseSettings):
 
     # Modelo de lenguaje (respuestas). En consulta el embedder va en CPU para dejar la VRAM al LLM.
     llm_model: str = "qwen2.5:7b"
-    llm_num_ctx: int = Field(8192, ge=2048)
+    llm_num_ctx: int = Field(16384, ge=2048)
     llm_max_tokens: int = Field(1024, ge=1)  # tope de la respuesta (num_predict)
     llm_temperature: float = Field(0.2, ge=0, le=1)
     llm_keep_alive: str = "10m"
@@ -92,6 +92,9 @@ class Settings(BaseSettings):
     # en `llm_num_ctx`: sistema ~450 + contexto + pregunta ~700 + `llm_max_tokens`.
     context_budget_tokens: int = Field(4500, ge=500)
     related_budget_tokens: int = Field(800, ge=0)  # parte del anterior reservada a las pistas
+    # Modo «ejercicios»: enunciados, soluciones y teoría del tema caben en un contexto mayor.
+    exercises_budget_tokens: int = Field(9000, ge=1000)
+    exercises_theory_notes: int = Field(2, ge=0)  # notas de teoría que acompañan a los ejercicios
 
     # API HTTP: solo escucha en la propia máquina. El front de desarrollo (Vite) necesita su origen
     # en `api_cors_origins`, separado por ";"; en producción la sirve la propia API y no hace falta.

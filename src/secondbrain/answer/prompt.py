@@ -56,6 +56,18 @@ TOPIC_PROMPT = (
 )
 
 
+EXERCISES_PROMPT = (
+    "\n6. Esta petición es sobre los EJERCICIOS de un tema: las fuentes son sus enunciados, "
+    "sus soluciones (si existen) y fragmentos de teoría del tema. El DATO DEL ÍNDICE lista los "
+    "ejercicios que hay. Responde así: 1) di cuántos ejercicios hay y cuáles son; 2) resuélvelos "
+    "uno a uno, paso a paso: copia o resume el enunciado con su cita [S#], aplica la teoría del "
+    "tema para justificar cada paso (con su cita) y usa la solución de la fuente para el resultado "
+    "final; 3) si son varios y la petición es general, resuelve el primero y pregunta cuál quiere "
+    "después. Usa SOLO datos y pasos que estén en las fuentes: si falta un dato, dilo; no "
+    "inventes pasos genéricos. No escribas la frase «No lo encuentro en el vault» si has "
+    "respondido con contenido."
+)
+
 _NUMBERS = {"un par de": 2, "un": 1, "dos": 2, "tres": 3, "cuatro": 4}
 _PARAGRAPHS = re.compile(r"\b(un par de|un|dos|tres|cuatro|[1-4])\s+parrafos?\b")
 
@@ -82,7 +94,11 @@ def build_messages(question: str, context: BuiltContext) -> list[Message]:
     if len(asked) > QUESTION_MAX_CHARS:
         asked = asked[:QUESTION_MAX_CHARS].rstrip() + " […]"
     sources = context.text or "FUENTES: (no se ha recuperado ninguna nota)"
-    extra = {"overview": OVERVIEW_PROMPT, "overview_topic": TOPIC_PROMPT}.get(context.mode, "")
+    extra = {
+        "overview": OVERVIEW_PROMPT,
+        "overview_topic": TOPIC_PROMPT,
+        "exercises": EXERCISES_PROMPT,
+    }.get(context.mode, "")
     system = SYSTEM_PROMPT + extra
     requested = format_request(asked)
     tail = f"{requested}\n\n{REMINDER}" if requested else REMINDER

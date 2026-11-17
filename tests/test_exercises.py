@@ -1,0 +1,427 @@
+from __future__ import annotations
+
+from collections.abc import Iterator, Sequence
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from secondbrain.answer.context import build_context
+from secondbrain.answer.pipeline import AnswerPipeline, DoneEvent, SourcesEvent, TokenEvent
+from secondbrain.answer.prompt import NOT_FOUND, build_messages
+from secondbrain.config import Settings
+from secondbrain.domain import Hit
+from secondbrain.retrieval.exercises import ExerciseBuilder
+from secondbrain.retrieval.families import CopyFamilies
+from secondbrain.retrieval.hybrid import NoteHit, SearchResult
+from secondbrain.retrieval.intent import detect_intent
+from secondbrain.retrieval.overview import IntentRetriever
+from secondbrain.retrieval.subjects import SubjectIndex, SubjectSpec
+from secondbrain.store.manifest import Manifest
+from tests.fakes import FakeRetriever, ScriptedLLM
+
+ALIASES = {
+    "Data Mining": SubjectSpec(aliases=("data mining", "dm"), folders=("DM",)),
+    "Bases de Datos": SubjectSpec(aliases=("bases de datos", "bd"), folders=("BD",)),
+}
+PATHS = [
+    "3º/DM/DM - Unit 1 - Introduction.md",
+    "3º/DM/DM - Unit 2 - Preparation notes.md",
+    "3º/DM/DM - Unit 2 - Sample exercises 1.md",
+    "3º/DM/DM - Unit 2 - Sample exercises 1 - solution.md",
+    "3º/DM/DM - Unit 2 - Sample exercises 2.md",
+    "3º/DM/DM - Unit 2 - Sample exercises 2 - solution.md",
+    "3º/DM/DM - Unit 3 - Visual notes.md",
+    "3º/BD/Ejercicios - Tema 02 - Modelo Relacional.md",
+    "3º/BD/Tema 02 - Modelo Relacional.md",
+]
+
+
+@pytest.fixture
+def index() -> SubjectIndex:
+    return SubjectIndex(PATHS, ALIASES)
+
+
+# --- intención ---------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        # las dos frases literales de la prueba real
+        "resuélveme el problema/los ejercicios del tema 2 de data mining paso a paso",
+        "ve a los ejercicios del tema 2 de data mining y explícame cómo resolverlos",
+        # variantes: sin tildes, abreviado, con faltas, otras formas verbales
+        "resuelveme los ejercicios del tema 2 de DM",
+        "resolver los ejercicios del tema 2 de data mining",
+        "haz los ejercicios del unit 2 de data mining",
+        "como se resuelven los problemas de la unidad 2 de data mining?",
+        "ejercisios del tema 2 de data mining paso a paso",
+        "q ejercicios hay del tema 2 de data mining",
+        "explicame como resolver el problema 1 del tema 2 de data mining",
+        "Quiero practicar con los ejercicios del tema 2 de data mining",
+    ],
+)
+def test_exercise_requests_are_detected_with_subject_and_topic(
+    index: SubjectIndex, question: str
+) -> None:
+    intent = detect_intent(question, index)
+    assert intent.kind == "exercises"
+    assert intent.subject is not None and intent.subject.name == "Data Mining"
+    assert intent.topic == 2
+
+
+@pytest.mark.parametrize(
+    ("question", "kind"),
+    [
+        ("explícame el tema 2 de data mining", "overview_topic"),
+        ("¿de qué trata el tema 2 de data mining?", "overview_topic"),
+        ("¿qué es PCA en data mining?", "search"),
+        ("resuelve x + 1 = 2", "search"),  # sin asignatura
+        ("ejercicios de PCA", "search"),  # sin asignatura ni tema
+        ("¿cómo se resuelve un ejercicio de PCA en data mining?", "search"),  # sin tema
+    ],
+)
+def test_other_questions_keep_their_route(index: SubjectIndex, question: str, kind: str) -> None:
+    assert detect_intent(question, index).kind == kind
+
+
+# --- recuperación -------------------------------------------------------------------------------
+
+
+class ChunkStore:
+    """Chunks reales por nota: `chunks_of` los devuelve en orden de posición."""
+
+    def __init__(self, texts: dict[str, list[str]]) -> None:
+        self.texts = texts
+        self.asked: list[list[str]] = []
+
+    def chunks_of(self, paths: Sequence[str]) -> list[dict[str, Any]]:
+        self.asked.append(list(paths))
+        return [
+            {
+                "note_path": p,
+                "position": i,
+                "heading_path": "Ejercicio",
+                "page": i + 1,
+                "text": text,
+                "resumen": None,
+            }
+            for p in paths
+            for i, text in enumerate(self.texts.get(p, ["(vacía)"]))
+        ]
+
+    def outline(self, paths: Sequence[str]) -> list[dict[str, Any]]:
+        return [
+            {"note_path": p, "position": 0, "heading_path": "Tema", "resumen": "Resumen."}
+            for p in paths
+        ]
+
+
+@pytest.fixture
+def manifest(tmp_path: Path) -> Iterator[Manifest]:
+    m = Manifest(tmp_path / "m.sqlite")
+    for p in PATHS:
+        m.upsert(p, "h", 3)
+        m.set_meta(p, (), None)
+    yield m
+    m.close()
+
+
+def settings(tmp_path: Path, **over: Any) -> Settings:
+    return Settings(_env_file=None, vault_path=tmp_path, **over)  # type: ignore[call-arg]
+
+
+def theory_hit(path: str) -> NoteHit:
+    payload = {"note_path": path, "heading_path": "PCA", "page": 4, "text": "Teoría de PCA."}
+    return NoteHit(path, path.rsplit("/", 1)[-1][:-3], 0.9, 0.9, (Hit(0.9, payload),), (), 88)
+
+
+def build(
+    tmp_path: Path,
+    manifest: Manifest,
+    index: SubjectIndex,
+    topic: int = 2,
+    texts: dict[str, list[str]] | None = None,
+) -> tuple[SearchResult, ChunkStore, list[list[str]]]:
+    store = ChunkStore(texts or {})
+    theory_calls: list[list[str]] = []
+
+    def theory(paths: Sequence[str]) -> list[NoteHit]:
+        theory_calls.append(list(paths))
+        return [theory_hit(p) for p in paths][:2]
+
+    subject = index.by_name("Data Mining")
+    assert subject is not None
+    result = ExerciseBuilder(settings(tmp_path), store, manifest, CopyFamilies(manifest)).build(
+        subject, topic, index.topic_notes(subject, topic), theory
+    )
+    return result, store, theory_calls
+
+
+def test_exercises_come_first_each_followed_by_its_solution_then_the_theory(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    result, _, _ = build(tmp_path, manifest, index)
+    assert result.mode == "exercises"
+    assert [n.path for n in result.notes] == [
+        "3º/DM/DM - Unit 2 - Sample exercises 1.md",
+        "3º/DM/DM - Unit 2 - Sample exercises 1 - solution.md",
+        "3º/DM/DM - Unit 2 - Sample exercises 2.md",
+        "3º/DM/DM - Unit 2 - Sample exercises 2 - solution.md",
+        "3º/DM/DM - Unit 2 - Preparation notes.md",
+    ]
+
+
+def test_it_never_includes_notes_of_another_subject_or_topic(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    result, store, theory = build(tmp_path, manifest, index)
+    everything = {n.path for n in result.notes} | {p for call in store.asked for p in call}
+    everything |= {p for call in theory for p in call}
+    assert all("/DM/" in p for p in everything)
+    assert all("Unit 2" in p for p in everything)
+
+
+def test_exercise_notes_carry_their_real_chunks_in_order(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    path = "3º/DM/DM - Unit 2 - Sample exercises 1.md"
+    result, _, _ = build(tmp_path, manifest, index, texts={path: ["Enunciado A", "Enunciado B"]})
+    note = next(n for n in result.notes if n.path == path)
+    assert [h.payload["text"] for h in note.chunks] == ["Enunciado A", "Enunciado B"]
+
+
+def test_the_theory_is_searched_only_among_the_theory_notes_of_the_topic(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    _, _, theory = build(tmp_path, manifest, index)
+    assert theory == [["3º/DM/DM - Unit 2 - Preparation notes.md"]]
+
+
+def test_the_facts_list_every_exercise_and_whether_it_has_a_solution(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    result, _, _ = build(tmp_path, manifest, index)
+    assert "tema 2 de Data Mining" in result.facts
+    assert "Sample exercises 1 (con solución)" in result.facts
+    assert "Sample exercises 2 (con solución)" in result.facts
+    assert result.canned == ""
+
+
+def test_an_exercise_without_a_solution_is_listed_as_such(
+    tmp_path: Path, index: SubjectIndex
+) -> None:
+    paths = ["3º/DM/DM - Unit 2 - Theory.md", "3º/DM/DM - Unit 2 - Taller PCA.md"]
+    m = Manifest(tmp_path / "x.sqlite")
+    for p in paths:
+        m.upsert(p, "h", 3)
+        m.set_meta(p, (), None)
+    idx = SubjectIndex(paths, ALIASES)
+    subject = idx.by_name("Data Mining")
+    assert subject is not None
+    builder = ExerciseBuilder(settings(tmp_path), ChunkStore({}), m, CopyFamilies(m))
+    result = builder.build(subject, 2, idx.topic_notes(subject, 2), lambda ps: [])
+    m.close()
+    assert "Taller PCA (sin solución)" in result.facts
+
+
+def test_a_version_of_an_exercise_collapses_into_one(tmp_path: Path) -> None:
+    paths = [
+        "3º/DM/DM - Unit 2 - Sample exercises 1.md",
+        "3º/DM/DM - Unit 2 - Sample exercises 1 (1).md",
+        "3º/DM/DM - Unit 2 - Theory.md",
+    ]
+    m = Manifest(tmp_path / "v.sqlite")
+    for i, p in enumerate(paths):
+        m.upsert(p, "h", 3)
+        m.set_meta(p, (), f"body{i}")
+    idx = SubjectIndex(paths, ALIASES)
+    subject = idx.by_name("Data Mining")
+    assert subject is not None
+    families = CopyFamilies(m, lambda p: "Data Mining")
+    result = ExerciseBuilder(settings(tmp_path), ChunkStore({}), m, families).build(
+        subject, 2, idx.topic_notes(subject, 2), lambda ps: []
+    )
+    m.close()
+    assert [n.path for n in result.notes].count("3º/DM/DM - Unit 2 - Sample exercises 1.md") == 1
+    assert not any("(1)" in n.path for n in result.notes)
+
+
+# --- sin ejercicios: respuesta determinista, sin modelo ------------------------------------------
+
+
+def test_a_topic_without_exercises_gets_a_fixed_answer_listing_what_it_has(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    result, store, _ = build(tmp_path, manifest, index, topic=3)
+    assert result.mode == "exercises_none"
+    assert result.canned.startswith("No encuentro ejercicios del tema 3 de Data Mining.")
+    assert "Del tema 3 tienes:" in result.canned
+    assert "- DM - Unit 3 - Visual notes" in result.canned
+    assert "apuntes" in result.canned and "teoría" in result.canned
+    assert store.asked == []  # ni siquiera se leen chunks
+
+
+def test_the_fixed_answer_only_lists_notes_of_that_subject_and_topic(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    result, _, _ = build(tmp_path, manifest, index, topic=3)
+    assert "Modelo Relacional" not in result.canned and "Unit 1" not in result.canned
+
+
+# --- el router ------------------------------------------------------------------------------------
+
+
+class Base:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, Sequence[str] | None]] = []
+
+    def search(
+        self,
+        query: str,
+        k: int = 5,
+        *,
+        with_graph: bool = True,
+        only_paths: Sequence[str] | None = None,
+    ) -> SearchResult:
+        self.calls.append((query, only_paths))
+        paths = list(only_paths or [])
+        return SearchResult([theory_hit(p) for p in paths][:k], [], 0.8)
+
+
+def test_the_router_sends_exercise_requests_to_the_exercise_builder(
+    tmp_path: Path, manifest: Manifest
+) -> None:
+    base = Base()
+    router = IntentRetriever(
+        settings(tmp_path),
+        base,
+        ChunkStore({}),
+        manifest,
+        aliases=ALIASES,
+        families=CopyFamilies(manifest),
+    )
+    result = router.search("resuélveme los ejercicios del tema 2 de data mining paso a paso", k=5)
+    assert result.mode == "exercises"
+    assert all("/DM/" in n.path for n in result.notes)
+    # la teoría se busca solo entre las notas de teoría de ese tema
+    assert base.calls == [
+        (
+            "resuélveme los ejercicios del tema 2 de data mining paso a paso",
+            ["3º/DM/DM - Unit 2 - Preparation notes.md"],
+        )
+    ]
+
+
+def test_the_router_answers_a_missing_topic_with_the_fixed_text(
+    tmp_path: Path, manifest: Manifest
+) -> None:
+    router = IntentRetriever(settings(tmp_path), Base(), ChunkStore({}), manifest, aliases=ALIASES)
+    result = router.search("ve a los ejercicios del tema 3 de data mining y explícame", k=5)
+    assert result.mode == "exercises_none" and result.canned
+
+
+def test_a_topic_the_subject_does_not_have_says_so_and_lists_the_topics_it_has(
+    tmp_path: Path, manifest: Manifest
+) -> None:
+    router = IntentRetriever(settings(tmp_path), Base(), ChunkStore({}), manifest, aliases=ALIASES)
+    result = router.search("resuelve los ejercicios del tema 9 de data mining", k=5)
+    assert result.mode == "exercises_none"
+    assert result.canned.startswith("No encuentro ejercicios del tema 9 de Data Mining.")
+    assert "no tiene notas del tema 9" in result.canned
+
+
+# --- contexto, prompt y pipeline ---------------------------------------------------------
+
+
+def test_the_exercise_context_has_its_own_larger_budget_and_no_hints(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    long = {p: ["palabra " * 400] * 12 for p in PATHS}
+    result, _, _ = build(tmp_path, manifest, index, texts=long)
+    s = settings(tmp_path)
+    context = build_context(result, s)
+    assert context.mode == "exercises"
+    assert s.context_budget_tokens < context.tokens <= s.exercises_budget_tokens
+    assert all(src.kind == "evidence" for src in context.sources)
+
+
+def test_the_exercise_prompt_asks_for_the_statement_then_the_steps_with_the_theory(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    result, _, _ = build(tmp_path, manifest, index)
+    s = settings(tmp_path)
+    system = build_messages("resuelve", build_context(result, s))[0].content
+    for phrase in ("enunciado", "solución", "paso a paso", "uno a uno", "no inventes"):
+        assert phrase in system.lower()
+    # el worst case sigue cabiendo en la ventana
+    messages = build_messages("¿" + "p " * 3000 + "?", build_context(result, s))
+    from secondbrain.answer.context import estimate_tokens
+
+    assert sum(estimate_tokens(m.content) for m in messages) + s.llm_max_tokens <= s.llm_num_ctx
+
+
+def _pipeline(
+    tmp_path: Path, result: SearchResult, deltas: Sequence[str]
+) -> tuple[list[Any], ScriptedLLM]:
+    llm = ScriptedLLM(deltas)
+    pipeline = AnswerPipeline(settings(tmp_path), FakeRetriever(result), llm)
+    return list(pipeline.ask("q")), llm
+
+
+def test_the_pipeline_answers_the_fixed_text_without_calling_the_model(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    result, _, _ = build(tmp_path, manifest, index, topic=3)
+    events, llm = _pipeline(tmp_path, result, ["no debería llamarse"])
+    assert llm.calls == 0
+    assert isinstance(events[0], SourcesEvent) and events[0].sources  # se pueden abrir las notas
+    text = "".join(e.text for e in events if isinstance(e, TokenEvent))
+    done = events[-1]
+    assert isinstance(done, DoneEvent)
+    assert done.answer == text == result.canned
+    assert not done.not_found and done.warnings == ()  # ni «sin citas» ni confianza baja
+
+
+# --- regla: «No lo encuentro» no puede ir tras contenido ----------------------------------------
+
+
+def found(tmp_path: Path) -> SearchResult:
+    return SearchResult([theory_hit("3º/DM/DM - Unit 2 - Preparation notes.md")], [], 0.8)
+
+
+def test_not_found_after_invented_content_cuts_the_answer_and_replaces_it(tmp_path: Path) -> None:
+    deltas = ["Para resolverlo, calcula la media [S1]. ", "Luego resta. ", NOT_FOUND, " Más texto."]
+    events, _ = _pipeline(tmp_path, found(tmp_path), deltas)
+    done = events[-1]
+    assert isinstance(done, DoneEvent)
+    assert done.answer == NOT_FOUND and done.not_found
+    assert "respuesta_contradictoria" in done.warnings
+    assert "sin_citas" not in done.warnings
+    streamed = "".join(e.text for e in events if isinstance(e, TokenEvent))
+    assert "Más texto" not in streamed  # se cortó la generación al verla
+
+
+def test_not_found_at_the_start_is_a_normal_answer_with_its_suggestion(tmp_path: Path) -> None:
+    deltas = [NOT_FOUND, "\n\nPodrías mirar: [S1]"]
+    events, _ = _pipeline(tmp_path, found(tmp_path), deltas)
+    done = events[-1]
+    assert isinstance(done, DoneEvent)
+    assert done.answer.startswith(NOT_FOUND) and "Podrías mirar" in done.answer
+    assert done.not_found and "respuesta_contradictoria" not in done.warnings
+
+
+def test_not_found_split_across_deltas_is_still_caught(tmp_path: Path) -> None:
+    deltas = ["Resultado: 42. ", "No lo encuentro ", "en el vault."]
+    events, _ = _pipeline(tmp_path, found(tmp_path), deltas)
+    done = events[-1]
+    assert isinstance(done, DoneEvent)
+    assert done.answer == NOT_FOUND and "respuesta_contradictoria" in done.warnings
+
+
+def test_an_ordinary_answer_is_untouched(tmp_path: Path) -> None:
+    events, _ = _pipeline(tmp_path, found(tmp_path), ["Un dato [S1]."])
+    done = events[-1]
+    assert isinstance(done, DoneEvent)
+    assert done.answer == "Un dato [S1]." and "respuesta_contradictoria" not in done.warnings

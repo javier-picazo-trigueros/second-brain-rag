@@ -52,6 +52,7 @@ class SearchResult:
     top_similarity: float | None = None
     mode: str = "search"  # "overview": resumen de una asignatura o tema, no fragmentos
     facts: str = ""  # datos exactos del índice que se pasan al modelo (p. ej. nº de temas)
+    canned: str = ""  # respuesta fija, sin modelo (p. ej. «no hay ejercicios de ese tema»)
 
 
 class HybridRetriever:

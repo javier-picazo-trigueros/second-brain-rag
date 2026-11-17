@@ -10,10 +10,12 @@ from typing import Any, Protocol
 
 from secondbrain.config import Settings
 from secondbrain.domain import Hit
+from secondbrain.retrieval.exercises import ChunkSource, ExerciseBuilder, available_topics
 from secondbrain.retrieval.families import CopyFamilies
 from secondbrain.retrieval.hybrid import NoteHit, SearchResult
 from secondbrain.retrieval.intent import detect_intent
 from secondbrain.retrieval.subjects import (
+    Subject,
     SubjectIndex,
     SubjectSpec,
     load_aliases,
@@ -114,19 +116,7 @@ class OverviewBuilder:
         return SearchResult(hits, [], None, mode=mode, facts=facts)
 
     def _collapse(self, notes: Sequence[str]) -> tuple[list[str], dict[str, tuple[str, ...]]]:
-        wanted = set(notes)
-        canonical: dict[str, str] = {}
-        others: dict[str, tuple[str, ...]] = {}
-        for group in self._families.groups():
-            asked = [p for p in group if p in wanted]
-            if not asked:
-                continue
-            rep = self._families.representative(asked)  # solo entre las pedidas, no de otra carpeta
-            others[rep] = tuple(p for p in group if p != rep)
-            for path in asked:
-                canonical[path] = rep
-        reps = dict.fromkeys(canonical.get(p, p) for p in notes)
-        return list(reps), others
+        return self._families.collapse(notes)
 
     def _choose(self, reps: list[str], counts: Mapping[str, int]) -> list[str]:
         """Qué notas representan la asignatura (en orden natural).
@@ -194,7 +184,7 @@ class IntentRetriever:
         self,
         settings: Settings,
         base: Searcher,
-        store: OutlineSource,
+        store: ChunkSource,
         manifest: Manifest,
         aliases: Mapping[str, SubjectSpec] | None = None,
         families: CopyFamilies | None = None,
@@ -203,6 +193,7 @@ class IntentRetriever:
         self._base = base
         self._manifest = manifest
         self._builder = OverviewBuilder(settings, store, manifest, families)
+        self._exercises = ExerciseBuilder(settings, store, manifest, families)
         self._aliases = load_aliases(settings.aliases_path) if aliases is None else aliases
         self._index_key: int | None = None
         self._index: SubjectIndex | None = None
@@ -218,6 +209,8 @@ class IntentRetriever:
     def search(self, query: str, k: int = 5, *, with_graph: bool = True) -> SearchResult:
         index = self._subjects()
         intent = detect_intent(query, index)
+        if intent.subject is not None and intent.kind == "exercises" and intent.topic is not None:
+            return self._exercise_result(query, index, intent.subject, intent.topic)
         if intent.subject is not None and intent.kind != "search":
             if intent.topic is not None:
                 notes = index.topic_notes(intent.subject, intent.topic)
@@ -237,6 +230,23 @@ class IntentRetriever:
         if intent.kind == "search" and len(named) >= 2:
             return self._cross(query, k, [index.notes_of(s) for s in named])
         return self._base.search(query, k, with_graph=with_graph)
+
+    def _exercise_result(
+        self, query: str, index: SubjectIndex, subject: Subject, topic: int
+    ) -> SearchResult:
+        notes = index.topic_notes(subject, topic)
+        if not notes:
+            return self._exercises.missing_topic(
+                subject.name, topic, available_topics(index.notes_of(subject))
+            )
+
+        def theory(paths: Sequence[str]) -> list[NoteHit]:
+            # La teoría se busca solo entre las notas de teoría de este tema y esta asignatura.
+            return self._base.search(
+                query, self._s.exercises_theory_notes, with_graph=False, only_paths=list(paths)
+            ).notes
+
+        return self._exercises.build(subject, topic, notes, theory)
 
     def _cross(self, query: str, k: int, groups: list[list[str]]) -> SearchResult:
         """Pregunta que cruza asignaturas: se busca en cada una y se intercalan los resultados,

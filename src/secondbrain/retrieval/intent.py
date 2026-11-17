@@ -12,7 +12,7 @@ from typing import Literal
 
 from secondbrain.retrieval.subjects import Subject, SubjectIndex, norm
 
-Kind = Literal["search", "overview_subject", "overview_topic"]
+Kind = Literal["search", "overview_subject", "overview_topic", "exercises"]
 
 # Sobre el texto normalizado (sin acentos ni signos) y con las abreviaturas expandidas.
 _OVERVIEW = re.compile(
@@ -36,6 +36,8 @@ _ABBREVIATIONS = (
     (re.compile(r"\b(?:xq|pq|porq)\b"), "por que"),
     (re.compile(r"\bk\b"), "que"),
 )
+# «los ejercicios / el problema / el taller»: tolera faltas («ejercisios», «ejercicos»).
+_EXERCISES = re.compile(r"\b(?:ejer\w{3,9}|problemas?|actividad(?:es)?|talleres|taller)\b")
 # Preguntas concretas aunque nombren una asignatura: no son visión general.
 _CONCRETE = re.compile(
     r"\b(?:como|por que|para que|cual es la diferencia|diferencia|define|definicion|ejemplo|"
@@ -67,6 +69,10 @@ def detect_intent(question: str, index: SubjectIndex) -> Intent:
     subject = index.detect(question)
     if subject is None:
         return Intent("search")
+    # «los ejercicios del tema N de X» (resolverlos, explicarlos, listarlos): modo ejercicios.
+    topic_asked = _TOPIC.search(text)
+    if topic_asked and _EXERCISES.search(text):
+        return Intent("exercises", subject, int(topic_asked.group(1)))
     asks_overview = _OVERVIEW.search(text) is not None
     names_the_course = _NOUN.search(text) is not None and _CONCRETE.search(text) is None
     if not (asks_overview or names_the_course):

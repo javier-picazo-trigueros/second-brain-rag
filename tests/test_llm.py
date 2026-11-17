@@ -79,7 +79,7 @@ def test_request_payload(tmp_path: Path) -> None:
     list(_llm(tmp_path, handler).stream_chat(MESSAGES))
     assert seen["path"] == "/api/chat"
     assert (seen["model"], seen["stream"], seen["keep_alive"]) == ("qwen2.5:7b", True, "10m")
-    assert seen["options"] == {"num_ctx": 8192, "num_predict": 1024, "temperature": 0.2}
+    assert seen["options"] == {"num_ctx": 16384, "num_predict": 1024, "temperature": 0.2}
     assert seen["messages"] == [
         {"role": "system", "content": "Eres un asistente."},
         {"role": "user", "content": "¿Qué es un semáforo?"},

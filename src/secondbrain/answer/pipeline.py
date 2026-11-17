@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Protocol
 
 from secondbrain.answer.citations import CitationStream
@@ -14,6 +14,14 @@ from secondbrain.config import Settings
 from secondbrain.retrieval.hybrid import SearchResult
 
 log = logging.getLogger(__name__)
+
+_EMPTY = BuiltContext("", (), 0, 0, "search", ())
+
+
+def _contradiction(answer: str) -> bool:
+    """¿Hay contenido antes de «No lo encuentro en el vault»? (al principio es legítimo)."""
+    at = answer.find(NOT_FOUND)
+    return at > 0 and answer[:at].strip() != ""
 
 
 class Retriever(Protocol):
@@ -119,6 +127,24 @@ class AnswerPipeline:
             context.dropped_notes,
         )
 
+        if result.canned:
+            # Respuesta fija (p. ej. «no hay ejercicios de ese tema»): no pasa por el modelo.
+            yield TokenEvent(result.canned)
+            timings = Timings(retrieval_ms, None, (self._clock() - start) * 1000, None, None)
+            yield DoneEvent(
+                answer=result.canned,
+                citations=(),
+                invalid=(),
+                warnings=(),
+                not_found=False,
+                confidence=confidence,
+                similarity=result.top_similarity,
+                timings=timings,
+                prompt_tokens=None,
+                completion_tokens=None,
+            )
+            return
+
         if not any(s.kind == "evidence" for s in context.sources):
             # Sin notas recuperadas no hay nada que preguntarle al modelo.
             yield TokenEvent(NOT_FOUND)
@@ -153,7 +179,9 @@ class AnswerPipeline:
                         first_token_ms = (self._clock() - start) * 1000
                     parts.append(piece)
                     yield TokenEvent(piece)
-            tail = stream.finish()
+                    if _contradiction("".join(parts)):
+                        break  # no se sigue generando: la respuesta se descarta al final
+            tail = "" if _contradiction("".join(parts)) else stream.finish()
         except LLMError as exc:
             log.warning("Fallo del modelo: %s", exc)
             yield ErrorEvent(str(exc))
@@ -164,10 +192,36 @@ class AnswerPipeline:
             parts.append(tail)
             yield TokenEvent(tail)
 
+        answer = "".join(parts)
+        if _contradiction(answer):
+            yield self._contradictory(
+                stream, finished, confidence, result.top_similarity, retrieval_ms,
+                first_token_ms, (self._clock() - start) * 1000,
+            )  # fmt: skip
+            return
         yield self._done(
             "".join(parts), stream, context, finished, confidence, result.top_similarity,
             retrieval_ms, first_token_ms, (self._clock() - start) * 1000,
         )  # fmt: skip
+
+    def _contradictory(
+        self,
+        stream: CitationStream,
+        finished: Finished | None,
+        confidence: str,
+        similarity: float | None,
+        retrieval_ms: float,
+        first_token_ms: float | None,
+        total_ms: float,
+    ) -> DoneEvent:
+        """El modelo escribió contenido y luego «No lo encuentro»: lo escrito no es de fiar."""
+        log.warning("Respuesta contradictoria: contenido seguido de «%s»", NOT_FOUND)
+        done = self._done(NOT_FOUND, stream, _EMPTY, finished, confidence, similarity,
+                          retrieval_ms, first_token_ms, total_ms)  # fmt: skip
+        warnings = tuple(w for w in done.warnings if w not in ("sin_citas", "citas_no_verificadas"))
+        return replace(
+            done, citations=(), invalid=(), warnings=(*warnings, "respuesta_contradictoria")
+        )
 
     def _done(
         self,

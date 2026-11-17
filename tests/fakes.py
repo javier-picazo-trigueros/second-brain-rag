@@ -110,6 +110,23 @@ class FakeStore:
     def note_links(self) -> dict[str, tuple[str, ...]]:
         return {path: tuple(chunks[0].links) for path, chunks in self.chunks.items() if chunks}
 
+    def chunks_of(self, paths: Sequence[str]) -> list[dict[str, Any]]:
+        return [
+            {
+                "note_path": c.note_path,
+                "note_title": c.note_title,
+                "heading_path": " > ".join(c.heading_path),
+                "position": c.position,
+                "page": c.page,
+                "text": c.text,
+                "asignatura": c.asignatura,
+                "curso": c.curso,
+                "resumen": c.resumen,
+            }
+            for p in paths
+            for c in self.chunks.get(p, [])
+        ]
+
     def outline(self, paths: Sequence[str]) -> list[dict[str, Any]]:
         return [
             {
@@ -172,6 +189,9 @@ class ScriptedStore:
 
     def note_links(self) -> dict[str, tuple[str, ...]]:
         return {}
+
+    def chunks_of(self, paths: Sequence[str]) -> list[dict[str, Any]]:
+        return []
 
     def outline(self, paths: Sequence[str]) -> list[dict[str, Any]]:
         return []

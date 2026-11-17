@@ -24,6 +24,7 @@ _VERSION = re.compile(r"(?:^|[\s_-]+)v\d+(?:\.\d+)*\s*$", re.IGNORECASE)
 _EXERCISE = re.compile(
     r"\b(?:exercis\w*|ejercicio\w*|solution|solucion\w*|taller|practic\w*|lab\w*|examen|test)\b"
 )
+_SOLUTION = re.compile(r"\b(?:solutions?|soluciones|solucion(?:es|ario)?)\b")
 _GUIDE = re.compile(
     r"\b(?:guia docente|guia de la asignatura|course guide|syllabus|programa de la asignatura|"
     r"plan docente|guia)\b"
@@ -38,6 +39,11 @@ def _plain(text: str) -> str:
 def is_guide(title: str) -> bool:
     """¿Es la guía docente o el programa de la asignatura (no su temario)?"""
     return _GUIDE.search(re.sub(r"[_\-.]+", " ", _plain(title))) is not None
+
+
+def is_solution(title: str) -> bool:
+    """¿Es la solución de unos ejercicios («… - solution», «Soluciones»)?"""
+    return _SOLUTION.search(re.sub(r"[_\-.]+", " ", _plain(title))) is not None
 
 
 def is_exercise(title: str) -> bool:

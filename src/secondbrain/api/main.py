@@ -23,7 +23,7 @@ log = logging.getLogger(__name__)
 
 
 def _warm_up(retriever: HybridRetriever, catalog: Catalog) -> None:
-    """Una búsqueda de prueba (carga bge-m3, el modelo BM25 y la conexión a Qdrant) y las etiquetas."""
+    """Una búsqueda de prueba (bge-m3, modelo BM25, conexión a Qdrant) y las etiquetas."""
     retriever.search("calentamiento", k=1, with_graph=False)
     catalog.note_tags()
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
+from typing import Any
 
 from secondbrain.answer.llm import Delta, Finished, LLMError, Message
 from secondbrain.domain import Chunk, Hit
@@ -50,12 +51,19 @@ class FakeStore:
         self.events.append(("ensure_collection", ""))
 
     def search(
-        self, query: str, query_dense: list[float], limit: int = 8, prefetch: int = 40
+        self,
+        query: str,
+        query_dense: list[float],
+        limit: int = 8,
+        prefetch: int = 40,
+        only_paths: Sequence[str] | None = None,
     ) -> list[Hit]:
         terms = [t for t in query.lower().split() if t]
         hits: list[Hit] = []
         for chunks in self.chunks.values():
             for c in chunks:
+                if only_paths is not None and c.note_path not in only_paths:
+                    continue
                 score = float(sum(c.text.lower().count(t) for t in terms))
                 if score > 0:
                     payload = {
@@ -96,6 +104,23 @@ class FakeStore:
     def dense_top(self, query_dense: list[float]) -> float | None:
         return 0.5 if self.chunks else None
 
+    def outline(self, paths: Sequence[str]) -> list[dict[str, Any]]:
+        return [
+            {
+                "note_path": c.note_path,
+                "position": c.position,
+                "heading_path": " > ".join(c.heading_path),
+                "resumen": c.resumen,
+            }
+            for p in paths
+            for c in self.chunks.get(p, [])
+        ]
+
+    def dense_notes(
+        self, query_dense: list[float], limit: int = 100, only_paths: Sequence[str] | None = None
+    ) -> dict[str, float]:
+        return {p: 0.5 for p in self.chunks if only_paths is None or p in only_paths}
+
     def count(self) -> int:
         return sum(len(v) for v in self.chunks.values())
 
@@ -104,10 +129,16 @@ class ScriptedStore:
     """Store con resultados predefinidos, para probar la lógica de ranking sin Qdrant."""
 
     def __init__(
-        self, hits: list[Hit], best: dict[str, Hit] | None = None, dense: float | None = 0.6
+        self,
+        hits: list[Hit],
+        best: dict[str, Hit] | None = None,
+        dense: float | None = 0.6,
+        cosines: dict[str, float] | None = None,
     ) -> None:
         self.hits = hits
         self.dense = dense
+        self.cosines = cosines or {}
+        self.last_only_paths: Sequence[str] | None = None
         self.best = best or {}
         self.last_search: dict[str, object] = {}
         self.note_calls: list[str] = []
@@ -119,10 +150,24 @@ class ScriptedStore:
     def delete_note(self, note_path: str) -> None: ...
 
     def search(
-        self, query: str, query_dense: list[float], limit: int = 8, prefetch: int = 40
+        self,
+        query: str,
+        query_dense: list[float],
+        limit: int = 8,
+        prefetch: int = 40,
+        only_paths: Sequence[str] | None = None,
     ) -> list[Hit]:
         self.last_search = {"query": query, "limit": limit, "prefetch": prefetch}
+        self.last_only_paths = only_paths
         return self.hits[:limit]
+
+    def outline(self, paths: Sequence[str]) -> list[dict[str, Any]]:
+        return []
+
+    def dense_notes(
+        self, query_dense: list[float], limit: int = 100, only_paths: Sequence[str] | None = None
+    ) -> dict[str, float]:
+        return dict(self.cosines)
 
     def search_note(self, note_path: str, query_dense: list[float], limit: int = 1) -> list[Hit]:
         self.note_calls.append(note_path)

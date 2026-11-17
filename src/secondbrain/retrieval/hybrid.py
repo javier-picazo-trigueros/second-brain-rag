@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import math
 import re
-from dataclasses import dataclass
+from collections.abc import Sequence
+from dataclasses import dataclass, replace
 from pathlib import PurePosixPath
 
 from secondbrain.config import Settings
@@ -14,6 +15,7 @@ from secondbrain.store.manifest import Manifest
 # Sufijos típicos de las copias: "nota (1)", "nota - copia", "nota copy (2)".
 _COPY_SUFFIX = re.compile(r"\s*(\(\d+\)|[-_ ]*copia( \(\d+\))?|[-_ ]*copy( \(\d+\))?)\s*$", re.I)
 _SNIPPET_CHARS = 300
+_COSINE_LOOKUPS = 20  # notas del ranking cuyo coseno se pide aparte si falta en el denso
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,6 +29,7 @@ class NoteHit:
     chunks: tuple[Hit, ...]
     also_in: tuple[str, ...]  # copias exactas en otras rutas
     n_chunks: int
+    cosine: float | None = None  # coseno denso de su mejor chunk (None si no se conoce)
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,9 +52,11 @@ class SearchResult:
     related: list[RelatedNote]
     # Coseno del mejor chunk: mide cuánto se parece la consulta al vault (el RRF no está calibrado).
     top_similarity: float | None = None
+    mode: str = "search"  # "overview": resumen de una asignatura o tema, no fragmentos
+    facts: str = ""  # datos exactos del índice que se pasan al modelo (p. ej. nº de temas)
 
 
-def _canonical_key(path: str) -> tuple[bool, int, str]:
+def canonical_key(path: str) -> tuple[bool, int, str]:
     has_suffix = bool(_COPY_SUFFIX.search(PurePosixPath(path).stem))
     return (has_suffix, len(path), path)
 
@@ -67,28 +72,70 @@ class HybridRetriever:
         self._store = store
         self._manifest = manifest
 
-    def search(self, query: str, k: int = 5, *, with_graph: bool = True) -> SearchResult:
+    def search(
+        self,
+        query: str,
+        k: int = 5,
+        *,
+        with_graph: bool = True,
+        only_paths: Sequence[str] | None = None,
+    ) -> SearchResult:
         dense = self._embedder.embed_query(query)
         hits = self._store.search(
-            query, dense, limit=self._s.candidate_limit, prefetch=self._s.prefetch_limit
+            query,
+            dense,
+            limit=self._s.candidate_limit,
+            prefetch=self._s.prefetch_limit,
+            only_paths=only_paths,
         )
-        similarity = self._store.dense_top(dense)
+        cosines = self._store.dense_notes(dense, self._s.prefetch_limit, only_paths)
+        similarity = max(cosines.values()) if cosines else self._store.dense_top(dense)
         if not hits:
             return SearchResult([], [], similarity)
         canonical, copies = self._copy_index()
-        ranked = self._rank(hits, canonical, copies)
+        ranked = self._relevant(self._rank(hits, canonical, copies), cosines, dense)
+        if not ranked:
+            return SearchResult([], [], similarity)
         selected = self._select(ranked, k)
         related = self._related(selected, dense, canonical) if with_graph else []
         return SearchResult(selected, related, similarity)
 
     # --- ranking ------------------------------------------------------------------------------
 
+    def _relevant(
+        self, ranked: list[NoteHit], cosines: dict[str, float], dense: list[float]
+    ) -> list[NoteHit]:
+        """Descarta las notas poco parecidas a la consulta (coseno absoluto y relativo al mejor).
+
+        El score RRF solo ordena: no distingue una nota relevante de una cualquiera que quedó
+        primera en una de las dos ramas. El coseno denso de su mejor chunk sí.
+        """
+        with_cosine: list[NoteHit] = []
+        for position, note in enumerate(ranked):
+            known = [cosines[p] for p in (note.path, *note.also_in) if p in cosines]
+            cosine = max(known) if known else None
+            if cosine is None and position < _COSINE_LOOKUPS:
+                best = self._store.search_note(note.path, dense, limit=1)
+                cosine = best[0].score if best else None
+            with_cosine.append(replace(note, cosine=cosine))
+        values = [n.cosine for n in with_cosine if n.cosine is not None]
+        if not values:
+            # Con cosenos reales, una nota sin ninguno ni siquiera entró en el denso: no pasa.
+            return [] if cosines else with_cosine
+        floor = max(self._s.min_note_cosine, max(values) - self._s.cosine_margin)
+        keep_unknown = not cosines  # sin cosenos (store de pruebas) no hay base para descartar
+        return [
+            n
+            for n in with_cosine
+            if (n.cosine is None and keep_unknown) or (n.cosine is not None and n.cosine >= floor)
+        ]
+
     def _copy_index(self) -> tuple[dict[str, str], dict[str, tuple[str, ...]]]:
         """Para cada nota con copias exactas: su ruta canónica y las demás ubicaciones."""
         canonical: dict[str, str] = {}
         others: dict[str, tuple[str, ...]] = {}
         for group in self._manifest.duplicate_groups():
-            rep = min(group, key=_canonical_key)
+            rep = min(group, key=canonical_key)
             others[rep] = tuple(p for p in group if p != rep)
             for path in group:
                 canonical[path] = rep

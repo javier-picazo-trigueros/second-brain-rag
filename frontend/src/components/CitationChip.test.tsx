@@ -10,38 +10,48 @@ const valid = (over: Partial<Extract<CitationRef, { kind: "valid" }>> = {}): Cit
   kind: "valid",
   label: "Semáforos",
   path: "1º/SO/Semáforos.md",
-  page: null,
-  pageVerified: true,
+  pages: [],
+  number: 2,
   hint: false,
   ...over,
 });
 
 describe("CitationChip", () => {
-  it("is a button that opens the note", async () => {
+  it("is a small numbered button that opens the note", async () => {
     const onOpen = vi.fn();
     render(<CitationChip citation={valid()} onOpen={onOpen} />);
-    await userEvent.click(screen.getByRole("button", { name: /Semáforos/ }));
+    const button = screen.getByRole("button", { name: /Semáforos/ });
+    expect(button).toHaveTextContent(/^2$/);
+    await userEvent.click(button);
     expect(onOpen).toHaveBeenCalledWith("1º/SO/Semáforos.md", null);
   });
 
-  it("shows the page and passes it on", async () => {
+  it("keeps the title and page out of the text, in a tooltip attribute and the accessible name", async () => {
     const onOpen = vi.fn();
-    render(<CitationChip citation={valid({ page: "7" })} onOpen={onOpen} />);
-    const button = screen.getByRole("button", { name: "Abrir «Semáforos», página 7" });
-    expect(button).toHaveTextContent("p. 7");
+    const { container } = render(
+      <p>
+        Dato <CitationChip citation={valid({ pages: [7] })} onOpen={onOpen} /> fin.
+      </p>,
+    );
+    const button = screen.getByRole("button", { name: "Fuente 2: Semáforos, página 7" });
+    expect(button).toHaveAttribute("data-tip", "Semáforos · p. 7");
+    expect(container.textContent).toBe("Dato 2 fin."); // sin título dentro de la respuesta
     await userEvent.click(button);
     expect(onOpen).toHaveBeenCalledWith("1º/SO/Semáforos.md", 7);
   });
 
-  it.each([
-    ["7-9", 7],
-    ["7, 9", 7],
-    ["7 y 9", 7],
-  ])("opens the first page of %s", async (page, first) => {
+  it("lists several pages and opens the first", async () => {
     const onOpen = vi.fn();
-    render(<CitationChip citation={valid({ page })} onOpen={onOpen} />);
-    await userEvent.click(screen.getByRole("button"));
-    expect(onOpen).toHaveBeenCalledWith("1º/SO/Semáforos.md", first);
+    render(<CitationChip citation={valid({ pages: [6, 7, 9] })} onOpen={onOpen} />);
+    const button = screen.getByRole("button", { name: "Fuente 2: Semáforos, páginas 6, 7 y 9" });
+    expect(button).toHaveAttribute("data-tip", "Semáforos · p. 6, 7, 9");
+    await userEvent.click(button);
+    expect(onOpen).toHaveBeenCalledWith("1º/SO/Semáforos.md", 6);
+  });
+
+  it("includes its visible number in its accessible name (WCAG 2.5.3)", () => {
+    render(<CitationChip citation={valid({ number: 12 })} onOpen={() => {}} />);
+    expect(screen.getByRole("button")).toHaveAccessibleName(/^Fuente 12: /);
   });
 
   it("activates with the keyboard", async () => {
@@ -54,29 +64,25 @@ describe("CitationChip", () => {
     expect(onOpen).toHaveBeenCalledTimes(2);
   });
 
-  it("flags an unverified page without hiding the citation", () => {
-    render(<CitationChip citation={valid({ page: "99", pageVerified: false })} onOpen={() => {}} />);
-    const button = screen.getByRole("button");
-    expect(button).toHaveAccessibleName(/página 99 no verificada/);
-    expect(button).toHaveTextContent("p. 99");
-    expect(button).toHaveAttribute("data-page-verified", "false");
-  });
-
   it("presents a related-note citation as 'ver también'", () => {
     render(<CitationChip citation={valid({ label: "Redes", hint: true })} onOpen={() => {}} />);
     const button = screen.getByRole("button");
     expect(button).toHaveAttribute("data-kind", "hint");
-    expect(button).toHaveAccessibleName(/Ver también «Redes»/);
+    expect(button).toHaveAccessibleName("Fuente 2 (relacionada): Redes");
   });
 
   it("is not interactive when the note cannot be opened", () => {
-    render(<CitationChip citation={valid({ path: null })} onOpen={() => {}} />);
+    render(<CitationChip citation={valid({ path: null, number: null })} onOpen={() => {}} />);
     expect(screen.queryByRole("button")).toBeNull();
     expect(screen.getByText("Semáforos")).toBeInTheDocument();
   });
 
-  it("shows an unverified citation as a calm, focusable note (not an error)", () => {
-    render(<CitationChip citation={{ kind: "unverified", label: "Inventada" }} onOpen={() => {}} />);
+  it("shows an unverified citation as a calm, focusable «?» (not an error)", () => {
+    const { container } = render(
+      <p>
+        Dato <CitationChip citation={{ kind: "unverified", label: "Inventada" }} onOpen={() => {}} /> fin.
+      </p>,
+    );
     const note = screen.getByRole("note");
     expect(note).toHaveAccessibleName(/cita no verificada: Inventada/i);
     expect(note).toHaveAccessibleDescription(/no estaba entre las fuentes consultadas/);
@@ -84,19 +90,20 @@ describe("CitationChip", () => {
     expect(note).toHaveAttribute("data-kind", "unverified");
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.queryByRole("button")).toBeNull();
+    // Regresión: la explicación nunca se escribe dentro del texto de la respuesta.
+    expect(container.textContent).toBe("Dato ? fin.");
   });
 
   it("copes with an unverified citation that has no name", () => {
     render(<CitationChip citation={{ kind: "unverified", label: "" }} onOpen={() => {}} />);
-    expect(screen.getByRole("note")).toHaveAccessibleName(/cita no verificada/i);
+    expect(screen.getByRole("note")).toHaveAccessibleName("Cita no verificada");
   });
 
   it("has no accessibility violations", async () => {
     const { container } = render(
       <p>
-        <CitationChip citation={valid({ page: "7" })} onOpen={() => {}} />
-        <CitationChip citation={valid({ page: "9", pageVerified: false })} onOpen={() => {}} />
-        <CitationChip citation={valid({ label: "Redes", hint: true })} onOpen={() => {}} />
+        <CitationChip citation={valid({ pages: [7] })} onOpen={() => {}} />
+        <CitationChip citation={valid({ hint: true, label: "Redes", number: 3 })} onOpen={() => {}} />
         <CitationChip citation={{ kind: "unverified", label: "X" }} onOpen={() => {}} />
       </p>,
     );

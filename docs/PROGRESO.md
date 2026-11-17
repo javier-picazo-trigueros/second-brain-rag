@@ -10,7 +10,9 @@ Se actualiza en cada checkpoint.
 | 1. Parser, chunking, indexación incremental | Terminada, aprobada y publicada (`main`) |
 | 2. Grafo, búsqueda híbrida y watcher | Terminada, aprobada y publicada (`main`) |
 | 3a. Respuesta, API y MCP (sin interfaz) | Terminada, aprobada y publicada (`main`) |
-| 3b. Interfaz web | Plan (esquemas y tokens de diseño) pendiente de aprobación |
+| 3b. Interfaz web, checkpoint 1 | Terminada, aprobada y publicada (`main`): marco, Preguntar con el diseño aprobado, Estado, API que sirve `dist` |
+| 3b. Interfaz web, checkpoint 2 | Plan (Buscar, Nota, enlaces, «Abrir en Obsidian», KaTeX) pendiente de aprobación |
+| Corrección de calidad | Terminada, aprobada y publicada (`main`): recuperación, citas `[S#]`, visión general, prompt, latencia y bugs de la interfaz |
 | 4. Evals | Pendiente |
 
 ## Fase 0: resultado
@@ -273,6 +275,150 @@ fiabilidad**: la medición seria es la Fase 4 (evals).
 - **`contexto_recortado`** aparece casi siempre: el último chunk de evidencia se trunca para caber.
 - **MCP:** lo que devuelve sale de la máquina hacia el cliente (documentado en el README).
 
+## Corrección de calidad de las respuestas (rama `fix/calidad-respuestas`)
+
+Motivo: probando la interfaz con el vault real salieron fuentes irrelevantes, respuestas de una frase,
+citas que se rompían con títulos con corchetes, visión general inservible y bugs de la interfaz.
+Se midió antes de tocar nada (solo lectura sobre el índice) y después de cada cambio con el conjunto de
+preguntas de referencia (`brain golden`; 21 preguntas: 8 concretas, 4 de visión general de asignatura,
+4 de «tema N», 2 cruzadas y 3 trampas). El fichero con nombres reales es local e ignorado por git.
+
+### Diagnóstico (causas medidas)
+
+- El score RRF solo ordena: una nota con coseno 0,47 quedó primera con 1,00. El coseno denso del mejor
+  chunk de cada nota sí separa lo relevante (≥ 0,62) de lo que no (≤ 0,49).
+- `asignatura` del frontmatter es la subcarpeta inmediata (`images`, `Parte1`, `TEMA 2`...) o falta (190
+  de 953 notas). La carpeta de segundo nivel (`curso/ASIGNATURA/...`) es siempre correcta.
+- Los títulos con corchetes rompían `[[Título]]`; el modelo inventaba rangos de página.
+- «Contexto recortado» salía casi siempre: avisaba de notas de relleno.
+- Latencia: recuperación en caliente 100-220 ms; el embedder de consulta se descargaba a los 30 s
+  (recarga de 1,85 s). La generación iba a 9-14 tok/s porque la GPU estaba compartida con otro
+  proceso al 100 %; con la GPU libre vuelve a ~50 tok/s.
+
+### Qué cambia
+
+| Área | Cambio |
+|---|---|
+| Relevancia | Una nota es evidencia solo si el coseno de su mejor chunk llega a 0,55 y no queda más de 0,12 por debajo del mejor (`BRAIN_MIN_NOTE_COSINE`, `BRAIN_COSINE_MARGIN`). Sin evidencia, «No lo encuentro» sin llamar al modelo. |
+| Asignaturas | Carpeta de asignatura como asignatura canónica; mapa de alias opcional en `data/aliases.toml` (ejemplo en `docs/aliases.example.toml`). |
+| Visión general | «De qué trata X» y «qué se da en el tema N»: se resumen las notas de la asignatura o tema (resumen, conceptos y apartados), sin copias exactas, repartidas por tema. |
+| Preguntas cruzadas | Si nombran dos asignaturas, se busca en cada una y se intercalan los resultados. |
+| Citas | Identificadores `[S1]`, `[S2]`... por fragmento. El título y la página los pone el sistema; la interfaz funde chips consecutivos de una misma nota («Nota · p. 6, 7»). |
+| Prompt | Respuestas completas y estructuradas (~300 palabras), permiso para relacionar fuentes, recordatorio de citar al final del mensaje, plantilla para visión general. |
+| Latencia | `embed_keep_alive` 30 min y precalentamiento de la búsqueda al arrancar la API. |
+| Interfaz | La conversación vive sobre las rutas (no se pierde al ir a Estado) con historial de la sesión; tarjetas de fuentes con título, asignatura y página separados; sin texto de ayuda dentro de la respuesta; asignatura mostrada = carpeta. |
+
+### Resultados (conjunto de preguntas de referencia)
+
+Recuperación (qué notas ve el modelo; recall/precisión frente a las esperadas):
+
+| Tipo | n | Recall | Precisión | Ruido (notas) | Top-1 |
+|---|---|---|---|---|---|
+| concrete | 8 | 0,85 → 0,85 | 0,71 → 0,81 | 1,38 → 0,88 | 0,88 → 0,88 |
+| overview_subject | 4 | 0,26 → 1,00 | 0,61 → 0,98 | 1,75 → 0,50 | 0,00 → 0,00 |
+| overview_topic | 4 | 0,58 → 1,00 | 0,25 → 1,00 | 3,50 → 0,00 | 0,25 → 0,75 |
+| cross | 2 | 0,50 → 0,75 | 0,62 → 1,00 | 1,50 → 0,00 | 1,00 → 1,00 |
+| trap | 3 | 1,00 → 1,00 | 0,00 → 0,00 | 5,00 → 0,33 | 0,00 → 0,00 |
+| TOTAL | 21 | 0,68 → 0,92 | 0,50 → 0,78 | 2,38 → 0,48 | 0,48 → 0,57 |
+
+Respuestas (medias; «antes» con la GPU compartida, «después» con la GPU libre):
+
+| | Antes | Después |
+|---|---|---|
+| Longitud (caracteres) | 440 | 1.052 |
+| Tokens de salida | 129 | 318 |
+| Citas válidas / no verificadas | 22 / 3 | 119 / 0 |
+| Recuperación | 151 ms | 148 ms |
+| Primer token | 9,5 s | 1,3 s |
+| Total | 26 s | 7,3 s |
+| Trampas respondidas «No lo encuentro» | 3/3 | 3/3 |
+
+La mejora de latencia total se debe sobre todo a haber liberado la GPU, no al código: no es atribuible a
+los cambios. El top-1 de las visiones generales es 0 por construcción (no hay un «primero»).
+
+### Segunda ronda: preguntas escritas «como se habla»
+
+Al probar con frases reales («de q va la asignatura de…», «cuantos temas tiene…», con faltas), 2 de 3
+salían mal. Causas medidas: el detector exigía una frase exacta («de q» y «artificicial» no
+encajaban), así que iban por búsqueda normal; una nota de otra asignatura salía como si fuera de ésta;
+el número de temas no existía como dato; y la plantilla de visión general se aplicaba también a un
+tema suelto, donde el modelo inventaba «un total de 6 temas».
+
+| Cambio | Resultado |
+|---|---|
+| Intención por señales sueltas (abreviaturas, sin tildes, relleno); un alias tolera una falta solo en palabras largas y nunca en números | Las 3 frases literales y 11 variantes se reconocen; 6 preguntas concretas siguen siendo búsquedas |
+| IA I / IA II sin ambigüedad; las notas `DM - Unit` de la carpeta de IA II pasan a Data Mining (un `include` mueve la nota) | IA I 13 notas, IA II 40, Data Mining 46 |
+| El número de temas sale del índice (`Unit N` / `Tema N`) y entra al prompt como dato | IA II 7, IA I 7, Data Mining 8 (0 a 7), Sistemas Operativos 8 |
+| La visión general excluye libros (≥ `BRAIN_BIG_NOTE_CHUNKS`) y guías docentes, y con temario numerado solo lista el temario | Desaparecen el libro y la guía de otra asignatura |
+| Plantilla propia para asignatura (frase inicial, nº de temas, 2-3 frases por tema, «Destacaría») y para un tema | Sin aviso de «confianza baja» en visión general |
+| «Un par de párrafos» (u otro número) pasa al modelo como instrucción explícita | Se respeta |
+
+Golden set ampliado a 28 preguntas (7 informales). Recuperación, antes → después:
+
+| Tipo | n | Recall | Precisión | Ruido (notas) |
+|---|---|---|---|---|
+| concretas | 8 | 0,85 → 0,85 | 0,81 → 0,81 | 0,88 → 0,88 |
+| visión general de asignatura | 9 | 0,57 → 0,97 | 0,66 → 0,99 | 0,78 → 0,11 |
+| «tema N» | 6 | 0,89 → 1,00 | 0,89 → 1,00 | 0,33 → 0,00 |
+| cruzadas | 2 | 0,75 → 0,75 | 1,00 → 1,00 | 0,00 → 0,00 |
+| trampas | 3 | 1,00 → 1,00 | — | 0,33 → 0,33 |
+| **Total** | **28** | **0,78 → 0,93** | **0,71 → 0,84** | **0,61 → 0,32** |
+
+Respuestas: 0 citas no verificadas (antes 1), trampas 3 de 3, longitud media 970 → 1.100 caracteres.
+Latencia con la GPU libre: total 7,0 s de media (recuperación 120 ms, primer token 0,5 s). Los 17 s de
+la primera prueba no se reproducen: con la GPU libre la misma pregunta tardó 3,7 s (158 tokens). Con la
+GPU compartida la generación cae a 9-14 tok/s y 158 tokens son ~16 s; es la explicación más probable.
+
+**Un error de la comprobación, no del código:** un servidor antiguo seguía vivo en el puerto 8000 y el
+nuevo no arrancaba, así que las primeras respuestas de la interfaz salían con el código de antes.
+
+### Límites conocidos
+
+- Una cita válida sigue sin garantizar que la nota respalde la frase (comprobación de respaldo por frase:
+  Fase 4).
+- Copias casi idénticas con nombres distintos (`Nota`, `Nota (1)`) no se funden si su contenido difiere.
+- `3º/SISTEMAS` mezcla sistemas operativos con integración y cloud: el mapa de alias las une por pedido
+  del usuario; una visión general de «sistemas operativos» incluye también esos temas.
+- Ver «Pendiente para la Fase 4» (tema inventado en la visión general y formato de párrafos).
+- Los umbrales (0,55 / 0,12) están calibrados con 28 preguntas; hay que revisarlos si cambia el vault.
+
+## Fase 3b, checkpoint 1: interfaz (marco, Preguntar y Estado)
+
+- **Diseño** (aprobado sobre `docs/design/preguntar.html`): hilo de chat con la pregunta a la derecha
+  y la respuesta sin caja a 720 px de lectura; campo de pregunta flotante fijo abajo; citas
+  numeradas con tooltip (CSS, nunca texto dentro del párrafo) y fila *Fuentes* con número, título corto
+  y página; avisos discretos; navegación en cajón en pantallas pequeñas; «Nueva conversación» e
+  historial de la sesión (la conversación vive sobre las rutas).
+- **Servido por la API**: `create_app(static_dir)` sirve `frontend/dist`; las rutas del navegador
+  (`/estado`) devuelven `index.html`; la API y los ficheros que faltan dan 404; no se sirve nada fuera
+  de `dist` (probado con `..`, `%2e%2e` y codificaciones).
+- **Pruebas**: 228 tests de interfaz (Vitest + axe por componente y página), 611 del backend
+  (97 % de cobertura), `tsc`, ESLint, `ruff` y `mypy --strict` limpios.
+- **Capturas y axe sobre la aplicación real** (360, 768 y 1280 px × claro y oscuro × 7 estados: inicio,
+  respuesta, nota abierta, confianza baja, «no lo encuentro», error y Estado = 42): 0 violaciones y 0
+  desbordes horizontales. La primera pasada encontró 3 problemas reales, ya corregidos: nombre
+  accesible que no contenía el texto visible (WCAG 2.5.3), página sin `h1` y panel de nota que
+  desbordaba a 768 px.
+- **Límites**: las fórmulas de las notas se muestran en texto (sin KaTeX); las copias casi idénticas con
+  nombre distinto se muestran como fuentes separadas.
+
+## Pendiente para la Fase 4
+
+Lo que se sabe y se ha dejado a propósito para la Fase de evals, con su medida en el golden set:
+
+1. **«Finalmente» inventado en la visión general.** Con el dato «7 temas», el modelo a veces añade un
+   último tema (p. ej. «finalmente, los sistemas de machine learning…») a partir de la última fuente
+   (visto en 2 de 3 ejecuciones de la misma pregunta). Medirlo: comparar los temas que lista la
+   respuesta con la lista del dato; corregir con un validador posterior o con un formato más rígido.
+2. **Formato de párrafos pedido.** «Un par de párrafos» pasa al modelo como instrucción explícita, pero
+   el resultado fue un párrafo largo más el cierre «Destacaría:», no exactamente dos. Añadir al golden
+   set una métrica de formato (nº de párrafos y ausencia de listas cuando se piden párrafos).
+3. Diversificación por asignatura (prioridad 1) y comprobación de respaldo por frase (valid ≠ respaldada).
+4. Orden de recuperación en preguntas concretas (p. ej. «proceso vs hilo»: recall 0,33): combinar el
+   RRF con el coseno de la nota, y afinar α, cuota de notas grandes y umbral relativo.
+5. Copias casi idénticas con nombre distinto (`Nota`, `Nota (1)`) que hoy salen como fuentes separadas.
+6. Revisar los umbrales de relevancia (0,55 / 0,12) si cambia el vault.
+
 ## Decisiones aprobadas (Fase 3a)
 
 1. **Citas inválidas:** se marcan en el texto como `[cita no verificada: X]`.
@@ -321,7 +467,6 @@ Sobre el diseño de `referencia_fase1.md`:
 
 ## Siguiente paso
 
-Fase 3b (interfaz web): se presentan los esquemas de cada pantalla (Preguntar, Buscar, Nota, Estado), los
-tokens de diseño y cómo se muestran los avisos (confianza baja, citas no verificadas, «no lo encuentro en
-el vault»), y se espera el visto bueno antes de programar. Después, Fase 4 (evals), con la diversificación
-por asignatura como prioridad 1 y la comprobación de respaldo por frase.
+Checkpoint 2 de la 3b (Buscar y Nota): filtros y facetas en `/search`, resolución de `[[enlaces]]` por
+título, «Abrir en Obsidian» y fórmulas LaTeX con KaTeX empaquetado en local. Se presenta el plan y se
+espera el visto bueno antes de programar. Después, Fase 4 (evals) con lo de «Pendiente para la Fase 4».

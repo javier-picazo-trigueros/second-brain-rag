@@ -1,0 +1,32 @@
+# Ejemplo FICTICIO del formato. Copia este fichero a `golden.local.yaml` (ignorado por git) y
+# sustituye las preguntas y los fragmentos de ruta por los de tu propio vault.
+#
+# `kind`: concrete | overview_subject | overview_topic | cross | trap
+# `expect`: fragmentos de ruta que deberían aparecer entre las notas de evidencia
+#           (sin mayúsculas ni acentos; "a|b" = cualquiera de las dos alternativas).
+# `acceptable`: notas válidas pero no imprescindibles (no cuentan como ruido).
+# `expect_not_found`: en las trampas, la respuesta correcta es "No lo encuentro en el vault".
+version: 1
+questions:
+  - id: ejemplo-concreta
+    kind: concrete
+    question: "¿Qué diferencia hay entre una pila y una cola?"
+    expect: ["Estructuras/Pilas", "Estructuras/Colas"]
+    acceptable: ["Estructuras/Resumen"]
+  - id: ejemplo-asignatura
+    kind: overview_subject
+    question: "¿De qué trata la asignatura de Álgebra?"
+    expect: ["Algebra/Tema 1", "Algebra/Tema 2"]
+    acceptable: ["Algebra/"]
+  - id: ejemplo-tema
+    kind: overview_topic
+    question: "¿Qué se da en el tema 3 de Álgebra?"
+    expect: ["Algebra/Tema 3"]
+  - id: ejemplo-cruzada
+    kind: cross
+    question: "¿Qué relación hay entre Álgebra y Estructuras de datos?"
+    expect: ["Algebra/", "Estructuras/"]
+  - id: ejemplo-trampa
+    kind: trap
+    question: "¿Cuál es la capital de un país inventado?"
+    expect_not_found: true

@@ -2,20 +2,23 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Callable, Iterator
+import threading
+from collections.abc import AsyncIterator, Callable, Iterator
+from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import Any, Protocol
 
 import httpx
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from qdrant_client.http.exceptions import ResponseHandlingException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from secondbrain import __version__
+from secondbrain.answer.context import BuiltContext
 from secondbrain.answer.pipeline import (
     DoneEvent,
     ErrorEvent,
@@ -60,6 +63,8 @@ class Retriever(Protocol):
 class Pipeline(Protocol):
     def ask(self, question: str, k: int | None = None) -> Iterator[Event]: ...
 
+    def plan(self, question: str, k: int | None = None) -> tuple[SearchResult, BuiltContext]: ...
+
 
 @dataclass(slots=True)
 class AppServices:
@@ -70,6 +75,7 @@ class AppServices:
     health: Callable[[], HealthReport]
     reindex: ReindexManager
     points: Callable[[], int]  # chunks indexados en Qdrant
+    warmup: Callable[[], None] | None = None  # precalienta embedder, BM25 y Qdrant al arrancar
 
 
 def _title(path: str) -> str:
@@ -128,10 +134,60 @@ def _sse_error(message: str) -> str:
     return f"event: error\ndata: {json.dumps({'message': message}, ensure_ascii=False)}\n\n"
 
 
-def create_app(services: AppServices) -> FastAPI:
+# Rutas de la API y de los ficheros del build: si faltan, 404 (no la página de la aplicación).
+_NOT_THE_APP = (
+    "health",
+    "stats",
+    "search",
+    "ask",
+    "notes",
+    "graph",
+    "reindex",
+    "docs",
+    "redoc",
+    "openapi.json",
+    "assets",
+)
+
+
+def _serve_build(app: FastAPI, build: Path) -> None:
+    """Sirve la interfaz compilada: ficheros del build tal cual y, para cualquier otra ruta del
+    navegador (`/estado`...), `index.html` (el enrutador de la aplicación decide)."""
+    root = build.resolve()
+    index = root / "index.html"
+
+    @app.get("/{path:path}", include_in_schema=False)
+    def interface(path: str) -> Response:
+        target = (root / path).resolve() if path else index
+        first = path.split("/", 1)[0]
+        if path and target.is_file() and target.is_relative_to(root):
+            cache = "public, max-age=31536000, immutable" if first == "assets" else "no-cache"
+            return FileResponse(target, headers={"Cache-Control": cache})
+        if first in _NOT_THE_APP or "." in path.rsplit("/", 1)[-1]:
+            raise HTTPException(404, "No encontrado.")
+        return FileResponse(index, headers={"Cache-Control": "no-cache"})
+
+
+def _run_warmup(warmup: Callable[[], None]) -> None:
+    try:
+        warmup()
+    except (httpx.HTTPError, ResponseHandlingException) as exc:
+        # Ollama o Qdrant aún no están: la primera pregunta cargará lo que falte.
+        log.warning("No se pudo precalentar la búsqueda: %s", exc)
+
+
+def create_app(services: AppServices, static_dir: Path | None = None) -> FastAPI:
     settings = services.settings
     manifest = services.manifest
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        if services.warmup is not None:
+            threading.Thread(target=_run_warmup, args=(services.warmup,), daemon=True).start()
+        yield
+
     app = FastAPI(
+        lifespan=lifespan,
         title="Segundo cerebro",
         version=__version__,
         description="RAG local sobre un vault de Obsidian. Solo escucha en localhost.",
@@ -271,6 +327,8 @@ def create_app(services: AppServices) -> FastAPI:
     def reindex_status() -> ReindexStatusOut:
         return _reindex_status(services.reindex.status())
 
+    if static_dir is not None and (static_dir / "index.html").is_file():
+        _serve_build(app, static_dir)
     return app
 
 

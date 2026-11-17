@@ -1,26 +1,24 @@
-import { useId } from "react";
-
-import type { CitationRef } from "../lib/answer";
-import { HelpIcon } from "./icons";
+import { pagesLabel, type CitationRef } from "../lib/answer";
 
 interface Props {
   citation: CitationRef;
   onOpen: (path: string, page: number | null) => void;
 }
 
-const BASE =
-  "inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 align-baseline text-sm leading-5 " +
-  "transition-colors duration-150";
+const UNVERIFIED_HELP =
+  "Esta nota no estaba entre las fuentes consultadas; el modelo la nombró por su cuenta.";
 
-/** Primera página de «7», «7-9», «7, 9» o «7 y 9»: a la que se abre la nota. */
-function firstPage(page: string | null): number | null {
-  const match = page?.match(/\d+/);
-  return match ? Number(match[0]) : null;
+function pagesName(pages: number[]): string {
+  if (pages.length === 0) return "";
+  if (pages.length === 1) return `, página ${pages[0]}`;
+  return `, páginas ${pages.slice(0, -1).join(", ")} y ${pages[pages.length - 1]}`;
 }
 
+/**
+ * Cita numerada, discreta. El título y la página salen como tooltip (CSS sobre `data-tip`, nunca
+ * como texto del párrafo) al pasar el ratón o enfocar; al tocarla se abre la nota.
+ */
 export function CitationChip({ citation, onOpen }: Props) {
-  const descriptionId = useId();
-
   if (citation.kind === "unverified") {
     const name = citation.label ? `Cita no verificada: ${citation.label}` : "Cita no verificada";
     return (
@@ -29,60 +27,41 @@ export function CitationChip({ citation, onOpen }: Props) {
         tabIndex={0}
         data-kind="unverified"
         aria-label={name}
-        aria-describedby={descriptionId}
-        title="Esta nota no estaba entre las fuentes consultadas; el modelo la nombró por su cuenta."
-        className={`${BASE} border-dashed border-caution-border bg-caution-bg text-caution-fg`}
+        title={UNVERIFIED_HELP}
+        className="cite cite-warn"
       >
-        <HelpIcon size={13} />
-        <span className="truncate">{citation.label || "cita no verificada"}</span>
-        <span id={descriptionId} className="sr-only">
-          Esta nota no estaba entre las fuentes consultadas; el modelo la nombró por su cuenta.
-        </span>
+        ?
       </span>
     );
   }
 
   const hint = citation.hint;
   const kind = hint ? "hint" : "evidence";
-  const tone = hint
-    ? "border-border bg-surface-2 text-muted hover:border-border-strong"
-    : "border-transparent bg-accent-soft text-accent hover:border-accent";
-  const page = citation.page;
-
-  const pageText =
-    page === null ? null : (
-      <span className={citation.pageVerified ? undefined : "underline decoration-dotted underline-offset-2"}>
-        p. {page}
-        {citation.pageVerified ? null : <span aria-hidden="true">?</span>}
-      </span>
-    );
+  const pages = pagesLabel(citation.pages);
+  const tip = [citation.label, pages].filter(Boolean).join(" · ");
+  const shown = citation.number === null ? citation.label : String(citation.number);
 
   if (citation.path === null) {
     return (
-      <span data-kind={kind} className={`${BASE} ${tone}`}>
-        <span className="truncate">{citation.label}</span>
-        {pageText}
+      <span data-kind={kind} className="cite">
+        {shown}
       </span>
     );
   }
 
   const target = citation.path;
-  const verb = hint ? `Ver también «${citation.label}»` : `Abrir «${citation.label}»`;
-  const pageName =
-    page === null ? "" : citation.pageVerified ? `, página ${page}` : `, página ${page} no verificada`;
-
+  // El nombre accesible empieza por lo que se ve (el número): WCAG 2.5.3, «etiqueta en el nombre».
+  const verb = `Fuente ${shown}${hint ? " (relacionada)" : ""}: ${citation.label}`;
   return (
     <button
       type="button"
       data-kind={kind}
-      data-page-verified={citation.pageVerified ? "true" : "false"}
-      aria-label={`${verb}${pageName}`}
-      onClick={() => onOpen(target, firstPage(page))}
-      className={`${BASE} ${tone} cursor-pointer`}
+      data-tip={tip}
+      aria-label={`${verb}${pagesName(citation.pages)}`}
+      onClick={() => onOpen(target, citation.pages[0] ?? null)}
+      className={`cite ${hint ? "cite-hint" : ""}`}
     >
-      <span className="truncate">{citation.label}</span>
-      {page === null ? null : <span aria-hidden="true">·</span>}
-      {pageText}
+      {shown}
     </button>
   );
 }

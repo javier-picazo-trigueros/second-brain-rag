@@ -5,6 +5,7 @@ import threading
 import time
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -53,10 +54,12 @@ def make_api(env: Env) -> Iterator[MakeApi]:
     env.indexer().sync()
 
     def _make(
-        deltas: Sequence[str] = ("Hay tres estrategias ", "[[Condiciones de carrera]]."),
+        deltas: Sequence[str] = ("Hay tres estrategias ", "[S1]."),
         *,
         retriever: Any = None,
         reindex_run: Callable[..., SyncReport] | None = None,
+        warmup: Callable[[], None] | None = None,
+        static_dir: Path | None = None,
         ollama: Callable[[httpx.Request], httpx.Response] = ollama_ok,
         **settings: Any,
     ) -> Api:
@@ -78,8 +81,13 @@ def make_api(env: Env) -> Iterator[MakeApi]:
             health=health.check,
             reindex=reindex,
             points=env.store.count,
+            warmup=warmup,
         )
-        return Api(TestClient(create_app(services), base_url="http://localhost"), env, llm)
+        return Api(
+            TestClient(create_app(services, static_dir=static_dir), base_url="http://localhost"),
+            env,
+            llm,
+        )
 
     yield _make
 
@@ -206,7 +214,7 @@ def test_ask_streams_sources_tokens_and_done(make_api: MakeApi) -> None:
     assert set(names[1:-1]) == {"token"}
     done = events[-1][1]
     text = "".join(d["text"] for n, d in events if n == "token")
-    assert text == done["answer"] == "Hay tres estrategias [[Condiciones de carrera]]."
+    assert text == done["answer"] == "Hay tres estrategias [S1]."
     assert [c["path"] for c in done["citations"]] == [CARRERA]
     assert done["warnings"] == [] and done["not_found"] is False
     assert done["timings"]["total_ms"] > 0
@@ -220,11 +228,11 @@ def test_ask_lists_the_citable_sources_first(make_api: MakeApi) -> None:
 
 
 def test_ask_never_streams_an_unverified_citation(make_api: MakeApi) -> None:
-    api = make_api(["Dato [[Inve", "ntada]] y [[Condiciones de carrera]]."])
+    api = make_api(["Dato [S", "9] y [S1]."])
     events = sse(api.client.post("/ask", json={"question": "estrategias"}).text)
     text = "".join(d["text"] for n, d in events if n == "token")
-    assert "[[Inventada" not in text and "[cita no verificada: Inventada]" in text
-    assert events[-1][1]["invalid"] == ["Inventada"]
+    assert "[S9" not in text and "[cita no verificada: S9]" in text
+    assert events[-1][1]["invalid"] == ["S9"]
 
 
 def test_ask_reports_model_failures_as_an_error_event(make_api: MakeApi) -> None:
@@ -391,3 +399,110 @@ def test_a_weak_match_is_flagged_as_low_confidence_by_default(make_api: MakeApi)
     events = sse(make_api().client.post("/ask", json={"question": "estrategias"}).text)
     assert "confianza_baja" in events[-1][1]["warnings"]
     assert events[0][1]["confidence"] == "baja"
+
+
+# --- precalentamiento -------------------------------------------------------------------------
+
+
+def test_startup_warms_up_the_search_in_the_background(make_api: MakeApi) -> None:
+    import threading
+
+    called = threading.Event()
+    api = make_api(warmup=called.set)
+    with api.client:
+        assert called.wait(timeout=5)
+
+
+def test_a_failed_warmup_does_not_stop_the_api(make_api: MakeApi) -> None:
+    import threading
+
+    tried = threading.Event()
+
+    def broken() -> None:
+        tried.set()
+        raise httpx.ConnectError("Ollama no responde")
+
+    api = make_api(warmup=broken)
+    with api.client:
+        assert tried.wait(timeout=5)
+        assert api.client.get("/health").status_code == 200
+
+
+# --- interfaz web (frontend/dist) ---------------------------------------------------------------
+
+
+@pytest.fixture
+def dist(tmp_path: Path) -> Path:
+    d = tmp_path / "dist"
+    (d / "assets").mkdir(parents=True)
+    (d / "index.html").write_text("<!doctype html><title>Segundo cerebro</title>", encoding="utf-8")
+    (d / "assets" / "app-abc123.js").write_text("console.log(1)", encoding="utf-8")
+    (d / "favicon.svg").write_text("<svg/>", encoding="utf-8")
+    (tmp_path / "secreto.txt").write_text("no se sirve", encoding="utf-8")
+    return d
+
+
+def test_the_app_is_served_at_the_root(make_api: MakeApi, dist: Path) -> None:
+    r = make_api(static_dir=dist).client.get("/")
+    assert r.status_code == 200 and "Segundo cerebro" in r.text
+    assert r.headers["content-type"].startswith("text/html")
+    assert r.headers["cache-control"] == "no-cache"
+
+
+def test_hashed_assets_are_cached_for_a_year(make_api: MakeApi, dist: Path) -> None:
+    r = make_api(static_dir=dist).client.get("/assets/app-abc123.js")
+    assert r.status_code == 200 and "console.log" in r.text
+    assert "immutable" in r.headers["cache-control"]
+
+
+def test_other_files_of_the_build_are_served(make_api: MakeApi, dist: Path) -> None:
+    r = make_api(static_dir=dist).client.get("/favicon.svg")
+    assert r.status_code == 200 and r.text == "<svg/>"
+
+
+@pytest.mark.parametrize("route", ["/estado", "/preguntar/algo", "/estado/"])
+def test_unknown_browser_routes_fall_back_to_the_app(
+    make_api: MakeApi, dist: Path, route: str
+) -> None:
+    r = make_api(static_dir=dist).client.get(route)
+    assert r.status_code == 200 and "Segundo cerebro" in r.text
+
+
+@pytest.mark.parametrize(
+    "route", ["/notes/no/existe.md", "/graph/neighbors/x.md", "/asset/falta.js", "/assets/falta.js"]
+)
+def test_api_and_missing_asset_paths_never_fall_back_to_the_app(
+    make_api: MakeApi, dist: Path, route: str
+) -> None:
+    r = make_api(static_dir=dist).client.get(route)
+    assert r.status_code == 404 and "<title>" not in r.text
+
+
+def test_the_api_keeps_working_next_to_the_app(make_api: MakeApi, dist: Path) -> None:
+    api = make_api(static_dir=dist)
+    assert api.client.get("/health").status_code == 200
+    assert api.client.get("/stats").status_code == 200
+
+
+@pytest.mark.parametrize(
+    "route",
+    ["/../secreto.txt", "/..%2fsecreto.txt", "/%2e%2e/secreto.txt", "/assets/../../secreto.txt"],
+)
+def test_it_does_not_serve_files_outside_the_build(
+    make_api: MakeApi, dist: Path, route: str
+) -> None:
+    r = make_api(static_dir=dist).client.get(route)
+    assert "no se sirve" not in r.text
+
+
+def test_only_get_falls_back_to_the_app(make_api: MakeApi, dist: Path) -> None:
+    assert make_api(static_dir=dist).client.post("/estado").status_code in (404, 405)
+
+
+def test_without_a_build_the_root_explains_how_to_make_one(
+    make_api: MakeApi, tmp_path: Path
+) -> None:
+    r = make_api(static_dir=tmp_path / "no-hay").client.get("/")
+    assert r.status_code == 404
+    r = make_api().client.get("/")
+    assert r.status_code == 404

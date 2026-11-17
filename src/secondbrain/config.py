@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     embed_model: str = "bge-m3"
     embed_batch_size: int = Field(8, ge=1, le=128)
     embed_on_cpu: bool = False
-    embed_keep_alive: str = "30s"
+    embed_keep_alive: str = "30m"  # el embedder de consulta (CPU) no se descarga entre preguntas
 
     qdrant_url: str = "http://127.0.0.1:6333"
     collection: str = "vault_chunks"
@@ -72,6 +72,18 @@ class Settings(BaseSettings):
     big_note_chunks: int = Field(200, ge=1)  # a partir de aquí una nota cuenta como "grande"
     big_note_quota: int = Field(2, ge=0)  # máximo de notas grandes en el top-k...
     quota_override_ratio: float = Field(0.9, gt=0, le=1)  # ...salvo que casi igualen al primero
+    # Corte por relevancia: una nota es evidencia solo si el coseno de su mejor chunk llega a
+    # `min_note_cosine` y no queda más de `cosine_margin` por debajo de la mejor nota.
+    min_note_cosine: float = Field(0.55, ge=0, le=1)
+    cosine_margin: float = Field(0.12, ge=0, le=1)
+
+    # Visión general ("de qué trata X", "qué se da en el tema N"): notas por asignatura y apartados.
+    aliases_path: Path = Path("data/aliases.toml")
+    overview_max_notes: int = Field(22, ge=1)
+    overview_text_chars: int = Field(350, ge=100)  # texto por nota en una visión de asignatura
+    overview_per_topic: int = Field(2, ge=1)  # notas por «tema N» antes de repetir tema
+    overview_headings_subject: int = Field(5, ge=0)
+    overview_headings_topic: int = Field(25, ge=0)
 
     # Contexto que se da al LLM (tokens estimados). El total del prompt más la respuesta debe caber
     # en `llm_num_ctx`: sistema ~450 + contexto + pregunta ~700 + `llm_max_tokens`.
@@ -110,7 +122,7 @@ class Settings(BaseSettings):
             return [part.strip() for part in v.split(";") if part.strip()]
         return v
 
-    @field_validator("manifest_path", "bm25_cache_dir")
+    @field_validator("manifest_path", "bm25_cache_dir", "aliases_path")
     @classmethod
     def _anchor_to_project_root(cls, v: Path) -> Path:
         return v if v.is_absolute() else PROJECT_ROOT / v

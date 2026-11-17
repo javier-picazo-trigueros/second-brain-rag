@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
 import { describe, expect, it, vi } from "vitest";
 
+import type { CitedSource } from "../lib/answer";
 import type { SourceInfo } from "../lib/api";
 import { SourceCards } from "./SourceCards";
 
@@ -24,48 +25,71 @@ const sources = [
   make({ label: "Redes", path: "3º/Redes.md", kind: "hint" }),
 ];
 
+const cited: CitedSource[] = [
+  { number: 1, path: "4º/Seg/Doc iptables.md", label: "Doc iptables", pages: [4], hint: false },
+  { number: 2, path: "3º/Redes.md", label: "Redes", pages: [], hint: true },
+];
+
 describe("SourceCards", () => {
-  it("lists the evidence with its context", () => {
-    render(<SourceCards sources={sources} onOpen={() => {}} />);
-    expect(screen.getByRole("heading", { name: "Fuentes usadas (2)" })).toBeInTheDocument();
-    const card = screen.getByRole("button", { name: /Doc iptables/ });
-    expect(card).toHaveTextContent("SEGURIDAD · 4º");
-    expect(card).toHaveTextContent("p. 4, 21");
+  it("shows the cited sources as numbered chips with their title and page, always visible", () => {
+    render(<SourceCards sources={sources} cited={cited} onOpen={() => {}} />);
+    expect(screen.getByRole("heading", { name: "Fuentes · 2" })).toBeInTheDocument();
+    const first = screen.getByRole("button", { name: "1 Doc iptables p. 4" });
+    expect(first).toHaveTextContent("1");
+    expect(first).toHaveTextContent("Doc iptables");
+    expect(first).toHaveTextContent("p. 4");
+    expect(screen.getByRole("button", { name: "2 Redes" })).toBeInTheDocument();
   });
 
-  it("opens the note at its first page", async () => {
+  it("names each chip with exactly its visible text (WCAG 2.5.3)", () => {
+    render(<SourceCards sources={sources} cited={cited} onOpen={() => {}} />);
+    for (const button of screen.getAllByRole("button", { name: /^\d / })) {
+      expect(button).not.toHaveAttribute("aria-label");
+    }
+  });
+
+  it("opens the note at the first cited page, or with none", async () => {
     const onOpen = vi.fn();
-    render(<SourceCards sources={sources} onOpen={onOpen} />);
+    render(<SourceCards sources={sources} cited={cited} onOpen={onOpen} />);
     await userEvent.click(screen.getByRole("button", { name: /Doc iptables/ }));
-    expect(onOpen).toHaveBeenCalledWith("4º/Seg/Doc iptables.md", 4);
+    expect(onOpen).toHaveBeenLastCalledWith("4º/Seg/Doc iptables.md", 4);
+    await userEvent.click(screen.getByRole("button", { name: /Redes/ }));
+    expect(onOpen).toHaveBeenLastCalledWith("3º/Redes.md", null);
   });
 
-  it("opens a note without pages with no page", async () => {
-    const onOpen = vi.fn();
-    render(<SourceCards sources={sources} onOpen={onOpen} />);
-    await userEvent.click(screen.getByRole("button", { name: /Práctica/ }));
-    expect(onOpen).toHaveBeenCalledWith("4º/Seg/Práctica.md", null);
+  it("keeps the title and the page visibly and textually apart", () => {
+    // Regresión: salía «Tema-3.1 Procesos e Hilos v2021SISTEMAS».
+    render(<SourceCards sources={sources} cited={cited} onOpen={() => {}} />);
+    const text = screen.getByRole("button", { name: /Doc iptables/ }).textContent ?? "";
+    expect(text).toMatch(/Doc iptables\s+p\. 4/);
   });
 
-  it("says when a source was shortened to fit", () => {
-    render(<SourceCards sources={sources} onOpen={() => {}} />);
-    expect(screen.getByRole("button", { name: /Práctica/ })).toHaveTextContent("recortada");
+  it("hides the consulted-but-not-cited notes until asked, with their subject and course", async () => {
+    render(<SourceCards sources={sources} cited={cited} onOpen={() => {}} />);
+    expect(screen.queryByText("Práctica")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Ver todas (1 más)" }));
+    const other = screen.getByRole("region", { name: "Otras notas consultadas" });
+    const card = within(other).getByRole("button", { name: /Práctica/ });
+    expect(card).toHaveTextContent("SEGURIDAD");
+    expect(card).toHaveTextContent("recortada");
+    expect(screen.getByRole("button", { name: "Ver menos" })).toHaveAttribute("aria-expanded", "true");
   });
 
-  it("keeps the related notes apart, as hints", () => {
-    render(<SourceCards sources={sources} onOpen={() => {}} />);
-    const hints = screen.getByRole("region", { name: /Notas relacionadas/ });
-    expect(within(hints).getByRole("button", { name: /Redes/ })).toBeInTheDocument();
-    expect(within(hints).getByText(/pistas/i)).toBeInTheDocument();
+  it("falls back to the consulted evidence when the answer cited nothing", () => {
+    render(<SourceCards sources={sources} cited={[]} onOpen={() => {}} />);
+    expect(screen.getByRole("heading", { name: "Fuentes · 2" })).toBeInTheDocument();
+    const card = screen.getByRole("button", { name: /Doc iptables/ });
+    expect(card).toHaveTextContent("SEGURIDAD");
+    expect(within(card).queryByText("1")).toBeNull(); // sin número: nadie la citó
   });
 
   it("renders nothing without sources", () => {
-    const { container } = render(<SourceCards sources={[]} onOpen={() => {}} />);
+    const { container } = render(<SourceCards sources={[]} cited={[]} onOpen={() => {}} />);
     expect(container).toBeEmptyDOMElement();
   });
 
   it("has no accessibility violations", async () => {
-    const { container } = render(<SourceCards sources={sources} onOpen={() => {}} />);
+    const { container } = render(<SourceCards sources={sources} cited={cited} onOpen={() => {}} />);
     expect(await axe(container)).toHaveNoViolations();
   });
 });

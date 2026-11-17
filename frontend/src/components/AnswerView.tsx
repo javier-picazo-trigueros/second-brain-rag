@@ -1,20 +1,20 @@
 import { useMemo } from "react";
 
-import type { SourceInfo } from "../lib/api";
+import type { FragmentInfo } from "../lib/api";
 import { answerToMarkdown } from "../lib/answer";
 import { CitationChip } from "./CitationChip";
 import { ExternalLink, Markdown, noteComponents } from "./Markdown";
 
 interface Props {
   text: string;
-  sources: SourceInfo[];
+  fragments: FragmentInfo[];
   streaming?: boolean;
   onOpenNote: (path: string, page: number | null) => void;
 }
 
-/** Respuesta del modelo: Markdown saneado donde cada cita `[[Nota]] (p. N)` es un chip. */
-export function AnswerView({ text, sources, streaming = false, onOpenNote }: Props) {
-  const { markdown, refs } = useMemo(() => answerToMarkdown(text, sources), [text, sources]);
+/** Respuesta del modelo: Markdown saneado donde cada cita `[S#]` es un chip. */
+export function AnswerView({ text, fragments, streaming = false, onOpenNote }: Props) {
+  const { markdown, refs } = useMemo(() => answerToMarkdown(text, fragments), [text, fragments]);
 
   const components = useMemo(
     () => ({
@@ -30,7 +30,7 @@ export function AnswerView({ text, sources, streaming = false, onOpenNote }: Pro
   );
 
   return (
-    <div data-testid="answer" className="reading" aria-busy={streaming}>
+    <div data-testid="answer" className="reading answer-text" aria-busy={streaming}>
       <Markdown components={components}>{markdown}</Markdown>
       {streaming ? (
         <span

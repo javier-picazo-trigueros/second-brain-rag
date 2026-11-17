@@ -3,8 +3,16 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from secondbrain.answer.context import build_context, estimate_tokens
-from secondbrain.answer.prompt import NOT_FOUND, QUESTION_MAX_CHARS, SYSTEM_PROMPT, build_messages
+from secondbrain.answer.prompt import (
+    NOT_FOUND,
+    QUESTION_MAX_CHARS,
+    REMINDER,
+    SYSTEM_PROMPT,
+    build_messages,
+)
 from secondbrain.config import Settings
 from secondbrain.domain import Hit
 from secondbrain.retrieval.hybrid import NoteHit, RelatedNote, SearchResult
@@ -27,7 +35,7 @@ def one_note(text: str = "contenido") -> SearchResult:
 def test_system_prompt_demands_citations_and_the_not_found_sentence() -> None:
     assert NOT_FOUND == "No lo encuentro en el vault."
     assert NOT_FOUND in SYSTEM_PROMPT
-    assert "[[" in SYSTEM_PROMPT and "(p. " in SYSTEM_PROMPT
+    assert "[S3]" in SYSTEM_PROMPT
     assert "FUENTES" in SYSTEM_PROMPT
 
 
@@ -37,7 +45,7 @@ def test_system_prompt_marks_related_notes_as_hints_not_evidence() -> None:
 
 
 def test_system_prompt_is_small() -> None:
-    assert estimate_tokens(SYSTEM_PROMPT) <= 450
+    assert estimate_tokens(SYSTEM_PROMPT) <= 520
 
 
 def test_messages_are_system_then_user_with_context_and_question(tmp_path: Path) -> None:
@@ -47,7 +55,7 @@ def test_messages_are_system_then_user_with_context_and_question(tmp_path: Path)
     assert (system.role, user.role) == ("system", "user")
     assert system.content == SYSTEM_PROMPT
     assert "el semáforo es un contador" in user.content
-    assert user.content.rstrip().endswith("¿Qué es un semáforo?")
+    assert "PREGUNTA: ¿Qué es un semáforo?" in user.content
 
 
 def test_an_empty_context_still_produces_a_valid_prompt(tmp_path: Path) -> None:
@@ -82,8 +90,8 @@ def test_the_whole_prompt_plus_the_answer_fits_in_the_context_window(tmp_path: P
 # --- ajustes tras ver respuestas reales del modelo -------------------------------
 
 
-def test_the_prompt_forbids_copying_the_subject_and_course_after_a_citation() -> None:
-    assert "No añadas asignatura ni curso" in SYSTEM_PROMPT
+def test_the_prompt_forbids_writing_titles_pages_or_subjects_after_a_citation() -> None:
+    assert "No escribas títulos de notas, páginas, asignaturas ni cursos" in SYSTEM_PROMPT
 
 
 def test_the_prompt_gives_a_fixed_template_for_suggesting_nearby_notes() -> None:
@@ -96,5 +104,91 @@ def test_the_prompt_forbids_extrapolating_beyond_the_sources() -> None:
     assert "No extrapoles" in SYSTEM_PROMPT
 
 
-def test_the_prompt_asks_for_the_page_right_next_to_the_citation() -> None:
-    assert "pegado a la cita" in SYSTEM_PROMPT
+def test_the_prompt_asks_for_complete_structured_answers() -> None:
+    assert "completa y bien estructurada" in SYSTEM_PROMPT
+    assert "conciso" not in SYSTEM_PROMPT.lower()
+
+
+def test_overview_questions_get_the_overview_instructions(tmp_path: Path) -> None:
+    from secondbrain.answer.context import BuiltContext
+    from secondbrain.answer.prompt import OVERVIEW_PROMPT
+
+    overview = BuiltContext("FUENTES (evidencia):", (), 5, 0, "overview", ())
+    system = build_messages("¿De qué trata?", overview)[0].content
+    assert OVERVIEW_PROMPT in system and "visión general" in system
+    normal = BuiltContext("FUENTES (evidencia):", (), 5, 0, "search", ())
+    assert OVERVIEW_PROMPT not in build_messages("¿Qué es un hilo?", normal)[0].content
+
+
+def test_the_overview_prompt_still_fits_the_window(tmp_path: Path) -> None:
+    from secondbrain.answer.prompt import OVERVIEW_PROMPT
+
+    assert estimate_tokens(SYSTEM_PROMPT + OVERVIEW_PROMPT) <= 900
+
+
+def test_the_citation_reminder_comes_last_in_the_user_message(tmp_path: Path) -> None:
+    from secondbrain.answer.context import BuiltContext
+    from secondbrain.answer.prompt import REMINDER
+
+    ctx = BuiltContext("FUENTES (evidencia):", (), 5, 0, "search", ())
+    user = build_messages("¿Qué es un hilo?", ctx)[1].content
+    assert user.endswith(REMINDER) and "[S#]" in REMINDER
+
+
+def test_the_prompt_allows_relating_sources_instead_of_refusing() -> None:
+    assert "relacionar o comparar" in SYSTEM_PROMPT
+    assert "Si ninguna FUENTE trata el tema" in SYSTEM_PROMPT
+
+
+def test_the_prompt_caps_the_length_of_ordinary_answers() -> None:
+    assert "300 palabras" in SYSTEM_PROMPT
+
+
+def test_a_topic_overview_gets_its_own_template_and_never_talks_about_how_many_topics() -> None:
+    from secondbrain.answer.context import BuiltContext
+    from secondbrain.answer.prompt import OVERVIEW_PROMPT, TOPIC_PROMPT
+
+    ctx = BuiltContext("FUENTES (evidencia):", (), 5, 0, "overview_topic", ())
+    system = build_messages("¿De qué va el tema 5?", ctx)[0].content
+    assert TOPIC_PROMPT in system and OVERVIEW_PROMPT not in system
+    assert "No digas cuántos temas" in TOPIC_PROMPT
+
+
+def test_the_subject_template_demands_the_index_topics_and_sentences_per_topic() -> None:
+    from secondbrain.answer.prompt import OVERVIEW_PROMPT
+
+    assert "ni más ni menos" in OVERVIEW_PROMPT
+    assert "dos o tres frases" in OVERVIEW_PROMPT and "no una lista de títulos" in OVERVIEW_PROMPT
+    assert "un par de párrafos" in OVERVIEW_PROMPT
+
+
+@pytest.mark.parametrize(
+    ("question", "n"),
+    [
+        ("dime de q trata la asignatura sabes en un par de parrafos cuantos temas tiene todo", 2),
+        ("explicalo en dos párrafos", 2),
+        ("resúmelo en tres parrafos por favor", 3),
+        ("en un parrafo", 1),
+        ("hazme 4 párrafos sobre grafos", 4),
+    ],
+)
+def test_a_requested_number_of_paragraphs_becomes_an_explicit_instruction(
+    tmp_path: Path, question: str, n: int
+) -> None:
+    from secondbrain.answer.context import BuiltContext
+
+    ctx = BuiltContext("FUENTES (evidencia):", (), 5, 0, "overview", ())
+    user = build_messages(question, ctx)[1].content
+    word = "párrafo" if n == 1 else "párrafos"
+    assert f"FORMATO PEDIDO: exactamente {n} {word} de texto corrido" in user
+    assert user.endswith(REMINDER)  # el recordatorio de citas sigue yendo el último
+
+
+@pytest.mark.parametrize(
+    "question", ["de q va el tema 5", "qué es un hilo", "cuantos temas tiene ia 2"]
+)
+def test_without_a_format_request_nothing_is_added(tmp_path: Path, question: str) -> None:
+    from secondbrain.answer.context import BuiltContext
+
+    ctx = BuiltContext("FUENTES (evidencia):", (), 5, 0, "search", ())
+    assert "FORMATO PEDIDO" not in build_messages(question, ctx)[1].content

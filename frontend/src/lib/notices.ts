@@ -13,7 +13,6 @@ export interface Notice {
 
 const ORDER = [
   "citas_no_verificadas",
-  "paginas_no_verificadas",
   "sin_citas",
   "solo_pistas",
   "respuesta_truncada",
@@ -50,15 +49,6 @@ function build(code: string, done: DoneEvent): Notice | null {
         detail:
           "El modelo nombró notas que no estaban entre las fuentes consultadas. " +
           "En el texto aparecen marcadas con «?».",
-      };
-    }
-    case "paginas_no_verificadas": {
-      const n = Math.max(done.bad_pages.length, 1);
-      return {
-        code,
-        tone: "caution",
-        title: plural(n, "página no verificada", "páginas no verificadas"),
-        detail: "El modelo citó páginas que no figuran en las fuentes consultadas.",
       };
     }
     case "sin_citas":

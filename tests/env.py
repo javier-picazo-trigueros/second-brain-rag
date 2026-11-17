@@ -27,7 +27,8 @@ class Env:
             _env_file=None,
             vault_path=self.vault,
             manifest_path=self.tmp / "data" / "manifest.sqlite",
-            **overrides,
+            # el FakeStore no tiene cosenos reales: sin corte absoluto salvo que el test lo pida
+            **{"min_note_cosine": 0.0, **overrides},
         )
 
     def indexer(self, **overrides: Any) -> Indexer:

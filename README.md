@@ -31,7 +31,10 @@ Para usar otra ruta: `$env:BRAIN_VENV = "D:\venvs\brain"`.
 .\tasks.ps1 index       # indexa el vault
 .\tasks.ps1 watch       # sincroniza y vigila el vault
 .\tasks.ps1 serve       # API HTTP en http://127.0.0.1:8000
-.\tasks.ps1 dev         # API + interfaz (Fase 3b)
+.\tasks.ps1 dev         # API + interfaz en modo desarrollo
+.\tasks.ps1 web-install # dependencias de la interfaz (pnpm)
+.\tasks.ps1 web-build   # compila la interfaz en frontend\dist
+.\tasks.ps1 web-test    # tests de la interfaz (Vitest)
 ```
 
 ## Uso
@@ -69,18 +72,81 @@ verificado), `done` (citas, avisos, confianza, tiempos y tokens) o `error`.
 
 ### Cómo se responde y qué garantiza
 
-1. Se recuperan notas con la búsqueda híbrida y se arma un contexto con un presupuesto de tokens
-   (4.500 de los 8.192 de `num_ctx`; se estima con 3 caracteres por token, que sobreestima 9-21 %).
-2. `qwen2.5:7b` responde solo con ese contexto y debe citar `[[Nombre de la nota]]` y `(p. N)`.
-3. Cada cita se comprueba mientras llega el texto: una nota que no está en el contexto se sustituye por
-   `[cita no verificada: X]` y una página que no está en el contexto se marca `(p. N no verificada)`.
-4. Si el contexto no basta, el modelo debe responder exactamente «No lo encuentro en el vault.».
+1. Se detecta la intención de la pregunta, escrita como se habla («de q va», «q se da», «cuantos
+   temas tiene», sin tildes, con faltas y con relleno). Si pide una **visión general** de una
+   asignatura o de un «tema N», no se buscan fragmentos: se resumen las notas de esa asignatura o tema
+   con su `resumen`, sus conceptos y sus apartados. Quedan fuera los libros (las «notas grandes»), las
+   guías docentes y, si hay un temario numerado (`Unit N`, `Tema N`), todo lo que no sea temario. El
+   **número de temas sale del índice** (unidades distintas por nombre de archivo) y se le pasa al
+   modelo como dato exacto; si la pregunta pide «un par de párrafos» u otro número, se le da como
+   instrucción explícita. Si nombra dos asignaturas, se busca en cada una y se intercalan los
+   resultados. En cualquier otro caso, búsqueda híbrida normal.
+2. Solo pasan como evidencia las notas parecidas a la pregunta: el coseno de su mejor fragmento debe
+   llegar a `BRAIN_MIN_NOTE_COSINE` (0,55) y no quedar más de `BRAIN_COSINE_MARGIN` (0,12) por debajo
+   del mejor. Si ninguna pasa, la respuesta es «No lo encuentro en el vault.» sin llamar al modelo.
+3. Con ellas se arma un contexto con presupuesto de tokens (4.500 de los 8.192 de `num_ctx`; se estima
+   con 3 caracteres por token). Cada fragmento lleva un identificador corto: `[S1]`, `[S2]`…
+4. `qwen2.5:7b` responde solo con ese contexto y cita con esos identificadores. El título y la página
+   que se muestran son los del fragmento, los pone el sistema: el modelo no puede inventarlos.
+5. Cada cita se comprueba mientras llega el texto: un identificador que no está en el contexto se
+   sustituye por `[cita no verificada: S9]`.
+6. Si el contexto no basta, el modelo debe responder exactamente «No lo encuentro en el vault.».
+
+#### Alias de asignaturas
+
+La asignatura de una nota es su carpeta de segundo nivel (`curso/ASIGNATURA/...`); cada carpeta
+funciona sola con su nombre. Para que «Data Mining» o «matemática discreta» lleguen a las carpetas
+`DM` o `Discretas`, copia `docs/aliases.example.toml` a `data/aliases.toml` (esa carpeta está ignorada
+por git) y ajústalo a tu vault. Cambiar el fichero no requiere reindexar. Los alias se comparan como
+palabra completa (`car` no coincide dentro de «carácter») y toleran una falta en las palabras largas;
+los números y las palabras cortas deben coincidir exactos. Un `include` mueve la nota a esa asignatura.
 
 **Limitaciones conocidas.** Verificar una cita garantiza que la nota y la página **existen en el
 contexto**, no que respalden la afirmación: un modelo de 7B puede extrapolar y citar con formato
 correcto (se ha visto). La señal `confidence` (coseno denso del mejor chunk, umbral 0,60 calibrado con
 27 preguntas) es un aviso, no un bloqueo: separa mal los temas ausentes más cercanos. En preguntas que
 cruzan asignaturas, la recuperación puede traer evidencia de una sola; ver `docs/PROGRESO.md`.
+
+## Interfaz web
+
+React + Vite + TypeScript + Tailwind, 100 % local (fuentes incluidas en el repo, sin CDN ni telemetría).
+Pantallas: **Preguntar** (hilo de conversación, citas numeradas, fuentes, avisos) y **Estado**
+(servicios, GPU, índice, reindexado y latencia de la sesión). Buscar y la vista de nota completa
+llegan en el siguiente checkpoint.
+
+```powershell
+.\tasks.ps1 web-install   # una vez
+.\tasks.ps1 web-build     # compila frontend\dist
+.\tasks.ps1 serve         # la API sirve también la interfaz: http://127.0.0.1:8000
+```
+
+Para desarrollar con recarga en caliente: `.\tasks.ps1 dev` (API en :8000 y Vite en :5173, que
+reenvía las peticiones a la API).
+
+**Cómo se ve cada respuesta.** Las citas son números discretos (`1`, `2`…) junto a la frase; el título
+y la página salen al pasar el ratón o enfocar, y en móvil, tocar el número abre la nota. Bajo la
+respuesta, la fila *Fuentes* repite cada número con el título corto de la nota y su página. Los avisos
+(confianza baja, citas no verificadas) son píldoras tenues; solo un servicio caído usa el rojo. «No lo
+encuentro en tus apuntes» es una tarjeta serena con las notas más cercanas.
+
+**pnpm y `node_modules` fuera de OneDrive.** El repo vive en OneDrive, que sincronizaría decenas de
+miles de ficheros de `node_modules`. La interfaz usa pnpm: su almacén y su almacén virtual están en
+`C:\venvs\second-brain-web` (ver `frontend/.npmrc`) y `node_modules` solo contiene enlaces. No
+ejecutes `npm install` en `frontend/`: sustituiría esos enlaces por una carpeta real dentro de OneDrive.
+`frontend/pnpm-workspace.yaml` lista, con versión exacta, los paquetes publicados hace pocos días que
+se permitieron saltándose la antigüedad mínima de pnpm (`typescript-eslint` y sus subpaquetes,
+`axe-core` y `@testing-library/user-event`).
+
+**Comprobaciones manuales** (no forman parte de los tests; escriben fuera del repo):
+
+```powershell
+cd frontend
+node scripts/screens.mjs <carpeta>   # 42 capturas (360/768/1280 px, claro y oscuro) + axe de cada una
+node scripts/ask-ui.mjs <carpeta> "una pregunta"   # pregunta en la interfaz real y mide
+```
+
+Usan el Edge instalado (`BRAIN_BROWSER` para otro navegador). La propuesta de diseño estática está en
+`docs/design/preguntar.html`.
 
 ## Servidor MCP (Claude Code y otros clientes)
 
@@ -106,6 +172,22 @@ claude mcp list
 > `BRAIN_MCP_MAX_CHARS`), las herramientas son de solo lectura y puedes dejar notas sensibles fuera del
 > índice con `BRAIN_EXCLUDE_GLOBS` (ver `.env.example`). Solo conéctalo a clientes en los que confíes
 > con esas notas. La API HTTP y la CLI no envían nada fuera.
+
+## Evaluación (preguntas de referencia)
+
+`evals/golden/` contiene el formato de un conjunto de preguntas con las notas que deberían
+recuperarse (`golden.example.yaml`, ficticio). Copia el ejemplo a `golden.local.yaml` (ignorado por
+git, porque lleva nombres de tu vault) y ejecuta:
+
+```powershell
+brain golden run --out evals/results/antes.json            # solo recuperación (rápido, sin GPU)
+brain golden run --answers --out evals/results/despues.json  # además genera las respuestas
+brain golden compare evals/results/antes.json evals/results/despues.json
+```
+
+Mide recall, precisión, notas de ruido y top-1 por tipo de pregunta (concreta, visión general de una
+asignatura o tema, cruzada, trampa). Con `--answers` añade longitud, citas no verificadas y latencias,
+y anota el estado de la GPU: si está compartida con otro proceso, las latencias no son comparables.
 
 ## Configuración
 

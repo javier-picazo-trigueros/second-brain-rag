@@ -32,5 +32,10 @@ export function useAsk() {
     dispatch({ type: "stop" });
   }, []);
 
-  return { state, ask, stop };
+  const reset = useCallback(() => {
+    controller.current?.abort();
+    dispatch({ type: "reset" });
+  }, []);
+
+  return { state, ask, stop, reset };
 }

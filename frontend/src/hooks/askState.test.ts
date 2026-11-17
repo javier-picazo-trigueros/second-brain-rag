@@ -5,6 +5,7 @@ import { askReducer, initialAskState, type AskState } from "./askState";
 
 const sources: SourcesEvent = {
   type: "sources",
+  fragments: [],
   sources: [
     {
       label: "Semáforos",
@@ -27,7 +28,6 @@ const done: DoneEvent = {
   answer: "Hola mundo",
   citations: [],
   invalid: [],
-  bad_pages: [],
   warnings: [],
   not_found: false,
   confidence: "alta",

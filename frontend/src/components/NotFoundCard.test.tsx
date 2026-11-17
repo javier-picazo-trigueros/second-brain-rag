@@ -3,19 +3,18 @@ import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
 import { describe, expect, it, vi } from "vitest";
 
-import type { SourceInfo } from "../lib/api";
+import type { FragmentInfo } from "../lib/api";
 import { NotFoundCard, splitNotFound } from "./NotFoundCard";
 
-const sources: SourceInfo[] = [
+const fragments: FragmentInfo[] = [
   {
+    id: "S1",
     label: "Tema 5",
     path: "t5.md",
     title: "Tema 5",
     kind: "evidence",
-    pages: [3],
-    asignatura: null,
-    curso: null,
-    truncated: false,
+    page: 3,
+    heading: null,
   },
 ];
 
@@ -35,8 +34,8 @@ describe("splitNotFound", () => {
 
 describe("NotFoundCard", () => {
   const props = {
-    answer: "No lo encuentro en el vault. Podrías mirar: [[Tema 5]] (p. 3).",
-    sources,
+    answer: "No lo encuentro en el vault. Podrías mirar: [S1].",
+    fragments,
     evidenceCount: 5,
     lowConfidence: true,
     onOpenNote: () => {},
@@ -66,6 +65,13 @@ describe("NotFoundCard", () => {
     render(<NotFoundCard {...props} onOpenNote={onOpenNote} />);
     await userEvent.click(screen.getByRole("button", { name: /Tema 5/ }));
     expect(onOpenNote).toHaveBeenCalledWith("t5.md", 3);
+  });
+
+  it("names each nearby note instead of showing a bare number", () => {
+    render(<NotFoundCard {...props} />);
+    const chip = screen.getByRole("button", { name: /Tema 5/ });
+    expect(chip).toHaveTextContent("Tema 5");
+    expect(chip).toHaveTextContent("p. 3");
   });
 
   it("omits the suggestions block when the model gave none", () => {

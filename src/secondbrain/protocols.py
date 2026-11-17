@@ -5,7 +5,8 @@ Permiten testear la lógica con fakes, sin servicios en marcha.
 
 from __future__ import annotations
 
-from typing import Protocol
+from collections.abc import Sequence
+from typing import Any, Protocol
 
 from secondbrain.domain import Chunk, Hit
 
@@ -26,8 +27,19 @@ class Store(Protocol):
     def delete_note(self, note_path: str) -> None: ...
 
     def search(
-        self, query: str, query_dense: list[float], limit: int = 8, prefetch: int = 40
+        self,
+        query: str,
+        query_dense: list[float],
+        limit: int = 8,
+        prefetch: int = 40,
+        only_paths: Sequence[str] | None = None,
     ) -> list[Hit]: ...
+
+    def outline(self, paths: Sequence[str]) -> list[dict[str, Any]]: ...
+
+    def dense_notes(
+        self, query_dense: list[float], limit: int = 100, only_paths: Sequence[str] | None = None
+    ) -> dict[str, float]: ...
 
     def search_note(
         self, note_path: str, query_dense: list[float], limit: int = 1

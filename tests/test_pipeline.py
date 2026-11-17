@@ -76,36 +76,40 @@ def text_of(events: list[Any]) -> str:
 
 
 def test_events_arrive_in_order_sources_tokens_done(tmp_path: Path) -> None:
-    events, _, _ = run(tmp_path, found(), ["Un semáforo cuenta ", "[[Semáforos]] (p. 7)."])
+    events, _, _ = run(tmp_path, found(), ["Un semáforo cuenta ", "[S1]."])
     assert isinstance(events[0], SourcesEvent)
     assert all(isinstance(e, TokenEvent) for e in events[1:-1])
     assert isinstance(events[-1], DoneEvent)
 
 
 def test_the_streamed_text_equals_the_final_answer(tmp_path: Path) -> None:
-    events, _, _ = run(tmp_path, found(), ["Un semáforo cuenta ", "[[Semáforos]] (p. 7)."])
-    assert text_of(events) == done(events).answer == "Un semáforo cuenta [[Semáforos]] (p. 7)."
+    events, _, _ = run(tmp_path, found(), ["Un semáforo cuenta ", "[S1]."])
+    assert text_of(events) == done(events).answer == "Un semáforo cuenta [S1]."
 
 
 def test_sources_event_lists_the_notes_the_model_can_cite(tmp_path: Path) -> None:
     hint = RelatedNote("2º/Redes.md", 1.0, ("c",), ("a",), "Resumen.", "H", None, None)
-    events, _, _ = run(tmp_path, found(hints=[hint]), ["Respuesta [[Semáforos]]."])
+    events, _, _ = run(tmp_path, found(hints=[hint]), ["Respuesta [S1]."])
     sources = events[0].sources
     assert [(s.label, s.kind) for s in sources] == [("Semáforos", "evidence"), ("Redes", "hint")]
     assert sources[0].pages == (7,)
+    assert [(f.id, f.kind, f.page) for f in events[0].fragments] == [
+        ("S1", "evidence", 7),
+        ("S2", "hint", None),
+    ]
 
 
 def test_the_prompt_sent_to_the_model_contains_the_context_and_the_question(tmp_path: Path) -> None:
-    _, _, llm = run(tmp_path, found(), ["ok [[Semáforos]]"])
+    _, _, llm = run(tmp_path, found(), ["ok [S1]"])
     assert [m.role for m in llm.messages] == ["system", "user"]
     assert "Un semáforo es un contador." in llm.messages[1].content
     assert "¿Qué es un semáforo?" in llm.messages[1].content
 
 
 def test_k_is_passed_to_the_retriever_and_defaults_to_the_setting(tmp_path: Path) -> None:
-    _, retriever, _ = run(tmp_path, found(), ["x [[Semáforos]]"], k=3)
+    _, retriever, _ = run(tmp_path, found(), ["x [S1]"], k=3)
     assert retriever.calls == [("¿Qué es un semáforo?", 3)]
-    _, retriever, _ = run(tmp_path, found(), ["x [[Semáforos]]"], answer_k=7)
+    _, retriever, _ = run(tmp_path, found(), ["x [S1]"], answer_k=7)
     assert retriever.calls[0][1] == 7
 
 
@@ -113,21 +117,22 @@ def test_k_is_passed_to_the_retriever_and_defaults_to_the_setting(tmp_path: Path
 
 
 def test_unverified_citations_are_marked_in_the_stream_and_reported(tmp_path: Path) -> None:
-    deltas = ["Dato [[Inve", "ntada]] y [[Semáforos]] (p. 7)."]
+    deltas = ["Dato [S", "9] y [S1]."]
     events, _, _ = run(tmp_path, found(), deltas)
     d = done(events)
-    assert "[[Inventada" not in text_of(events)
-    assert "[cita no verificada: Inventada]" in d.answer
-    assert d.invalid == ("Inventada",)
+    assert "[S9" not in text_of(events)
+    assert "[cita no verificada: S9]" in d.answer
+    assert d.invalid == ("S9",)
     assert [(c.path, c.page) for c in d.citations] == [("1º/SO/Semáforos.md", 7)]
     assert "citas_no_verificadas" in d.warnings
 
 
-def test_a_page_not_in_the_context_is_flagged(tmp_path: Path) -> None:
-    events, _, _ = run(tmp_path, found(), ["Cuenta [[Semáforos]] (p. 99)."])
+def test_the_page_comes_from_the_fragment_not_from_the_model(tmp_path: Path) -> None:
+    events, _, _ = run(tmp_path, found(), ["Cuenta [S1] (p. 99)."])
     d = done(events)
-    assert "(p. 99 no verificada)" in d.answer
-    assert "paginas_no_verificadas" in d.warnings
+    assert d.answer == "Cuenta [S1]."
+    assert [c.page for c in d.citations] == [7]
+    assert "paginas_no_verificadas" not in d.warnings
 
 
 # --- avisos -------------------------------------------------------------------------------------
@@ -140,26 +145,26 @@ def test_an_answer_without_citations_is_flagged(tmp_path: Path) -> None:
 
 def test_citing_only_related_hints_is_flagged(tmp_path: Path) -> None:
     hint = RelatedNote("2º/Redes.md", 1.0, ("c",), ("a",), "Resumen.", "H", None, None)
-    events, _, _ = run(tmp_path, found(hints=[hint]), ["Ver también [[Redes]]."])
+    events, _, _ = run(tmp_path, found(hints=[hint]), ["Ver también [S2]."])
     assert "solo_pistas" in done(events).warnings
 
 
 def test_a_clean_cited_answer_has_no_warnings(tmp_path: Path) -> None:
-    events, _, _ = run(tmp_path, found(), ["Es un contador [[Semáforos]] (p. 7)."])
+    events, _, _ = run(tmp_path, found(), ["Es un contador [S1]."])
     d = done(events)
     assert d.warnings == () and d.not_found is False
 
 
 def test_a_truncated_generation_is_flagged(tmp_path: Path) -> None:
     cut = Finished(900, 1024, 0.0, 400.0, 20000.0, truncated=True)
-    events, _, _ = run(tmp_path, found(), ["Es [[Semáforos]]"], finished=cut)
+    events, _, _ = run(tmp_path, found(), ["Es [S1]"], finished=cut)
     assert "respuesta_truncada" in done(events).warnings
 
 
 def test_a_trimmed_context_is_flagged(tmp_path: Path) -> None:
     big = [note(f"c/N{i}.md", "palabra " * 600) for i in range(6)]
     events, _, _ = run(
-        tmp_path, SearchResult(big, [], 0.8), ["x [[N0]]"], context_budget_tokens=1500,
+        tmp_path, SearchResult(big, [], 0.8), ["x [S1]"], context_budget_tokens=1500,
         related_budget_tokens=0,
     )  # fmt: skip
     assert "contexto_recortado" in done(events).warnings
@@ -177,9 +182,7 @@ def test_with_no_retrieved_notes_the_model_is_not_called(tmp_path: Path) -> None
 
 
 def test_when_the_model_says_it_is_not_in_the_vault_that_is_not_a_warning(tmp_path: Path) -> None:
-    events, _, _ = run(
-        tmp_path, found(similarity=0.9), [f"{NOT_FOUND} Podrías mirar [[Semáforos]]."]
-    )
+    events, _, _ = run(tmp_path, found(similarity=0.9), [f"{NOT_FOUND} Podrías mirar [S1]."])
     d = done(events)
     assert d.not_found is True
     assert "sin_citas" not in d.warnings
@@ -197,7 +200,7 @@ def test_confidence_label(similarity: float | None, expected: str) -> None:
 
 
 def test_low_similarity_is_reported_but_does_not_block_the_answer(tmp_path: Path) -> None:
-    events, _, llm = run(tmp_path, found(similarity=0.3), ["Es [[Semáforos]]"])
+    events, _, llm = run(tmp_path, found(similarity=0.3), ["Es [S1]"])
     d = done(events)
     assert (d.confidence, d.similarity) == ("baja", 0.3)
     assert "confianza_baja" in d.warnings
@@ -206,9 +209,7 @@ def test_low_similarity_is_reported_but_does_not_block_the_answer(tmp_path: Path
 
 
 def test_the_threshold_comes_from_the_settings(tmp_path: Path) -> None:
-    events, _, _ = run(
-        tmp_path, found(similarity=0.3), ["Es [[Semáforos]]"], confidence_threshold=0.2
-    )
+    events, _, _ = run(tmp_path, found(similarity=0.3), ["Es [S1]"], confidence_threshold=0.2)
     assert done(events).confidence == "alta"
 
 
@@ -229,7 +230,7 @@ def test_a_model_failure_mid_answer_keeps_what_was_already_sent(tmp_path: Path) 
 
 
 def test_timings_and_token_counts(tmp_path: Path) -> None:
-    events, _, _ = run(tmp_path, found(), ["Es ", "[[Semáforos]]."])
+    events, _, _ = run(tmp_path, found(), ["Es ", "[S1]."])
     d = done(events)
     assert d.timings.retrieval_ms > 0
     assert d.timings.first_token_ms is not None
@@ -240,5 +241,5 @@ def test_timings_and_token_counts(tmp_path: Path) -> None:
 
 def test_the_first_token_time_is_measured_when_text_reaches_the_client(tmp_path: Path) -> None:
     # Si el modelo empieza con una cita, el primer texto visible sale cuando se valida la cita.
-    events, _, _ = run(tmp_path, found(), ["[[Sem", "áforos]] ", "es un contador."])
+    events, _, _ = run(tmp_path, found(), ["[S", "1] ", "es un contador."])
     assert done(events).timings.first_token_ms is not None

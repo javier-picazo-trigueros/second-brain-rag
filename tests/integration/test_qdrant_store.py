@@ -180,3 +180,23 @@ def test_a_read_only_store_does_not_need_the_embedding_dimension(
     assert reader.search("contenido", [1, 0, 0, 0], limit=1)[0].payload["note_path"] == "a.md"
     with pytest.raises(RuntimeError, match="dimensión"):
         reader.ensure_collection()
+
+
+def test_dense_notes_gives_the_best_cosine_per_note(store: VectorStore) -> None:
+    store.upsert_chunks(
+        [_chunk("a.md", "uno", 0), _chunk("a.md", "dos", 1), _chunk("b.md", "tres")],
+        [[1, 0, 0, 0], [1, 1, 0, 0], [0, 1, 0, 0]],
+    )
+    notes = store.dense_notes([1, 0, 0, 0])
+    assert list(notes) == ["a.md", "b.md"]  # ordenadas de más a menos parecida
+    assert notes["a.md"] == pytest.approx(1.0)
+    assert notes["b.md"] == pytest.approx(0.0, abs=1e-6)
+
+
+def test_only_paths_restricts_search_and_dense_notes(store: VectorStore) -> None:
+    store.upsert_chunks(
+        [_chunk("a.md", "semáforo"), _chunk("b.md", "semáforo")], [[1, 0, 0, 0], [1, 0, 0, 0]]
+    )
+    hits = store.search("semáforo", [1, 0, 0, 0], limit=10, prefetch=10, only_paths=["b.md"])
+    assert {h.payload["note_path"] for h in hits} == {"b.md"}
+    assert list(store.dense_notes([1, 0, 0, 0], only_paths=["b.md"])) == ["b.md"]

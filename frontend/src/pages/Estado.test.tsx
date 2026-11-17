@@ -58,7 +58,6 @@ const done = (total_ms: number): DoneEvent =>
     answer: "",
     citations: [],
     invalid: [],
-    bad_pages: [],
     warnings: [],
     not_found: false,
     confidence: "alta",

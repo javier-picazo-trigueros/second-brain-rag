@@ -6,8 +6,8 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from typing import Protocol
 
-from secondbrain.answer.citations import Citation, CitationStream
-from secondbrain.answer.context import BuiltContext, Source, build_context
+from secondbrain.answer.citations import CitationStream
+from secondbrain.answer.context import BuiltContext, Fragment, Source, build_context
 from secondbrain.answer.llm import LLM, Delta, Finished, LLMError
 from secondbrain.answer.prompt import NOT_FOUND, build_messages
 from secondbrain.config import Settings
@@ -25,6 +25,7 @@ class SourcesEvent:
     """Notas recuperadas: lo único que el modelo podrá citar. Se envía antes de generar."""
 
     sources: tuple[Source, ...]
+    fragments: tuple[Fragment, ...]  # cada identificador [S#] que el modelo puede citar
     confidence: str
     similarity: float | None
     dropped_notes: int
@@ -49,9 +50,8 @@ class Timings:
 @dataclass(frozen=True, slots=True)
 class DoneEvent:
     answer: str
-    citations: tuple[Citation, ...]
+    citations: tuple[Fragment, ...]
     invalid: tuple[str, ...]
-    bad_pages: tuple[tuple[str, int], ...]
     warnings: tuple[str, ...]
     not_found: bool
     confidence: str
@@ -67,6 +67,17 @@ class ErrorEvent:
 
 
 Event = SourcesEvent | TokenEvent | DoneEvent | ErrorEvent
+
+
+_TOP_NOTES = 3  # solo importa lo que se pierde de las notas más relevantes
+
+
+def _context_cut_matters(context: BuiltContext) -> bool:
+    """¿Se recortó o se dejó fuera algo de las 3 primeras notas? Las demás son relleno."""
+    evidence = [s for s in context.sources if s.kind == "evidence"]
+    if any(s.truncated for s in evidence[:_TOP_NOTES]):
+        return True
+    return context.dropped_notes > 0 and len(evidence) < _TOP_NOTES
 
 
 def confidence_label(similarity: float | None, threshold: float) -> str:
@@ -90,14 +101,22 @@ class AnswerPipeline:
         self._llm = llm
         self._clock = clock
 
+    def plan(self, question: str, k: int | None = None) -> tuple[SearchResult, BuiltContext]:
+        """Recuperación y contexto de una pregunta, sin llamar al modelo."""
+        result = self._retriever.search(question, k=k or self._s.answer_k, with_graph=True)
+        return result, build_context(result, self._s)
+
     def ask(self, question: str, k: int | None = None) -> Iterator[Event]:
         start = self._clock()
-        result = self._retriever.search(question, k=k or self._s.answer_k, with_graph=True)
-        context = build_context(result, self._s)
+        result, context = self.plan(question, k)
         retrieval_ms = (self._clock() - start) * 1000
         confidence = confidence_label(result.top_similarity, self._s.confidence_threshold)
         yield SourcesEvent(
-            context.sources, confidence, result.top_similarity, context.dropped_notes
+            context.sources,
+            context.fragments,
+            confidence,
+            result.top_similarity,
+            context.dropped_notes,
         )
 
         if not any(s.kind == "evidence" for s in context.sources):
@@ -108,7 +127,6 @@ class AnswerPipeline:
                 answer=NOT_FOUND,
                 citations=(),
                 invalid=(),
-                bad_pages=(),
                 warnings=(),
                 not_found=True,
                 confidence=confidence,
@@ -119,7 +137,7 @@ class AnswerPipeline:
             )
             return
 
-        stream = CitationStream(context.sources)
+        stream = CitationStream(context.fragments)
         parts: list[str] = []
         first_token_ms: float | None = None
         finished: Finished | None = None
@@ -172,11 +190,9 @@ class AnswerPipeline:
             warnings.append("solo_pistas")
         if report.invalid:
             warnings.append("citas_no_verificadas")
-        if report.bad_pages:
-            warnings.append("paginas_no_verificadas")
         if finished is not None and finished.truncated:
             warnings.append("respuesta_truncada")
-        if context.dropped_notes or any(s.truncated for s in context.sources):
+        if _context_cut_matters(context):
             warnings.append("contexto_recortado")
         if confidence == "baja":
             warnings.append("confianza_baja")
@@ -195,7 +211,6 @@ class AnswerPipeline:
             answer=answer,
             citations=tuple(report.citations),
             invalid=tuple(report.invalid),
-            bad_pages=tuple(report.bad_pages),
             warnings=tuple(warnings),
             not_found=not_found,
             confidence=confidence,

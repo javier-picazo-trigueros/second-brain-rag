@@ -13,6 +13,7 @@ from qdrant_client.http.exceptions import ResponseHandlingException
 
 from secondbrain.config import Settings, load_settings
 from secondbrain.embeddings.ollama import OllamaEmbedder
+from secondbrain.evals.cli import golden_app
 from secondbrain.ingest.indexer import Indexer, SyncReport
 from secondbrain.ingest.watcher import WatcherService
 from secondbrain.notes import resolve_note
@@ -23,6 +24,8 @@ from secondbrain.store.manifest import Manifest
 from secondbrain.store.qdrant import VectorStore
 
 app = typer.Typer(no_args_is_help=True, help="Segundo cerebro local (RAG sobre Obsidian)")
+
+app.add_typer(golden_app, name="golden")
 
 _EXIT_ENVIRONMENT = 2
 _SNIPPET = 160

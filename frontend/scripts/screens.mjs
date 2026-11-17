@@ -81,6 +81,9 @@ const NOTE = {
   frontmatter: {}, tags: ["complejidad", "analisis"], concepts: ["notacion-asintotica", "caso-peor"], links: [],
   body: "# Complejidad\n\nLa **complejidad** mide cuántos recursos usa un algoritmo.\n\n## Página 3\n\nNotación asintótica: $O(n)$, $\\Omega(n)$.\n\n```python\ndef suma(xs):\n    return sum(xs)\n```",
   related: [{ path: "Estructuras/Tema 2.md", title: "Tema 2 · Listas, pilas y colas", score: 1.2, via: ["complejidad"] }],
+  resolved_links: {},
+  backlinks: [],
+  obsidian_url: "obsidian://open?vault=Cerebro&file=Estructuras%2FTema%201",
 };
 
 async function ask(page, text) {
@@ -106,6 +109,8 @@ const scenarios = [
   { name: "buscar-resultados", url: "buscar?q=clasificaci%C3%B3n%20y%20regresi%C3%B3n", run: async (page) => { await page.getByRole("status").filter({ hasText: /nota/ }).waitFor(); } },
   { name: "buscar-filtrado", url: "buscar?q=clasificaci%C3%B3n%20y%20regresi%C3%B3n&asig=Data%20Mining", run: async (page) => { await page.getByRole("status").filter({ hasText: /nota/ }).waitFor(); } },
   { name: "buscar-vacio", url: "buscar?q=xqzvbn%20wkjtr", run: async (page) => { await page.getByRole("status").filter({ hasText: /nota/ }).waitFor(); } },
+  { name: "nota-real", url: "nota/1%C2%BA/Asignatura/Tema%201.md", real: true, run: async (page) => { await page.getByRole("link", { name: "Abrir en Obsidian" }).waitFor(); } },
+  { name: "nota-discretas-real", url: "nota/1%C2%BA/Asignatura/Tema%202.md?p=3", real: true, run: async (page) => { await page.getByRole("link", { name: "Abrir en Obsidian" }).waitFor(); } },
   { name: "estado", run: async (page) => {
       const menu = page.getByRole("button", { name: "Abrir navegación" }); // en pantallas pequeñas la navegación es un cajón
       if (await menu.isVisible()) await menu.click();
@@ -122,7 +127,7 @@ for (const scheme of ["light", "dark"]) {
       const page = await context.newPage();
       await page.route("**/ask", (route) =>
         route.fulfill({ status: 200, contentType: "text/event-stream", body: ASKS[askFor[scenario.name] ?? "respuesta"] }));
-      await page.route("**/notes/**", (route) => route.fulfill({ json: NOTE }));
+      if (!scenario.real) await page.route("**/notes/**", (route) => route.fulfill({ json: NOTE }));
       await page.goto(BASE + (scenario.url ?? ""));
       if (!scenario.url) await page.getByRole("textbox", { name: "Tu pregunta" }).waitFor();
       await scenario.run(page);

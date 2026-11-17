@@ -165,6 +165,13 @@ _NOT_THE_APP = (
     "openapi.json",
     "assets",
 )
+# Un fichero estático que falta es un 404; el resto de rutas (también `/nota/…/x.md`) son de la app.
+
+# Un fichero estático que falta es un 404; el resto de rutas (también `/nota/…/algo.md`) son de la app.
+_STATIC_EXTENSIONS = frozenset(
+    {"js", "mjs", "css", "map", "png", "jpg", "jpeg", "gif", "svg", "ico", "webp", "avif",
+     "woff", "woff2", "ttf", "otf", "json", "txt", "xml", "webmanifest", "wasm"}
+)  # fmt: skip
 
 
 def _serve_build(app: FastAPI, build: Path) -> None:
@@ -180,7 +187,8 @@ def _serve_build(app: FastAPI, build: Path) -> None:
         if path and target.is_file() and target.is_relative_to(root):
             cache = "public, max-age=31536000, immutable" if first == "assets" else "no-cache"
             return FileResponse(target, headers={"Cache-Control": cache})
-        if first in _NOT_THE_APP or "." in path.rsplit("/", 1)[-1]:
+        extension = path.rsplit(".", 1)[-1].lower() if "." in path.rsplit("/", 1)[-1] else ""
+        if first in _NOT_THE_APP or extension in _STATIC_EXTENSIONS:
             raise HTTPException(404, "No encontrado.")
         return FileResponse(index, headers={"Cache-Control": "no-cache"})
 

@@ -605,3 +605,30 @@ def test_a_note_comes_with_its_obsidian_link(make_api: MakeApi) -> None:
     body = make_api(obsidian_vault="Cerebro").client.get(f"/notes/{CARRERA}").json()
     assert body["obsidian_url"].startswith("obsidian://open?vault=Cerebro&file=1%C2%BA%2FSISTEMAS")
     assert body["obsidian_url"].endswith("Condiciones%20de%20carrera")
+
+
+@pytest.mark.parametrize(
+    "route",
+    [
+        "/nota/3%C2%BA/Redes/Tema%201.md",
+        "/nota/a/b/c.v2.md",
+        "/nota/x.md?p=3",
+        "/buscar?q=algo.pdf",
+    ],
+)
+def test_a_note_url_reloaded_in_the_browser_still_opens_the_app(
+    make_api: MakeApi, dist: Path, route: str
+) -> None:
+    # Regresión: una ruta de nota termina en «.md» y se tomaba por un fichero que falta (404).
+    r = make_api(static_dir=dist).client.get(route)
+    assert r.status_code == 200 and "Segundo cerebro" in r.text
+
+
+@pytest.mark.parametrize(
+    "route", ["/falta.js", "/x/falta.css", "/img/falta.png", "/f.woff2", "/robots.txt", "/a.map"]
+)
+def test_missing_static_files_are_404_not_the_app(
+    make_api: MakeApi, dist: Path, route: str
+) -> None:
+    r = make_api(static_dir=dist).client.get(route)
+    assert r.status_code == 404 and "<title>" not in r.text

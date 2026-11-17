@@ -107,6 +107,25 @@ async function ask(page, text) {
   await page.waitForTimeout(250);
 }
 
+// Notas reales del vault para fotografiar (opcional): rutas relativas separadas por «;», con `?p=N`
+// si se quiere una página, p. ej. BRAIN_SHOT_NOTES="1º/Asignatura/Tema 1.md;1º/Asignatura/Tema 2.md?p=3"
+const REAL_NOTES = (process.env.BRAIN_SHOT_NOTES ?? "")
+  .split(";")
+  .map((item) => item.trim())
+  .filter(Boolean)
+  .map((item, index) => {
+    const [path, query] = item.split("?");
+    const url = `nota/${path.split("/").map(encodeURIComponent).join("/")}${query ? `?${query}` : ""}`;
+    return {
+      name: `nota-real-${index + 1}`,
+      url,
+      real: true,
+      run: async (page) => {
+        await page.getByRole("link", { name: "Abrir en Obsidian" }).waitFor();
+      },
+    };
+  });
+
 const scenarios = [
   { name: "inicio", run: async () => {} },
   { name: "respuesta", run: async (page) => ask(page, "¿De qué trata la asignatura de Estructuras de Datos?") },
@@ -130,8 +149,7 @@ const scenarios = [
   { name: "buscar-resultados", url: "buscar?q=clasificaci%C3%B3n%20y%20regresi%C3%B3n", run: async (page) => { await page.getByRole("status").filter({ hasText: /nota/ }).waitFor(); } },
   { name: "buscar-filtrado", url: "buscar?q=clasificaci%C3%B3n%20y%20regresi%C3%B3n&asig=Data%20Mining", run: async (page) => { await page.getByRole("status").filter({ hasText: /nota/ }).waitFor(); } },
   { name: "buscar-vacio", url: "buscar?q=xqzvbn%20wkjtr", run: async (page) => { await page.getByRole("status").filter({ hasText: /nota/ }).waitFor(); } },
-  { name: "nota-real", url: "nota/1%C2%BA/Asignatura/Tema%201.md", real: true, run: async (page) => { await page.getByRole("link", { name: "Abrir en Obsidian" }).waitFor(); } },
-  { name: "nota-discretas-real", url: "nota/1%C2%BA/Asignatura/Tema%202.md?p=3", real: true, run: async (page) => { await page.getByRole("link", { name: "Abrir en Obsidian" }).waitFor(); } },
+  ...REAL_NOTES,
   { name: "estado", run: async (page) => {
       const menu = page.getByRole("button", { name: "Abrir navegación" }); // en pantallas pequeñas la navegación es un cajón
       if (await menu.isVisible()) await menu.click();

@@ -401,3 +401,25 @@ def test_part_titles_say_which_note_and_pages_never_markdown_noise(
     assert theory[0].title == "Teoría de grafos · págs. 1"
     assert all("*" not in p.title and "#" not in p.title for p in plan.parts)
     assert [p.title.split(" · ")[1].split()[0] for p in theory] == ["págs."] * len(theory)
+
+
+def test_a_window_that_crosses_notes_is_titled_with_their_names_not_with_pages(
+    tmp_path: Path,
+) -> None:
+    paths = ["2º/SO/Tema-3.1 Procesos.md", "2º/SO/Tema-3.2 Hilos.md"]
+    m = Manifest(tmp_path / "c.sqlite")
+    for p in paths:
+        m.upsert(p, "h", 3)
+        m.set_meta(p, (), None)
+    idx = SubjectIndex(
+        paths, {"Sistemas Operativos": SubjectSpec(aliases=("so",), folders=("SO",))}
+    )
+    subject = idx.by_name("Sistemas Operativos")
+    assert subject is not None
+    store = ChunkStore({p: ["corto"] for p in paths})
+    plan = StudyPlanner(settings(tmp_path), store, m, CopyFamilies(m)).plan(
+        subject, 3, idx.topic_notes(subject, 3)
+    )
+    m.close()
+    assert plan is not None and len(plan.parts) == 1
+    assert plan.parts[0].title == "Procesos + Hilos"

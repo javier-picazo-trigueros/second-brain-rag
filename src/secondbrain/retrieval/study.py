@@ -164,16 +164,23 @@ class StudyPlanner:
 
     @staticmethod
     def _title(fragments: Sequence[StudyFragment]) -> str:
-        """«Nota · págs. 4-28»: dónde está lo que se va a escribir (los encabezados del PDF
-        convertido, a menudo «**ASIGNATURA**», no sirven de título)."""
-        first = fragments[0]
-        name = clean_title(first.title).replace("*", "").strip() or first.title
+        """«Nota · págs. 4-28» o, si la ventana cruza notas, «Nota A + Nota B». Los encabezados
+        del PDF convertido, a menudo «**ASIGNATURA**», no sirven de título."""
+
+        def name(title: str) -> str:
+            return clean_title(title).replace("*", "").strip() or title
+
+        titles = list(dict.fromkeys(f.title for f in fragments))
+        if len(titles) > 1:
+            shown = " + ".join(name(t) for t in titles[:2])
+            return (shown + (" + …" if len(titles) > 2 else ""))[:_PART_TITLE_MAX]
         pages = [f.page for f in fragments if f.page is not None]
+        base = name(titles[0])
         if not pages:
-            return name[:_PART_TITLE_MAX]
+            return base[:_PART_TITLE_MAX]
         low, high = min(pages), max(pages)
         span = f"{low}" if low == high else f"{low}-{high}"
-        return f"{name[: _PART_TITLE_MAX - 16]} · págs. {span}"
+        return f"{base[: _PART_TITLE_MAX - 16]} · págs. {span}"
 
     def _exercise_part(
         self,

@@ -10,7 +10,7 @@ from typing import Any
 
 import yaml
 
-KINDS = ("concrete", "overview_subject", "overview_topic", "exercises", "cross", "trap")
+KINDS = ("concrete", "overview_subject", "overview_topic", "exercises", "notes", "cross", "trap")
 _METRICS = ("recall", "precision", "noise", "top1_hit")
 
 

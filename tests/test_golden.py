@@ -197,3 +197,12 @@ def test_exercises_is_a_valid_kind(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     assert [q.kind for q in load_golden(file)] == ["exercises"]
+
+
+def test_notes_is_a_valid_kind(tmp_path: Path) -> None:
+    file = tmp_path / "g2.yaml"
+    file.write_text(
+        "questions:\n  - id: n1\n    kind: notes\n    question: q\n    expect: [a]\n",
+        encoding="utf-8",
+    )
+    assert [q.kind for q in load_golden(file)] == ["notes"]

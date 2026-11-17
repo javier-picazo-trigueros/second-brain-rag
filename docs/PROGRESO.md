@@ -470,6 +470,31 @@ Hecho (entregas A y B1):
   backslashes al escribir el fichero desde el shell; ahora tiene un test.
 
 
+## Fase 3c: modos ejercicios y apuntes (rama `feat/fase-3c-apuntes-ejercicios`)
+
+- **Bug de citas con corchetes.** Un título con «[MD]» salía como texto crudo si la respuesta llevaba
+  fórmulas: el escape `\[MD\]` del enlace de cita se leía como delimitador de bloque. La conversión de
+  `\( \)`/`\[ \]` ahora respeta los enlaces de cita y solo se aplica a respuestas del modelo, no a notas
+  (donde `\[` es un corchete escapado, como en Obsidian). Test de regresión con título con corchetes y
+  fórmula en la misma respuesta, también en el navegador real.
+- **Modo ejercicios.** Intención «ejercicios/problemas del tema N de X» (robusta a faltas y formas
+  verbales), recuperación acotada a la asignatura y al tema (enunciado + solución, luego teoría), con un
+  dato del índice que lista los ejercicios, contexto y tope de salida propios, y respuesta fija sin modelo
+  cuando no hay ejercicios o el tema no existe. En Data Mining, tema 2: `PCA exercises 1` y
+  `PCA exercises 2`, cada uno con su «solution» (y copias en IA II que las familias colapsan).
+- **Regla del pipeline.** Si el modelo escribe contenido y luego «No lo encuentro en el vault», se corta
+  la generación, se descarta lo escrito y se avisa («Respuesta descartada»).
+- **Modo apuntes.** Plan por ventanas de fragmentos reales en orden de temario y de página, esqueleto con
+  el resumen del tema, una llamada por parte con progreso, parte final de tipos de ejercicio con las notas
+  de ejercicios. Medido con el modelo real: SO tema 3, 4 partes, 165 s (~48 s por parte).
+  Discreta tema 5: 10 partes de teoría + ejercicios (≈ 9 min estimados; los parámetros
+  `notes_window_tokens` y `notes_part_max_tokens` los acortan a costa de detalle).
+- **Contexto de 16.384** para todo (decidido): el estimador de tokens infravalora el texto numérico ~1,5x,
+  por eso el modo ejercicios usa un presupuesto de 7.000 estimados.
+- **Guardar como nota** (`generated.py`): vista previa sin escribir, confirmación, fichero nuevo en
+  `_generadas/` (exclusivo, sin sobrescribir, ruta confinada, enlaces `[[…]]` o Markdown si el título
+  lleva `[ ] # ^ |`), comprobación de origen en la API y `_generadas/` fuera del índice.
+
 ## Pendiente para la Fase 4
 
 Lo que se sabe y se ha dejado a propósito para la Fase de evals, con su medida en el golden set:

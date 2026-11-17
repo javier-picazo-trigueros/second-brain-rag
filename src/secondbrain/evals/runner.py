@@ -38,7 +38,9 @@ def run_golden(
             "top1_hit": score.top1_hit,
             "retrieved": list(score.retrieved),
         }
-        if answer is not None:
+        if (
+            answer is not None and q.kind != "notes"
+        ):  # los apuntes tardan minutos: solo recuperación
             scored = answer(q.question)
             row["answer"] = dataclasses.asdict(scored)
             if q.expect_not_found:

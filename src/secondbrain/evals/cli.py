@@ -42,7 +42,11 @@ def gpu_note() -> str:
 
 def _retrieve(services: AppServices) -> Any:
     def retrieve(question: str) -> list[str]:
-        _, context = services.pipeline.plan(question)
+        result, context = services.pipeline.plan(question)
+        if result.study is not None:  # apuntes: las notas que recorrería, en orden
+            return list(
+                dict.fromkeys(f.path for part in result.study.parts for f in part.fragments)
+            )
         return [s.path for s in context.sources if s.kind == "evidence"]
 
     return retrieve

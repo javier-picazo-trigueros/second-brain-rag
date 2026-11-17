@@ -55,3 +55,17 @@ def test_run_golden_trap_answered_not_found_is_marked() -> None:
     report = run_golden([trap], retrieve=lambda q: [], answer=lambda q: answer)
     assert report["rows"][0]["not_found_ok"] is True
     assert report["answers"]["traps_ok"] == 1.0
+
+
+def test_notes_questions_are_scored_on_retrieval_only_never_generated() -> None:
+    """Unos apuntes completos tardan minutos: el golden mide qué fragmentos recorrerían."""
+    asked: list[str] = []
+
+    def answer(question: str) -> AnswerScore:
+        asked.append(question)
+        raise AssertionError("no se generan apuntes en el golden")
+
+    notes = GoldenQuestion("n1", "notes", "apuntes del tema 3", ("Tema-3.1",), (), False)
+    report = run_golden([notes], retrieve=lambda q: ["x/Tema-3.1 A.md"], answer=answer)
+    assert asked == [] and report["rows"][0]["recall"] == 1.0
+    assert "answer" not in report["rows"][0]

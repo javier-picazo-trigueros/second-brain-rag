@@ -123,6 +123,22 @@ primera vez que aparece una fórmula. Va con `trust` apagado: sin `\href`, `\url
 **Ctrl+K** (⌘K en Mac) abre una paleta para saltar a una pantalla, empezar una conversación o buscar
 una nota sin salir de donde estás. Es un cuadro de diálogo accesible con teclado completo.
 
+**Modo ejercicios.** «Resuélveme los ejercicios del tema 2 de data mining paso a paso» busca solo en
+esa asignatura y ese tema: primero los enunciados (cada uno con su solución, si existe) y después la
+teoría del tema para justificar los pasos. Si el tema no tiene ejercicios lo dice sin llamar al modelo y
+lista lo que sí tiene.
+
+**Modo apuntes.** «Hazme unos apuntes del tema 5 de discreta» (o «explícame en detalle el tema 5…»)
+recorre los fragmentos reales de las notas de teoría del tema, en orden de página, y escribe los
+apuntes por partes (definiciones, teoremas con su enunciado, ejemplos, fórmulas en LaTeX y una última
+parte de «Tipos de ejercicio»). Cada parte lleva sus citas; se ve el progreso («Parte 3 de 7») y se puede
+parar conservando lo escrito. Tarda del orden de 45 s por parte con la GPU libre.
+
+**Guardar como nota.** Al terminar, «Guardar como nota» enseña la ruta y el contenido exactos y, solo
+si lo confirmas, crea un `.md` nuevo en `_generadas/` del vault (con asignatura, tema, fecha y fuentes
+como enlaces). Es la única escritura que se hace en el vault: nunca sobrescribe (añade « (2)»), no sale
+de `_generadas/`, solo acepta peticiones del propio origen y esa carpeta no se reindexa.
+
 «Abrir en Obsidian» es un enlace `obsidian://open?vault=…&file=…` que construye la API; no ejecuta
 nada ni escribe en el vault. El nombre del vault es el de su carpeta; para otro, `BRAIN_OBSIDIAN_VAULT`.
 Un `[[enlace]]` con varias notas candidatas pregunta cuál se quiere; las copias exactas cuentan como

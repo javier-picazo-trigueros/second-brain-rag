@@ -61,7 +61,12 @@ class OverviewBuilder:
         self._manifest = manifest
 
     def build(
-        self, notes: Sequence[str], headings: int, max_chars: int | None = None, facts: str = ""
+        self,
+        notes: Sequence[str],
+        headings: int,
+        max_chars: int | None = None,
+        facts: str = "",
+        mode: str = "overview",
     ) -> SearchResult:
         """Una «nota» sintética por cada nota real, sin copias exactas y dentro del tope."""
         counts = self._manifest.chunk_counts()
@@ -98,7 +103,7 @@ class OverviewBuilder:
                     n_chunks=counts.get(path, 1),
                 )
             )
-        return SearchResult(hits, [], None, mode="overview", facts=facts)
+        return SearchResult(hits, [], None, mode=mode, facts=facts)
 
     def _collapse(self, notes: Sequence[str]) -> tuple[list[str], dict[str, tuple[str, ...]]]:
         wanted = set(notes)
@@ -208,7 +213,9 @@ class IntentRetriever:
             if intent.topic is not None:
                 notes = index.topic_notes(intent.subject, intent.topic)
                 if notes:
-                    return self._builder.build(notes, self._s.overview_headings_topic)
+                    return self._builder.build(
+                        notes, self._s.overview_headings_topic, mode="overview_topic"
+                    )
             else:
                 every_note = index.notes_of(intent.subject)
                 return self._builder.build(

@@ -125,7 +125,10 @@ def _fit_block(header: str, text: str, room_tokens: int) -> str | None:
 def build_context(result: SearchResult, settings: Settings) -> BuiltContext:
     """Contexto para el modelo dentro del presupuesto: evidencia primero, pistas después."""
     labels = _labels([n.path for n in result.notes] + [r.path for r in result.related])
-    overview = result.mode == "overview"  # sin pistas del grafo: todo el presupuesto es evidencia
+    overview = result.mode in (
+        "overview",
+        "overview_topic",
+    )  # sin pistas del grafo: todo el presupuesto es evidencia
     main_budget = settings.context_budget_tokens - (
         0 if overview else settings.related_budget_tokens
     )

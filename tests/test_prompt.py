@@ -115,7 +115,7 @@ def test_overview_questions_get_the_overview_instructions(tmp_path: Path) -> Non
 def test_the_overview_prompt_still_fits_the_window(tmp_path: Path) -> None:
     from secondbrain.answer.prompt import OVERVIEW_PROMPT
 
-    assert estimate_tokens(SYSTEM_PROMPT + OVERVIEW_PROMPT) <= 720
+    assert estimate_tokens(SYSTEM_PROMPT + OVERVIEW_PROMPT) <= 900
 
 
 def test_the_citation_reminder_comes_last_in_the_user_message(tmp_path: Path) -> None:
@@ -134,3 +134,21 @@ def test_the_prompt_allows_relating_sources_instead_of_refusing() -> None:
 
 def test_the_prompt_caps_the_length_of_ordinary_answers() -> None:
     assert "300 palabras" in SYSTEM_PROMPT
+
+
+def test_a_topic_overview_gets_its_own_template_and_never_talks_about_how_many_topics() -> None:
+    from secondbrain.answer.context import BuiltContext
+    from secondbrain.answer.prompt import OVERVIEW_PROMPT, TOPIC_PROMPT
+
+    ctx = BuiltContext("FUENTES (evidencia):", (), 5, 0, "overview_topic", ())
+    system = build_messages("¿De qué va el tema 5?", ctx)[0].content
+    assert TOPIC_PROMPT in system and OVERVIEW_PROMPT not in system
+    assert "No digas cuántos temas" in TOPIC_PROMPT
+
+
+def test_the_subject_template_demands_the_index_topics_and_sentences_per_topic() -> None:
+    from secondbrain.answer.prompt import OVERVIEW_PROMPT
+
+    assert "ni más ni menos" in OVERVIEW_PROMPT
+    assert "dos o tres frases" in OVERVIEW_PROMPT and "no una lista de títulos" in OVERVIEW_PROMPT
+    assert "un par de párrafos" in OVERVIEW_PROMPT

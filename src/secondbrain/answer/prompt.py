@@ -33,13 +33,22 @@ SYSTEM_PROMPT = (
 REMINDER = "Recuerda: termina cada afirmación con su cita [S#] y no escribas títulos ni páginas."
 
 OVERVIEW_PROMPT = (
-    "\n6. Esta es una pregunta de visión general: cada fuente es el resumen de una nota, con sus "
-    "conceptos y apartados. El DATO DEL ÍNDICE (si lo hay) da el número exacto de temas y su "
-    "lista: úsalo tal cual, no lo recalcules. Estructura: 1) una primera frase que diga de qué "
-    "trata; 2) cuántos temas tiene y su lista, según el DATO; 3) por cada tema o bloque, dos o "
-    "tres frases con su cita; 4) cierra con «Destacaría:» y tres o cuatro ideas clave. Si la "
-    "pregunta pide una extensión o un formato (p. ej. «un par de párrafos»), respétalo en vez de "
-    "esta estructura. No inventes temas, requisitos ni prerrequisitos que no estén en las fuentes."
+    "\n6. Esta es una pregunta de visión general de una asignatura: cada fuente es el resumen de "
+    "una nota, con sus conceptos y apartados. El DATO DEL ÍNDICE da el número exacto de temas y su "
+    "lista: úsalo tal cual y presenta esos temas, ni más ni menos. Estructura: 1) una primera "
+    "frase que diga de qué trata; 2) cuántos temas tiene; 3) por cada tema, dos o tres frases con "
+    "su cita (no una lista de títulos); 4) cierra con «Destacaría:» y tres o cuatro ideas clave. "
+    "Si la pregunta pide una extensión o un formato (p. ej. «un par de párrafos»), respétalo en "
+    "vez de esta estructura, sin dejar de decir cuántos temas tiene. No inventes temas, "
+    "requisitos ni prerrequisitos que no estén en las fuentes."
+)
+
+TOPIC_PROMPT = (
+    "\n6. Esta pregunta es sobre UN tema concreto: cada fuente es el resumen de una nota de ese "
+    "tema, con sus conceptos y apartados. Estructura: 1) una primera frase que diga de qué va el "
+    "tema; 2) sus apartados principales, con dos o tres frases cada uno y su cita; 3) cierra con "
+    "«Destacaría:» y dos o tres ideas clave. No digas cuántos temas tiene la asignatura ni "
+    "cuántos apartados «en total» tiene el tema. No inventes nada que no esté en las fuentes."
 )
 
 
@@ -48,7 +57,8 @@ def build_messages(question: str, context: BuiltContext) -> list[Message]:
     if len(asked) > QUESTION_MAX_CHARS:
         asked = asked[:QUESTION_MAX_CHARS].rstrip() + " […]"
     sources = context.text or "FUENTES: (no se ha recuperado ninguna nota)"
-    system = SYSTEM_PROMPT + (OVERVIEW_PROMPT if context.mode == "overview" else "")
+    extra = {"overview": OVERVIEW_PROMPT, "overview_topic": TOPIC_PROMPT}.get(context.mode, "")
+    system = SYSTEM_PROMPT + extra
     return [
         Message("system", system),
         Message("user", f"{sources}\n\nPREGUNTA: {asked}\n\n{REMINDER}"),

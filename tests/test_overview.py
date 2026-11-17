@@ -405,4 +405,4 @@ def test_a_topic_overview_has_no_topic_count(tmp_path: Path, manifest: Manifest)
         aliases={},
     )
     result = router.search("de q va el tema 2 de ia", k=5)
-    assert result.mode == "overview" and result.facts == ""
+    assert result.mode == "overview_topic" and result.facts == ""

@@ -128,3 +128,27 @@ def test_a_question_that_names_a_subject_is_never_flagged(
         "dame la fórmula de Euler en discreta",
     )
     assert "AMBIGÜEDAD" not in result.facts
+
+
+def test_a_relevant_note_dropped_by_the_cosine_cutoff_still_counts_as_a_candidate(
+    tmp_path: Path, manifest: Manifest
+) -> None:
+    class Cut(Base):
+        def search(self, *a: Any, **k: Any) -> SearchResult:
+            return SearchResult(self.notes, [], 0.8, candidates=(hit(GRAFOS, 0.88),))
+
+    s: Any = Settings(_env_file=None, vault_path=tmp_path)  # type: ignore[call-arg]
+    router = IntentRetriever(s, Cut([hit(EULER, 0.9)]), NoChunks(), manifest, aliases=ALIASES)
+    result = router.search("dame la fórmula de Euler", k=5)
+    assert "AMBIGÜEDAD" in result.facts and "Tema 5 Teoría de grafos" in result.facts
+    assert [n.path for n in result.notes] == [EULER]  # solo se responde con las fuentes de siempre
+
+
+def test_a_weak_candidate_does_not_make_it_ambiguous(tmp_path: Path, manifest: Manifest) -> None:
+    class Cut(Base):
+        def search(self, *a: Any, **k: Any) -> SearchResult:
+            return SearchResult(self.notes, [], 0.8, candidates=(hit(GRAFOS, 0.2),))
+
+    s: Any = Settings(_env_file=None, vault_path=tmp_path)  # type: ignore[call-arg]
+    router = IntentRetriever(s, Cut([hit(EULER, 0.9)]), NoChunks(), manifest, aliases=ALIASES)
+    assert router.search("euler", k=5).facts == ""

@@ -244,7 +244,7 @@ class IntentRetriever:
         """Si las mejores fuentes, igual de relevantes, son de asignaturas distintas, el modelo
         debe decirlo al principio y responder con la más relevante (p. ej. «Euler» en grafos y en
         el método numérico)."""
-        top = result.notes[:3]
+        top = sorted([*result.notes[:3], *result.candidates], key=lambda n: -n.score)
         if len(top) < 2:
             return result
         close = [n for n in top if n.score >= _AMBIGUITY_RATIO * top[0].score]
@@ -257,9 +257,10 @@ class IntentRetriever:
             return result
         listed = " y ".join(f"«{name}» ({title})" for name, title in by_subject.items())
         message = (
-            "AMBIGÜEDAD: las fuentes más relevantes tratan temas distintos de asignaturas "
-            f"distintas: {listed}. Empieza la respuesta con una primera frase que diga a qué "
-            "asignaturas se refieren las fuentes y responde con la más relevante, sin mezclarlas."
+            "AMBIGÜEDAD: la pregunta puede referirse a temas distintos de asignaturas "
+            f"distintas: {listed}. Empieza la respuesta con una primera frase que lo diga (para "
+            "que el usuario pueda precisarlo) y responde con la fuente más relevante de las que "
+            "se te dan, sin mezclarlas."
         )
         facts = f"{result.facts}\n{message}" if result.facts else message
         return replace(result, facts=facts)

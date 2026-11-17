@@ -377,3 +377,18 @@ def test_a_version_alone_in_the_candidates_is_shown_under_the_plain_title(build:
 def test_versions_in_different_subjects_stay_separate(build: Build) -> None:
     r, _ = build([hit("3º/DM/U5 (1).md", 0.9), hit("3º/Redes/U5.md", 0.8)], versions=True)
     assert paths(r.search("q")) == ["3º/DM/U5 (1).md", "3º/Redes/U5.md"]
+
+
+def test_the_best_ranked_notes_dropped_by_the_cosine_cutoff_are_reported_as_candidates(
+    build: Build,
+) -> None:
+    hits = [hit("a/Grafos.md", 0.9), hit("b/Libro.md", 0.8), hit("c/Otra.md", 0.1)]
+    r, _ = build(
+        hits,
+        cosines={"a/Grafos.md": 0.30, "b/Libro.md": 0.70, "c/Otra.md": 0.20},
+        min_note_cosine=0.55,
+    )
+    result = r.search("euler")
+    assert paths(result) == ["b/Libro.md"]
+    # entre las 3 mejores del ranking, las que el corte quitó (la de menor puntuación también)
+    assert [n.path for n in result.candidates] == ["a/Grafos.md", "c/Otra.md"]

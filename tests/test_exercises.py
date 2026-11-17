@@ -413,7 +413,10 @@ def test_the_exercise_prompt_asks_for_the_statement_then_the_steps_with_the_theo
     result, _, _ = build(tmp_path, manifest, index)
     s = settings(tmp_path)
     system = build_messages("resuelve", build_context(result, s))[0].content
-    for phrase in ("enunciado", "solución", "paso a paso", "completo", "no recalcules", "cita"):
+    for phrase in (
+        "enunciado", "solución", "paso a paso", "completo", "no recalcules", "cita",
+        "más de 6 filas", "no repitas", "solo si",
+    ):  # fmt: skip
         assert phrase in system.lower()
     # el worst case sigue cabiendo en la ventana
     messages = build_messages("¿" + "p " * 3000 + "?", build_context(result, s))

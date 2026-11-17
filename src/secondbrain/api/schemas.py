@@ -207,3 +207,29 @@ class ReindexStatusOut(BaseModel):
 
 class ErrorOut(BaseModel):
     detail: str
+
+
+# --- apuntes generados ------------------------------------------------------------------------
+
+
+class GeneratedPreviewRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    markdown: str = Field(min_length=1, max_length=400_000)
+    asignatura: str | None = Field(None, max_length=200)
+    tema: int | None = Field(None, ge=0, le=999)
+    sources: list[str] = Field(default_factory=list, max_length=200)
+
+
+class GeneratedPreviewOut(BaseModel):
+    path: str  # relativa al vault: dónde se guardaría
+    content: str  # lo que se escribiría, tal cual
+
+
+class GeneratedSaveRequest(BaseModel):
+    path: str = Field(min_length=1, max_length=300)
+    content: str = Field(min_length=1, max_length=500_000)
+
+
+class GeneratedSaveOut(BaseModel):
+    path: str
+    obsidian_url: str

@@ -632,3 +632,114 @@ def test_missing_static_files_are_404_not_the_app(
 ) -> None:
     r = make_api(static_dir=dist).client.get(route)
     assert r.status_code == 404 and "<title>" not in r.text
+
+
+# --- apuntes: progreso y guardado ---------------------------------------------------------------
+
+
+def test_the_sse_stream_carries_progress_events_for_study_notes(make_api: MakeApi) -> None:
+    from secondbrain.answer.pipeline import ProgressEvent
+    from secondbrain.api.app import _sse
+
+    assert _sse(ProgressEvent(2, 7, "Grafos · págs. 4-28")) == (
+        'event: progress\ndata: {"part": 2, "total": 7, "title": "Grafos · págs. 4-28"}\n\n'
+    )
+
+
+def preview_body(**over: Any) -> dict[str, Any]:
+    body: dict[str, Any] = {
+        "title": "Apuntes del tema 2",
+        "markdown": "## Parte\n\nContenido [S1].",
+        "asignatura": "Sistemas Operativos",
+        "tema": 2,
+        "sources": [CARRERA, "no/existe.md"],
+    }
+    body.update(over)
+    return body
+
+
+def test_preview_returns_the_path_and_exact_content_without_writing(make_api: MakeApi) -> None:
+    api = make_api()
+    before = sorted(p.name for p in api.env.vault.iterdir())
+    r = api.client.post("/generated/preview", json=preview_body())
+    assert r.status_code == 200
+    body = r.json()
+    assert body["path"] == "_generadas/Apuntes del tema 2.md"
+    assert body["content"].startswith("---\n") and "Contenido" in body["content"]
+    assert "[S1]" not in body["content"]
+    assert "[[Condiciones de carrera]]" in body["content"]
+    assert "no/existe" not in body["content"]  # solo fuentes que están en el índice
+    assert sorted(p.name for p in api.env.vault.iterdir()) == before
+
+
+def test_save_creates_the_file_in_the_vault_and_returns_the_obsidian_link(
+    make_api: MakeApi,
+) -> None:
+    api = make_api(obsidian_vault="Cerebro")
+    preview = api.client.post("/generated/preview", json=preview_body()).json()
+    r = api.client.post("/generated/save", json=preview)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["path"] == "_generadas/Apuntes del tema 2.md"
+    assert (
+        body["obsidian_url"]
+        == "obsidian://open?vault=Cerebro&file=_generadas%2FApuntes%20del%20tema%202"
+    )
+    saved = api.env.vault / "_generadas" / "Apuntes del tema 2.md"
+    assert saved.read_text(encoding="utf-8") == preview["content"]
+
+
+def test_saving_twice_never_overwrites(make_api: MakeApi) -> None:
+    api = make_api()
+    preview = api.client.post("/generated/preview", json=preview_body()).json()
+    first = api.client.post("/generated/save", json=preview).json()["path"]
+    second = api.client.post("/generated/save", json=preview).json()["path"]
+    assert (first, second) == (
+        "_generadas/Apuntes del tema 2.md",
+        "_generadas/Apuntes del tema 2 (2).md",
+    )
+
+
+@pytest.mark.parametrize("path", ["../x.md", "Fuera.md", "_generadas/sub/x.md", "_generadas/x.txt"])
+def test_save_rejects_paths_outside_the_generated_folder(make_api: MakeApi, path: str) -> None:
+    api = make_api()
+    before = sorted(p.name for p in api.env.vault.iterdir())
+    r = api.client.post("/generated/save", json={"path": path, "content": "x"})
+    assert r.status_code == 400 and "_generadas" in r.json()["detail"]
+    assert sorted(p.name for p in api.env.vault.iterdir()) == before
+
+
+def test_the_notes_in_the_vault_are_never_touched_by_saving(make_api: MakeApi) -> None:
+    api = make_api()
+    snapshot = {p: p.read_bytes() for p in api.env.vault.rglob("*.md")}
+    preview = api.client.post("/generated/preview", json=preview_body()).json()
+    api.client.post("/generated/save", json=preview)
+    after = {p: p.read_bytes() for p in api.env.vault.rglob("*.md") if "_generadas" not in p.parts}
+    assert after == snapshot
+
+
+@pytest.mark.parametrize("route", ["/generated/preview", "/generated/save"])
+def test_writes_from_another_origin_are_refused(make_api: MakeApi, route: str) -> None:
+    api = make_api()
+    body = (
+        preview_body() if route.endswith("preview") else {"path": "_generadas/x.md", "content": "x"}
+    )
+    r = api.client.post(route, json=body, headers={"Origin": "https://evil.example"})
+    assert r.status_code == 403
+    assert not (api.env.vault / "_generadas").exists()
+
+
+def test_writes_from_the_same_origin_are_accepted(make_api: MakeApi) -> None:
+    api = make_api()
+    r = api.client.post(
+        "/generated/save",
+        json={"path": "_generadas/x.md", "content": "hola"},
+        headers={"Origin": "http://localhost"},
+    )
+    assert r.status_code == 200
+
+
+def test_the_generated_folder_is_not_indexed_after_saving(make_api: MakeApi) -> None:
+    api = make_api()
+    api.client.post("/generated/save", json={"path": "_generadas/x.md", "content": "hola"})
+    assert api.env.settings().is_excluded("_generadas/x.md")

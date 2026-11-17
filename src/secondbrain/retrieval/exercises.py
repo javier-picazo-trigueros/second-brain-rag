@@ -25,6 +25,7 @@ from secondbrain.store.manifest import Manifest
 TheorySearch = Callable[[Sequence[str]], list[NoteHit]]
 
 _SOLUTION_WORDS = re.compile(r"\b(?:solutions?|soluciones|solucion(?:es|ario)?)\b")
+_TABLE_ROWS = 8  # filas de datos que se dejan de cada tabla
 _NAMED = re.compile(r"\b(?:ejercicio|problema)s?\s*(?:numero\s*)?(\d{1,2})\b")
 
 
@@ -54,6 +55,31 @@ def _pair_key(stem: str) -> str:
 
 def _natural(key: str) -> list[object]:
     return [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", key) if t]
+
+
+def shorten_tables(text: str, keep: int = 8) -> str:
+    """Acorta las tablas Markdown de más de `keep` filas de datos: un modelo de 7B las copia enteras
+    (miles de tokens) en vez de resolver. Se indica cuántas filas quedan en la fuente."""
+    out: list[str] = []
+    block: list[str] = []
+
+    def flush() -> None:
+        if len(block) > keep + 2:  # cabecera + separador + filas
+            hidden = len(block) - keep - 2
+            out.extend(block[: keep + 2])
+            out.append(f"*(… {hidden} filas más de esta tabla en la fuente)*")
+        else:
+            out.extend(block)
+        block.clear()
+
+    for line in text.split("\n"):
+        if line.lstrip().startswith("|"):
+            block.append(line)
+        else:
+            flush()
+            out.append(line)
+    flush()
+    return "\n".join(out)
 
 
 def _pick(exercises: Sequence[_Exercise], question: str) -> int:
@@ -112,7 +138,10 @@ class ExerciseBuilder:
             by_note.setdefault(str(chunk["note_path"]), []).append(chunk)
         hits: list[NoteHit] = []
         for path in order:
-            chunks = tuple(Hit(1.0, c) for c in by_note.get(path, ()))
+            chunks = tuple(
+                Hit(1.0, {**c, "text": shorten_tables(str(c["text"]), _TABLE_ROWS)})
+                for c in by_note.get(path, ())
+            )
             if not chunks:
                 continue
             score = 1.0 - len(hits) / 1000

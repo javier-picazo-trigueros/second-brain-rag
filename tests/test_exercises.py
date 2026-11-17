@@ -17,7 +17,7 @@ from secondbrain.answer.pipeline import (
 from secondbrain.answer.prompt import NOT_FOUND, build_messages
 from secondbrain.config import Settings
 from secondbrain.domain import Hit
-from secondbrain.retrieval.exercises import ExerciseBuilder
+from secondbrain.retrieval.exercises import ExerciseBuilder, shorten_tables
 from secondbrain.retrieval.families import CopyFamilies
 from secondbrain.retrieval.hybrid import NoteHit, SearchResult
 from secondbrain.retrieval.intent import detect_intent
@@ -631,3 +631,40 @@ def test_every_fragment_of_the_exercise_context_is_citable_with_its_own_id(
     assert ids == [f"S{i}" for i in range(1, len(ids) + 1)]
     for fragment_id in ids:
         assert f"[{fragment_id}]" in context.text  # cabecera «### [S#]» de cada fragmento
+
+
+# --- tablas enormes: el modelo no puede copiarlas enteras --------------------------------
+
+
+def table(rows: int) -> str:
+    lines = ["|PC|valor|", "|---|---|"] + [f"|{i}|0.{i:03d}|" for i in range(1, rows + 1)]
+    return "\n".join(lines)
+
+
+def test_a_long_table_keeps_its_header_and_the_first_rows_and_says_how_many_are_left() -> None:
+    out = shorten_tables(f"Antes\n\n{table(13)}\n\nDespués", keep=8)
+    assert out.count("\n|") == 9 + 1 - 1  # cabecera + separador + 8 filas, contadas por saltos
+    assert "|8|0.008|" in out and "|9|0.009|" not in out
+    assert "5 filas más de esta tabla en la fuente" in out
+    assert out.startswith("Antes") and out.endswith("Después")
+
+
+def test_a_short_table_and_plain_text_are_untouched() -> None:
+    text = f"Un texto con | barra\n\n{table(8)}\n\nFin"
+    assert shorten_tables(text, keep=8) == text
+    assert shorten_tables("sin tablas", keep=8) == "sin tablas"
+
+
+def test_two_long_tables_are_each_shortened() -> None:
+    out = shorten_tables(f"{table(12)}\n\ntexto\n\n{table(20)}", keep=8)
+    assert "4 filas más" in out and "12 filas más" in out
+
+
+def test_the_exercise_chunks_given_to_the_model_have_their_tables_shortened(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    solution = "3º/DM/DM - Unit 2 - Sample exercises 1 - solution.md"
+    result, _, _ = build(tmp_path, manifest, index, texts={solution: [table(30)]})
+    note = next(n for n in result.notes if n.path == solution)
+    text = str(note.chunks[0].payload["text"])
+    assert "22 filas más de esta tabla en la fuente" in text and "|30|" not in text

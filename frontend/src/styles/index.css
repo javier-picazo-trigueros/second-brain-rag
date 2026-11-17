@@ -321,3 +321,13 @@ body {
 textarea.composer-input:focus-visible {
   outline: none;
 }
+
+/* Fórmulas: una fórmula ancha se desplaza dentro de su caja, nunca desborda la página. */
+.katex-display {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.25rem 0;
+}
+.katex {
+  font-size: 1.05em;
+}

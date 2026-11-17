@@ -58,6 +58,14 @@ const sources = (over = {}) => ({
   type: "sources", sources: SOURCES, fragments: FRAGMENTS, confidence: "alta", similarity: 0.71, dropped_notes: 0, ...over,
 });
 
+const FORMULAS = String.raw`La media es $\bar{x} = \frac{1}{n}\sum_{i=1}^{n} x_i$ [S1].
+
+La varianza:
+
+$$\sigma^2 = \frac{1}{n}\sum_{i=1}^{n}(x_i - \bar{x})^2$$
+
+Y la identidad de Euler, con otros delimitadores: \(e^{i\pi}+1=0\).`;
+
 const ASKS = {
   respuesta: sse([
     sources(),
@@ -73,6 +81,11 @@ const ASKS = {
     sources({ sources: [SOURCES[1]], fragments: [FRAGMENTS[2]], confidence: "baja", similarity: 0.52 }),
     { type: "token", text: "No lo encuentro en el vault.\n\nPodrías mirar: [S3]" },
     done({ answer: "No lo encuentro en el vault.\n\nPodrías mirar: [S3]", not_found: true, warnings: ["confianza_baja"], confidence: "baja", similarity: 0.52, citations: [FRAGMENTS[2]] }),
+  ]),
+  formulas: sse([
+    sources(),
+    { type: "token", text: FORMULAS },
+    done({ answer: FORMULAS, citations: [FRAGMENTS[0]] }),
   ]),
   error: sse([{ type: "error", message: "Ollama no responde en http://localhost:11434: arráncalo con `ollama serve`." }]),
 };
@@ -102,9 +115,17 @@ const scenarios = [
       await page.getByRole("button", { name: /Fuente 1: Tema 1/ }).first().click();
       await page.getByRole("heading", { name: /Tema 1 · Complejidad/, level: 2 }).waitFor();
   } },
+  { name: "respuesta-formulas", run: async (page) => {
+      await ask(page, "¿Cuál es la fórmula de la media y la varianza?");
+      await page.locator(".katex-display").waitFor();
+      const loaded = await page.evaluate(async () => { await document.fonts.ready; return document.fonts.check("1em KaTeX_Main") && document.fonts.check("1em KaTeX_Math"); });
+      if (!loaded || (await page.locator(".katex").count()) < 3) throw new Error("KaTeX no se ha renderizado o sus fuentes no cargaron");
+  } },
   { name: "confianza-baja", run: async (page) => ask(page, "¿Qué es un montículo?") },
   { name: "no-lo-encuentro", run: async (page) => ask(page, "¿Cómo funciona el borrow checker de Rust?") },
   { name: "error", run: async (page) => { await page.getByRole("textbox", { name: "Tu pregunta" }).fill("hola"); await page.getByRole("textbox", { name: "Tu pregunta" }).press("Enter"); await page.getByRole("alert").waitFor(); } },
+  { name: "paleta-acciones", run: async (page) => { await page.keyboard.press("Control+K"); await page.getByRole("dialog").waitFor(); } },
+  { name: "paleta-resultados", run: async (page) => { await page.keyboard.press("Control+K"); await page.getByRole("combobox").fill("clasificación y regresión"); await page.getByRole("option", { name: /Ver todos/ }).waitFor(); await page.getByRole("status").filter({ hasText: "Buscando" }).waitFor({ state: "detached" }); } },
   { name: "buscar-inicio", url: "buscar", run: async (page) => { await page.getByRole("button", { name: /^Redes \(/ }).waitFor(); } },
   { name: "buscar-resultados", url: "buscar?q=clasificaci%C3%B3n%20y%20regresi%C3%B3n", run: async (page) => { await page.getByRole("status").filter({ hasText: /nota/ }).waitFor(); } },
   { name: "buscar-filtrado", url: "buscar?q=clasificaci%C3%B3n%20y%20regresi%C3%B3n&asig=Data%20Mining", run: async (page) => { await page.getByRole("status").filter({ hasText: /nota/ }).waitFor(); } },
@@ -116,7 +137,7 @@ const scenarios = [
       if (await menu.isVisible()) await menu.click();
       await page.getByRole("link", { name: "Estado" }).click(); await page.getByRole("heading", { name: "Ollama" }).waitFor(); } },
 ];
-const askFor = { respuesta: "respuesta", "respuesta-nota": "respuesta", "confianza-baja": "confianza", "no-lo-encuentro": "nolo", error: "error" };
+const askFor = { respuesta: "respuesta", "respuesta-formulas": "formulas", "respuesta-nota": "respuesta", "confianza-baja": "confianza", "no-lo-encuentro": "nolo", error: "error" };
 
 const browser = await chromium.launch({ executablePath: EDGE, headless: true });
 const summary = [];

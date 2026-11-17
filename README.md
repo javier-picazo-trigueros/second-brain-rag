@@ -116,6 +116,13 @@ ellos, con recuentos; el estado va en la URL), **Nota** (la nota completa: índi
 `[[enlaces]]` resueltos por título, notas que la enlazan y «Abrir en Obsidian») y **Estado**
 (servicios, GPU, índice, reindexado y latencia de la sesión).
 
+**Fórmulas.** Las notas y las respuestas del modelo muestran LaTeX (`$x^2$`, `$$...$$`, y también
+`\(...\)` y `\[...\]`) con KaTeX, empaquetado en local (fuentes incluidas, sin CDN) y cargado solo la
+primera vez que aparece una fórmula. Va con `trust` apagado: sin `\href`, `\url` ni imágenes remotas.
+
+**Ctrl+K** (⌘K en Mac) abre una paleta para saltar a una pantalla, empezar una conversación o buscar
+una nota sin salir de donde estás. Es un cuadro de diálogo accesible con teclado completo.
+
 «Abrir en Obsidian» es un enlace `obsidian://open?vault=…&file=…` que construye la API; no ejecuta
 nada ni escribe en el vault. El nombre del vault es el de su carpeta; para otro, `BRAIN_OBSIDIAN_VAULT`.
 Un `[[enlace]]` con varias notas candidatas pregunta cuál se quiere; las copias exactas cuentan como

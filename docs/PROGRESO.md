@@ -448,8 +448,27 @@ Hecho (entregas A y B1):
   evaluador busca por subcadena de título y «Unit 5 - Classification» contaba dos veces (original y
   «(1)»); ahora cuenta una y el hueco lo ocupa otra nota que pasa el corte de coseno.
 
-Falta: B2 (KaTeX local en notas y respuestas, Ctrl+K, capturas y documentación) y, después, el modo
-«apuntes».
+### B2: fórmulas, Ctrl+K y evaluador por familias
+
+- **Evaluador por familias.** El golden set cuenta una nota y sus copias o versiones como un único
+  acierto o ruido (`score_retrieval(..., families)`), y una familia casa con una expectativa si
+  cualquiera de sus miembros lo hace. Línea base buena (`evals/results/base_familias.json`) y el
+  «antes» reevaluado con la misma medida: precisión total 0,83 → 0,83. `dm-svm` (ruido por una nota de
+  AOC que pasa el corte de coseno) queda para la Fase 4; no se han tocado umbrales.
+- **KaTeX en local.** `katex`, `remark-math` y `rehype-katex`, cargados con `import()` solo si el texto
+  lleva delimitadores: el paquete principal baja de 931 KB a 660 KB y KaTeX es un chunk aparte (270 KB
+  + 30 KB de CSS, fuentes en `dist/assets`). Se aplica tras el saneado, con `trust` apagado; los
+  delimitadores `\( \)` y `\[ \]` de los modelos se convierten fuera del código y `$$x$$` solo en su
+  línea es un bloque. El prompt pide las fórmulas en LaTeX. Se comprobó en el navegador real (fuentes
+  cargadas, modo oscuro) y que no hay ninguna URL externa en `dist/`.
+- **Ctrl+K / ⌘K.** Paleta con patrón combobox/listbox: acciones rápidas sin escribir, búsqueda sin LLM
+  mientras se escribe (retardo de 200 ms), «Ver todos los resultados», Esc, foco devuelto al cerrar y
+  foco atrapado. Hay también un botón visible en la navegación.
+- **Capturas y axe**: 16 estados (96 capturas a 360/768/1280 px, claro y oscuro), 0 violaciones, 0
+  desbordes y 0 chips pegados.
+- **Fallo propio cazado por el lint**: el detector de fórmulas buscaba paréntesis sueltos por perder los
+  backslashes al escribir el fichero desde el shell; ahora tiene un test.
+
 
 ## Pendiente para la Fase 4
 

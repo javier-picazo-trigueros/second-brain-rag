@@ -170,3 +170,38 @@ describe("responsive navigation and new conversation", () => {
     expect(screen.getByRole("link", { name: "Buscar" })).toHaveAttribute("href", "/buscar");
   });
 });
+
+describe("AppShell: paleta Ctrl+K", () => {
+  it("opens with Ctrl+K from anywhere and closes with Escape, returning the focus", async () => {
+    setup();
+    const nav = screen.getByRole("link", { name: "Estado" });
+    nav.focus();
+    await userEvent.keyboard("{Control>}k{/Control}");
+    expect(screen.getByRole("dialog", { name: "Buscar o ir a…" })).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(nav).toHaveFocus();
+  });
+
+  it("opens with Cmd+K too, and Ctrl+K again toggles it closed", async () => {
+    setup();
+    await userEvent.keyboard("{Meta>}k{/Meta}");
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    await userEvent.keyboard("{Control>}k{/Control}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("has a visible button that opens it, with the shortcut in its name", async () => {
+    setup();
+    await userEvent.click(screen.getByRole("button", { name: /Búsqueda rápida/ }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("goes to a screen chosen in the palette", async () => {
+    setup();
+    await userEvent.keyboard("{Control>}k{/Control}");
+    await userEvent.click(screen.getByRole("option", { name: "Estado" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByRole("heading", { name: "Pantalla Estado" })).toBeInTheDocument();
+  });
+});

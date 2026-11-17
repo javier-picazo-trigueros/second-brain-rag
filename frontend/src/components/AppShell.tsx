@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 
 import { ConversationProvider, useConversation } from "../hooks/conversation";
@@ -15,6 +15,7 @@ import {
   SunIcon,
   XIcon,
 } from "./icons";
+import { CommandPalette } from "./CommandPalette";
 import { NotePanel } from "./NotePanel";
 
 const NAV = [
@@ -61,6 +62,7 @@ function Shell() {
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const [navOpen, setNavOpen] = useState(false); // solo en pantallas pequeñas (cajón)
   const [theme, setTheme] = useState<Theme>(loadTheme);
+  const [palette, setPalette] = useState(false);
   const [note, setNote] = useState<{ path: string; page: number | null } | null>(null);
   const { reset } = useConversation();
   const navigate = useNavigate();
@@ -68,6 +70,18 @@ function Shell() {
   const open = useCallback((path: string, page: number | null) => setNote({ path, page }), []);
   const close = useCallback(() => setNote(null), []);
   const closeNav = useCallback(() => setNavOpen(false), []);
+
+  // Ctrl+K (⌘K en Mac) abre o cierra la paleta desde cualquier pantalla.
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setPalette((open) => !open);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   function toggleNav() {
     const next = !collapsed;
@@ -151,6 +165,22 @@ function Shell() {
             <span className={hideLabel}>Nueva conversación</span>
           </button>
 
+          <button
+            type="button"
+            onClick={() => {
+              setPalette(true);
+              setNavOpen(false);
+            }}
+            aria-keyshortcuts="Control+K Meta+K"
+            className={`${row} mt-1 text-sm text-muted hover:bg-surface-2 hover:text-text`}
+          >
+            <SearchIcon size={18} />
+            <span className={`flex flex-1 items-center justify-between ${hideLabel}`}>
+              Búsqueda rápida
+              <kbd className="rounded border border-border px-1.5 py-0.5 text-[0.6875rem]">Ctrl K</kbd>
+            </span>
+          </button>
+
           <ul className="mt-2 space-y-0.5">
             {NAV.map(({ to, label, Icon, end }) => (
               <li key={to}>
@@ -213,6 +243,7 @@ function Shell() {
           </div>
         ) : null}
       </div>
+      <CommandPalette open={palette} onClose={() => setPalette(false)} onNewConversation={newConversation} />
     </NoteContext.Provider>
   );
 }

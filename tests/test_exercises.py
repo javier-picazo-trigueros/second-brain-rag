@@ -415,7 +415,7 @@ def test_the_exercise_prompt_asks_for_the_statement_then_the_steps_with_the_theo
     system = build_messages("resuelve", build_context(result, s))[0].content
     for phrase in (
         "enunciado", "solución", "paso a paso", "completo", "no recalcules", "cita",
-        "más de 6 filas", "no repitas", "solo si",
+        "más de 6 filas", "no repitas", "solo los pasos",
     ):  # fmt: skip
         assert phrase in system.lower()
     # el worst case sigue cabiendo en la ventana

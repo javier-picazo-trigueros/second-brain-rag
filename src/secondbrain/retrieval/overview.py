@@ -256,14 +256,17 @@ class IntentRetriever:
         if len(by_subject) < 2:
             return result
         listed = " y ".join(f"«{name}» ({title})" for name, title in by_subject.items())
-        message = (
-            "AMBIGÜEDAD: la pregunta puede referirse a temas distintos de asignaturas "
-            f"distintas: {listed}. Empieza la respuesta con una primera frase que lo diga (para "
-            "que el usuario pueda precisarlo) y responde con la fuente más relevante de las que "
-            "se te dan, sin mezclarlas."
+        answered = index.name_of(result.notes[0].path) if result.notes else None
+        used = (
+            f" Respondo con las fuentes de «{answered}», que son las más relevantes;"
+            if answered
+            else ""
         )
-        facts = f"{result.facts}\n{message}" if result.facts else message
-        return replace(result, facts=facts)
+        message = (
+            "Ojo: tu pregunta puede referirse a temas distintos de asignaturas distintas: "
+            f"{listed}.{used} si buscabas otra, concreta la pregunta."
+        )
+        return replace(result, ambiguity=message)
 
     def _study_result(self, index: SubjectIndex, subject: Subject, topic: int) -> SearchResult:
         notes = index.topic_notes(subject, topic)

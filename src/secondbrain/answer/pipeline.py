@@ -281,6 +281,9 @@ class AnswerPipeline:
             )
             return
 
+        prefix = f"{result.ambiguity}\n\n" if result.ambiguity else ""
+        if prefix:
+            yield TokenEvent(prefix)  # la dice el sistema, no el modelo: no depende de que obedezca
         stream = CitationStream(context.fragments)
         parts: list[str] = []
         first_token_ms: float | None = None
@@ -313,15 +316,17 @@ class AnswerPipeline:
 
         answer = "".join(parts)
         if _contradiction(answer):
-            yield self._contradictory(
+            dropped = self._contradictory(
                 answer, stream, context, finished, confidence, result.top_similarity,
                 retrieval_ms, first_token_ms, (self._clock() - start) * 1000,
             )  # fmt: skip
+            yield replace(dropped, answer=prefix + dropped.answer) if prefix else dropped
             return
-        yield self._done(
+        done = self._done(
             "".join(parts), stream, context, finished, confidence, result.top_similarity,
             retrieval_ms, first_token_ms, (self._clock() - start) * 1000,
         )  # fmt: skip
+        yield replace(done, answer=prefix + done.answer) if prefix else done
 
     def _write_study(self, plan: StudyPlan, start: float, retrieval_ms: float) -> Iterator[Event]:
         """Apuntes: una llamada al modelo por parte, con su ventana de fragmentos reales."""

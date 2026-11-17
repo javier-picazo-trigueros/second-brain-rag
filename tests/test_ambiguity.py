@@ -72,10 +72,10 @@ def test_close_sources_from_different_subjects_are_flagged_as_ambiguous(
     result = route(
         tmp_path, manifest, [hit(GRAFOS, 0.9), hit(EULER, 0.8)], "dame la fórmula de Euler"
     )
-    assert "AMBIGÜEDAD" in result.facts
-    assert "Matemática Discreta" in result.facts and "Cálculo" in result.facts
-    assert "Tema 5 Teoría de grafos" in result.facts and "Método de Euler" in result.facts
-    assert "primera frase" in result.facts and "más relevante" in result.facts
+    assert result.ambiguity and result.facts == ""
+    assert "Matemática Discreta" in result.ambiguity and "Cálculo" in result.ambiguity
+    assert "Tema 5 Teoría de grafos" in result.ambiguity and "Método de Euler" in result.ambiguity
+    assert result.ambiguity.startswith("Ojo:") and "concreta la pregunta" in result.ambiguity
     assert [n.path for n in result.notes] == [GRAFOS, EULER]  # las fuentes no cambian
 
 
@@ -83,7 +83,7 @@ def test_one_subject_is_not_ambiguous(tmp_path: Path, manifest: Manifest) -> Non
     result = route(
         tmp_path, manifest, [hit(GRAFOS, 0.9), hit(OTRO, 0.85)], "dame la fórmula de Euler"
     )
-    assert result.facts == ""
+    assert result.ambiguity == ""
 
 
 def test_a_clearly_weaker_second_subject_is_not_ambiguous(
@@ -92,7 +92,7 @@ def test_a_clearly_weaker_second_subject_is_not_ambiguous(
     result = route(
         tmp_path, manifest, [hit(GRAFOS, 0.9), hit(EULER, 0.4)], "dame la fórmula de Euler"
     )
-    assert result.facts == ""
+    assert result.ambiguity == ""
 
 
 def test_the_flag_looks_only_at_the_top_three_notes(tmp_path: Path, manifest: Manifest) -> None:
@@ -102,10 +102,10 @@ def test_the_flag_looks_only_at_the_top_three_notes(tmp_path: Path, manifest: Ma
         hit("1º/DISCRETAS/Tema 3 A.md", 0.88),
         hit(EULER, 0.87),
     ]
-    assert route(tmp_path, manifest, notes, "euler").facts == ""
+    assert route(tmp_path, manifest, notes, "euler").ambiguity == ""
 
 
-def test_existing_facts_are_kept_and_the_note_is_added(tmp_path: Path, manifest: Manifest) -> None:
+def test_existing_facts_are_left_untouched(tmp_path: Path, manifest: Manifest) -> None:
     s: Any = Settings(_env_file=None, vault_path=tmp_path)  # type: ignore[call-arg]
 
     class WithFacts(Base):
@@ -114,8 +114,17 @@ def test_existing_facts_are_kept_and_the_note_is_added(tmp_path: Path, manifest:
 
     base = WithFacts([hit(GRAFOS, 0.9), hit(EULER, 0.85)])
     router = IntentRetriever(s, base, NoChunks(), manifest, aliases=ALIASES)
-    facts = router.search("euler", k=5).facts
-    assert facts.startswith("DATO: algo.") and "AMBIGÜEDAD" in facts
+    result = router.search("euler", k=5)
+    assert result.facts == "DATO: algo." and result.ambiguity
+
+
+def test_the_warning_names_the_subject_the_answer_will_use(
+    tmp_path: Path, manifest: Manifest
+) -> None:
+    result = route(
+        tmp_path, manifest, [hit(EULER, 0.9), hit(GRAFOS, 0.85)], "dame la fórmula de Euler"
+    )
+    assert "Respondo con las fuentes de «Cálculo»" in result.ambiguity
 
 
 def test_a_question_that_names_a_subject_is_never_flagged(
@@ -127,7 +136,7 @@ def test_a_question_that_names_a_subject_is_never_flagged(
         [hit(GRAFOS, 0.9), hit(EULER, 0.85)],
         "dame la fórmula de Euler en discreta",
     )
-    assert "AMBIGÜEDAD" not in result.facts
+    assert result.ambiguity == ""
 
 
 def test_a_relevant_note_dropped_by_the_cosine_cutoff_still_counts_as_a_candidate(
@@ -140,7 +149,7 @@ def test_a_relevant_note_dropped_by_the_cosine_cutoff_still_counts_as_a_candidat
     s: Any = Settings(_env_file=None, vault_path=tmp_path)  # type: ignore[call-arg]
     router = IntentRetriever(s, Cut([hit(EULER, 0.9)]), NoChunks(), manifest, aliases=ALIASES)
     result = router.search("dame la fórmula de Euler", k=5)
-    assert "AMBIGÜEDAD" in result.facts and "Tema 5 Teoría de grafos" in result.facts
+    assert "Tema 5 Teoría de grafos" in result.ambiguity and result.facts == ""
     assert [n.path for n in result.notes] == [EULER]  # solo se responde con las fuentes de siempre
 
 
@@ -151,4 +160,28 @@ def test_a_weak_candidate_does_not_make_it_ambiguous(tmp_path: Path, manifest: M
 
     s: Any = Settings(_env_file=None, vault_path=tmp_path)  # type: ignore[call-arg]
     router = IntentRetriever(s, Cut([hit(EULER, 0.9)]), NoChunks(), manifest, aliases=ALIASES)
-    assert router.search("euler", k=5).facts == ""
+    assert router.search("euler", k=5).ambiguity == ""
+
+
+# --- el pipeline antepone la frase, sin depender del modelo ---------------
+
+
+def test_the_pipeline_puts_the_ambiguity_sentence_first_and_keeps_the_model_answer(
+    tmp_path: Path,
+) -> None:
+    from secondbrain.answer.pipeline import AnswerPipeline, DoneEvent, TokenEvent
+    from tests.fakes import FakeRetriever, ScriptedLLM
+
+    result = SearchResult(
+        [hit(EULER, 0.9)], [], 0.8, ambiguity="Ojo: puede ser de dos asignaturas."
+    )
+    llm = ScriptedLLM(["La fórmula es y' = f [S1]."])
+    s: Any = Settings(_env_file=None, vault_path=tmp_path)  # type: ignore[call-arg]
+    events = list(AnswerPipeline(s, FakeRetriever(result), llm).ask("euler"))
+    streamed = "".join(e.text for e in events if isinstance(e, TokenEvent))
+    done = events[-1]
+    assert isinstance(done, DoneEvent)
+    assert streamed.startswith("Ojo: puede ser de dos asignaturas.\n\n")
+    assert done.answer == "Ojo: puede ser de dos asignaturas.\n\nLa fórmula es y' = f [S1]."
+    assert [c.id for c in done.citations] == ["S1"]
+    assert "Ojo" not in llm.messages[1].content  # el modelo no ve la frase: es del sistema

@@ -61,6 +61,7 @@ class SearchResult:
     study: StudyPlan | None = None  # modo «apuntes»: qué se escribe en cada parte
     # Las mejores del ranking que el corte de coseno descartó: sirven para avisar de ambigüedad.
     candidates: tuple[NoteHit, ...] = ()
+    ambiguity: str = ""  # frase que el sistema antepone si la pregunta es ambigua entre asignaturas
 
 
 class HybridRetriever:

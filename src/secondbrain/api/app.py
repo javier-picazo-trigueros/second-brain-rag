@@ -6,14 +6,14 @@ import threading
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import Any, Protocol
 
 import httpx
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from qdrant_client.http.exceptions import ResponseHandlingException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
@@ -134,6 +134,40 @@ def _sse_error(message: str) -> str:
     return f"event: error\ndata: {json.dumps({'message': message}, ensure_ascii=False)}\n\n"
 
 
+# Rutas de la API y de los ficheros del build: si faltan, 404 (no la página de la aplicación).
+_NOT_THE_APP = (
+    "health",
+    "stats",
+    "search",
+    "ask",
+    "notes",
+    "graph",
+    "reindex",
+    "docs",
+    "redoc",
+    "openapi.json",
+    "assets",
+)
+
+
+def _serve_build(app: FastAPI, build: Path) -> None:
+    """Sirve la interfaz compilada: ficheros del build tal cual y, para cualquier otra ruta del
+    navegador (`/estado`...), `index.html` (el enrutador de la aplicación decide)."""
+    root = build.resolve()
+    index = root / "index.html"
+
+    @app.get("/{path:path}", include_in_schema=False)
+    def interface(path: str) -> Response:
+        target = (root / path).resolve() if path else index
+        first = path.split("/", 1)[0]
+        if path and target.is_file() and target.is_relative_to(root):
+            cache = "public, max-age=31536000, immutable" if first == "assets" else "no-cache"
+            return FileResponse(target, headers={"Cache-Control": cache})
+        if first in _NOT_THE_APP or "." in path.rsplit("/", 1)[-1]:
+            raise HTTPException(404, "No encontrado.")
+        return FileResponse(index, headers={"Cache-Control": "no-cache"})
+
+
 def _run_warmup(warmup: Callable[[], None]) -> None:
     try:
         warmup()
@@ -142,7 +176,7 @@ def _run_warmup(warmup: Callable[[], None]) -> None:
         log.warning("No se pudo precalentar la búsqueda: %s", exc)
 
 
-def create_app(services: AppServices) -> FastAPI:
+def create_app(services: AppServices, static_dir: Path | None = None) -> FastAPI:
     settings = services.settings
     manifest = services.manifest
 
@@ -293,6 +327,8 @@ def create_app(services: AppServices) -> FastAPI:
     def reindex_status() -> ReindexStatusOut:
         return _reindex_status(services.reindex.status())
 
+    if static_dir is not None and (static_dir / "index.html").is_file():
+        _serve_build(app, static_dir)
     return app
 
 

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 import httpx
 from fastapi import FastAPI
 
@@ -8,13 +10,15 @@ from secondbrain.answer.pipeline import AnswerPipeline
 from secondbrain.api.app import AppServices, create_app
 from secondbrain.api.health import HealthChecker
 from secondbrain.api.reindex import ReindexManager
-from secondbrain.config import Settings, load_settings
+from secondbrain.config import PROJECT_ROOT, Settings, load_settings
 from secondbrain.embeddings.ollama import OllamaEmbedder
 from secondbrain.ingest.indexer import Indexer
 from secondbrain.retrieval.hybrid import HybridRetriever
 from secondbrain.retrieval.overview import IntentRetriever
 from secondbrain.store.manifest import Manifest
 from secondbrain.store.qdrant import VectorStore
+
+log = logging.getLogger(__name__)
 
 
 def _warm_up(retriever: HybridRetriever) -> None:
@@ -48,4 +52,8 @@ def build_services(settings: Settings | None = None) -> AppServices:
 
 def create_app_from_env() -> FastAPI:
     """Fábrica para uvicorn: `uvicorn secondbrain.api.main:create_app_from_env --factory`."""
-    return create_app(build_services())
+    s = load_settings()
+    dist = PROJECT_ROOT / "frontend" / "dist"
+    if not (dist / "index.html").is_file():
+        log.info("Sin interfaz compilada: ejecuta `.\tasks.ps1 web-build` (o usa `web-dev`).")
+    return create_app(build_services(s), static_dir=dist)

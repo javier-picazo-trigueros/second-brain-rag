@@ -95,6 +95,48 @@ export interface FragmentInfo {
   heading: string | null;
 }
 
+export interface FacetValue {
+  value: string;
+  count: number;
+}
+
+export interface Facets {
+  asignaturas: FacetValue[];
+  cursos: FacetValue[];
+  tags: FacetValue[];
+}
+
+export interface SearchChunk {
+  heading_path: string;
+  page: number | null;
+  text: string;
+  score: number;
+}
+
+export interface SearchNote {
+  path: string;
+  title: string;
+  score: number;
+  n_chunks: number;
+  asignatura: string | null;
+  curso: string | null;
+  tags: string[];
+  also_in: string[];
+  chunks: SearchChunk[];
+}
+
+export interface SearchResponse {
+  notes: SearchNote[];
+  top_similarity: number | null;
+  confidence: string;
+  facets: Facets;
+}
+
+export interface SubjectInfo {
+  name: string;
+  notes: number;
+}
+
 export interface Timings {
   retrieval_ms: number;
   first_token_ms: number | null;

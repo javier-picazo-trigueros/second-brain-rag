@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { AnswerView } from "../components/AnswerView";
 import { AskForm } from "../components/AskForm";
@@ -22,6 +22,7 @@ const HIDDEN_WHEN_NOT_FOUND = ["confianza_baja", "sin_citas", "solo_pistas"];
 
 function Turn({ turn, index, focusInput }: { turn: AskState; index: number; focusInput: () => void }) {
   const { open } = useNotePanel();
+  const navigate = useNavigate();
   const evidence = turn.sources.filter((s) => s.kind === "evidence").length;
   const done = turn.done;
   const notFound = done?.not_found === true;
@@ -59,6 +60,7 @@ function Turn({ turn, index, focusInput }: { turn: AskState; index: number; focu
           lowConfidence={done.confidence === "baja"}
           onOpenNote={open}
           onRephrase={focusInput}
+          onSearch={() => navigate(`/buscar?${new URLSearchParams({ q: turn.question })}`)}
         />
       ) : turn.text ? (
         <AnswerView

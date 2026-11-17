@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { axe } from "vitest-axe";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -103,6 +103,11 @@ function controlled() {
 
 const open = vi.fn();
 const record = vi.fn();
+
+function Where() {
+  const location = useLocation();
+  return <span data-testid="where">{location.pathname + location.search}</span>;
+}
 
 function setup() {
   return render(
@@ -300,6 +305,30 @@ describe("Preguntar: avisos", () => {
     await ask("¿Hola?");
     expect(await screen.findByRole("alert")).toHaveTextContent(/interrumpida/i);
     expect(screen.getByText("Corto")).toBeInTheDocument();
+  });
+});
+
+describe("Preguntar: de «no lo encuentro» a Buscar", () => {
+  it("offers to search the same question in Buscar", async () => {
+    script([
+      sourcesEvent({ confidence: "baja", similarity: 0.5 }),
+      doneEvent({ answer: "No lo encuentro en el vault.", not_found: true, confidence: "baja", similarity: 0.5 }),
+    ]);
+    render(
+      <MemoryRouter>
+        <SessionContext.Provider value={{ entries: [], record }}>
+          <NoteContext.Provider value={{ open, close: vi.fn() }}>
+            <ConversationProvider>
+              <Preguntar />
+              <Where />
+            </ConversationProvider>
+          </NoteContext.Provider>
+        </SessionContext.Provider>
+      </MemoryRouter>,
+    );
+    await ask("¿Cómo funciona el borrow checker?");
+    await userEvent.click(await screen.findByRole("button", { name: "Buscar esto en tus apuntes" }));
+    expect(screen.getByTestId("where")).toHaveTextContent("/buscar?q=%C2%BFC%C3%B3mo+funciona+el+borrow+checker%3F");
   });
 });
 

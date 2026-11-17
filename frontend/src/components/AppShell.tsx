@@ -5,12 +5,21 @@ import { ConversationProvider, useConversation } from "../hooks/conversation";
 import { NoteContext } from "../hooks/notePanel";
 import { SessionProvider } from "../hooks/session";
 import { applyTheme, loadTheme, nextTheme, saveTheme, THEME_LABEL, type Theme } from "../lib/theme";
-import { ActivityIcon, MenuIcon, MessageIcon, MonitorIcon, MoonIcon, SunIcon, XIcon } from "./icons";
+import {
+  ActivityIcon,
+  MenuIcon,
+  MessageIcon,
+  MonitorIcon,
+  MoonIcon,
+  SearchIcon,
+  SunIcon,
+  XIcon,
+} from "./icons";
 import { NotePanel } from "./NotePanel";
 
-// «Buscar» entra aquí cuando exista esa pantalla.
 const NAV = [
   { to: "/", label: "Preguntar", Icon: MessageIcon, end: true },
+  { to: "/buscar", label: "Buscar", Icon: SearchIcon, end: false },
   { to: "/estado", label: "Estado", Icon: ActivityIcon, end: false },
 ];
 

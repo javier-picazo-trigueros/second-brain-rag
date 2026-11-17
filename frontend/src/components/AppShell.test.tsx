@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { axe } from "vitest-axe";
@@ -160,8 +160,10 @@ describe("responsive navigation and new conversation", () => {
     expect(panel.className).toContain("max-lg:fixed");
   });
 
-  it("does not show «Buscar» until that screen exists", () => {
+  it("has a «Buscar» entry between Preguntar and Estado", () => {
     setup();
-    expect(screen.queryByRole("link", { name: "Buscar" })).toBeNull();
+    const links = within(screen.getByRole("navigation", { name: "Principal" })).getAllByRole("link");
+    expect(links.map((l) => l.getAttribute("aria-label"))).toEqual(["Preguntar", "Buscar", "Estado"]);
+    expect(screen.getByRole("link", { name: "Buscar" })).toHaveAttribute("href", "/buscar");
   });
 });

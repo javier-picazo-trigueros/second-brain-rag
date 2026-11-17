@@ -167,7 +167,7 @@ _NOT_THE_APP = (
 )
 # Un fichero estático que falta es un 404; el resto de rutas (también `/nota/…/x.md`) son de la app.
 
-# Un fichero estático que falta es un 404; el resto de rutas (también `/nota/…/algo.md`) son de la app.
+# Un fichero estático que falta es un 404; lo demás (también /nota/x.md) es de la app.
 _STATIC_EXTENSIONS = frozenset(
     {"js", "mjs", "css", "map", "png", "jpg", "jpeg", "gif", "svg", "ico", "webp", "avif",
      "woff", "woff2", "ttf", "otf", "json", "txt", "xml", "webmanifest", "wasm"}

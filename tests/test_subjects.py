@@ -350,7 +350,9 @@ def test_a_typo_never_turns_one_numeral_into_the_other(informal: SubjectIndex) -
     assert found is not None and found.name == "Inteligencia Artificial II"
     found = informal.detect("inteligencia artificicial I")
     assert found is not None and found.name == "Inteligencia Artificial I"
-    assert informal.detect("inteligencia artificial y la receta") is None  # sin numeral: no se adivina
+    assert (
+        informal.detect("inteligencia artificial y la receta") is None
+    )  # sin numeral: no se adivina
 
 
 def test_fuzzy_matching_does_not_invent_subjects_from_common_words(informal: SubjectIndex) -> None:
@@ -363,7 +365,7 @@ def test_fuzzy_matching_does_not_invent_subjects_from_common_words(informal: Sub
     [
         # las tres frases tal cual se escribieron
         (
-            "dime de q trata la asignatura de inteligencia artificicial II sabes en un par de parrafos cuantos temas tiene todo",
+            "dime de q trata la asignatura de inteligencia artificicial II sabes en un par de parrafos cuantos temas tiene todo",  # noqa: E501
             "overview_subject",
             "Inteligencia Artificial II",
             None,

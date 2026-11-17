@@ -5,10 +5,10 @@ from __future__ import annotations
 import re
 import tomllib
 import unicodedata
-from difflib import SequenceMatcher
 from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 from pathlib import Path
 
 _COURSE = re.compile(r"^\d+º$")
@@ -144,9 +144,9 @@ class SubjectIndex:
     def detect(self, question: str) -> Subject | None:
         """Asignatura que nombra la pregunta (alias más largo; palabras completas).
 
-        Si no aparece tal cual, se tolera una falta de ortografía en las palabras largas («artificicial»,
-        «mineria de datoss»); las cortas y los números («I», «II», «2») tienen que coincidir exactos,
-        para que un fallo nunca convierta «IA II» en «IA I».
+        Si no aparece tal cual, se tolera una falta de ortografía en las palabras largas
+        («artificicial», «mineria de datoss»); las cortas y los números («I», «II», «2») deben
+        coincidir exactos, para que un fallo nunca convierta «IA II» en «IA I».
         """
         text = norm(question)
         padded = f" {text} "

@@ -181,6 +181,9 @@ export interface DoneEvent {
   mode?: string;
   subject?: string | null;
   topic?: number | null;
+  /** Modo ejercicios: números de la respuesta que no salen de las fuentes, y pasos sin cita. */
+  unverified_numbers?: string[];
+  uncited_steps?: number;
 }
 
 /** Modo apuntes: se está escribiendo la parte `part` de `total` (desde 1). */

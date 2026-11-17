@@ -67,6 +67,13 @@ describe("NotFoundCard", () => {
     expect(onOpenNote).toHaveBeenCalledWith("t5.md", 3);
   });
 
+  it("names each nearby note instead of showing a bare number", () => {
+    render(<NotFoundCard {...props} />);
+    const chip = screen.getByRole("button", { name: /Tema 5/ });
+    expect(chip).toHaveTextContent("Tema 5");
+    expect(chip).toHaveTextContent("p. 3");
+  });
+
   it("omits the suggestions block when the model gave none", () => {
     render(<NotFoundCard {...props} answer="No lo encuentro en el vault." />);
     expect(screen.queryByText(/Notas cercanas/)).toBeNull();

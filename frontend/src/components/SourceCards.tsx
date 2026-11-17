@@ -20,13 +20,6 @@ function metaParts(source: SourceInfo): string[] {
   return [source.asignatura, source.curso, pages].filter((part): part is string => Boolean(part));
 }
 
-function nameOf(label: string, pages: number[], hint: boolean): string {
-  const verb = hint ? `Ver también «${label}»` : `Abrir «${label}»`;
-  if (pages.length === 0) return verb;
-  const shown = pages.length === 1 ? `página ${pages[0]}` : `páginas ${pages.join(", ")}`;
-  return `${verb}, ${shown}`;
-}
-
 /** Fuentes bajo la respuesta: una fila compacta con las citadas y, plegadas, las demás. */
 export function SourceCards({ sources, cited, onOpen }: Props) {
   const [expanded, setExpanded] = useState(false);
@@ -44,7 +37,7 @@ export function SourceCards({ sources, cited, onOpen }: Props) {
   return (
     <section aria-label="Fuentes" className="mt-6">
       <div className="mb-2 flex items-center justify-between text-sm text-muted">
-        <h3 className="font-normal">Fuentes · {total}</h3>
+        <h2 className="font-normal">Fuentes · {total}</h2>
         {extra.length > 0 ? (
           <button
             type="button"
@@ -63,13 +56,12 @@ export function SourceCards({ sources, cited, onOpen }: Props) {
           <li key={c.path} className="max-w-full">
             <button
               type="button"
-              aria-label={nameOf(c.label, c.pages, c.hint)}
               onClick={() => onOpen(c.path, c.pages[0] ?? null)}
               className={CHIP}
             >
               <span className="grid h-5 min-w-5 place-items-center rounded-full bg-surface-2 px-1 text-xs font-semibold text-muted">
                 {c.number}
-              </span>
+              </span>{" "}
               <span className="truncate" style={{ maxWidth: "30ch" }} title={c.label}>
                 {c.label}
               </span>{" "}
@@ -81,7 +73,6 @@ export function SourceCards({ sources, cited, onOpen }: Props) {
           <li key={s.path} className="max-w-full">
             <button
               type="button"
-              aria-label={nameOf(s.label, s.pages.slice(0, 1), s.kind === "hint")}
               onClick={() => onOpen(s.path, s.pages[0] ?? null)}
               className={CHIP}
             >

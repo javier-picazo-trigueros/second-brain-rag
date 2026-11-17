@@ -101,6 +101,7 @@ export function Preguntar() {
     <div className="relative flex h-full flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto scroll-smooth">
         <div className="mx-auto flex max-w-[720px] flex-col gap-9 px-4 pb-52 pt-8 sm:px-5">
+          {turns.length > 0 ? <h1 className="sr-only">Preguntar</h1> : null}
           {turns.length === 0 ? (
             <section className="py-10">
               <h1 className="text-2xl font-semibold tracking-tight">Pregunta a tus apuntes</h1>

@@ -51,7 +51,7 @@ export function AskForm({ onSubmit, onStop, busy, disabled = false, maxLength = 
         placeholder="Pregunta algo sobre tus apuntes…"
         onChange={(event) => setValue(event.target.value)}
         onKeyDown={onKeyDown}
-        className="block max-h-44 w-full resize-none bg-transparent py-1.5 text-base outline-none placeholder:text-muted"
+        className="composer-input block max-h-44 w-full resize-none bg-transparent py-1.5 text-base outline-none placeholder:text-muted"
       />
       <div className="mt-1 flex items-center justify-between gap-3">
         <p id={hintId} className="text-xs text-muted">

@@ -316,3 +316,8 @@ body {
     opacity: 0.9;
   }
 }
+
+/* El foco del campo de pregunta lo marca la tarjeta entera (focus-within), no un anillo interior. */
+textarea.composer-input:focus-visible {
+  outline: none;
+}

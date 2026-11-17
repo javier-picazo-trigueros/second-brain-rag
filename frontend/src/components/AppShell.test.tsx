@@ -153,6 +153,13 @@ describe("responsive navigation and new conversation", () => {
     expect(screen.getByRole("heading", { name: "Pantalla Preguntar" })).toBeInTheDocument();
   });
 
+  it("keeps the note panel an overlay below the desktop breakpoint", async () => {
+    setup();
+    await userEvent.click(screen.getByRole("button", { name: "abrir nota" }));
+    const panel = (await screen.findByRole("complementary", { name: "Nota abierta" })).parentElement!;
+    expect(panel.className).toContain("max-lg:fixed");
+  });
+
   it("does not show «Buscar» until that screen exists", () => {
     setup();
     expect(screen.queryByRole("link", { name: "Buscar" })).toBeNull();

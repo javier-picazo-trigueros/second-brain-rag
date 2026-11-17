@@ -34,11 +34,18 @@ describe("SourceCards", () => {
   it("shows the cited sources as numbered chips with their title and page, always visible", () => {
     render(<SourceCards sources={sources} cited={cited} onOpen={() => {}} />);
     expect(screen.getByRole("heading", { name: "Fuentes · 2" })).toBeInTheDocument();
-    const first = screen.getByRole("button", { name: "Abrir «Doc iptables», página 4" });
+    const first = screen.getByRole("button", { name: "1 Doc iptables p. 4" });
     expect(first).toHaveTextContent("1");
     expect(first).toHaveTextContent("Doc iptables");
     expect(first).toHaveTextContent("p. 4");
-    expect(screen.getByRole("button", { name: /Ver también «Redes»/ })).toHaveTextContent("2");
+    expect(screen.getByRole("button", { name: "2 Redes" })).toBeInTheDocument();
+  });
+
+  it("names each chip with exactly its visible text (WCAG 2.5.3)", () => {
+    render(<SourceCards sources={sources} cited={cited} onOpen={() => {}} />);
+    for (const button of screen.getAllByRole("button", { name: /^\d / })) {
+      expect(button).not.toHaveAttribute("aria-label");
+    }
   });
 
   it("opens the note at the first cited page, or with none", async () => {

@@ -33,7 +33,7 @@ describe("CitationChip", () => {
         Dato <CitationChip citation={valid({ pages: [7] })} onOpen={onOpen} /> fin.
       </p>,
     );
-    const button = screen.getByRole("button", { name: "Abrir «Semáforos», página 7" });
+    const button = screen.getByRole("button", { name: "Fuente 2: Semáforos, página 7" });
     expect(button).toHaveAttribute("data-tip", "Semáforos · p. 7");
     expect(container.textContent).toBe("Dato 2 fin."); // sin título dentro de la respuesta
     await userEvent.click(button);
@@ -43,10 +43,15 @@ describe("CitationChip", () => {
   it("lists several pages and opens the first", async () => {
     const onOpen = vi.fn();
     render(<CitationChip citation={valid({ pages: [6, 7, 9] })} onOpen={onOpen} />);
-    const button = screen.getByRole("button", { name: "Abrir «Semáforos», páginas 6, 7 y 9" });
+    const button = screen.getByRole("button", { name: "Fuente 2: Semáforos, páginas 6, 7 y 9" });
     expect(button).toHaveAttribute("data-tip", "Semáforos · p. 6, 7, 9");
     await userEvent.click(button);
     expect(onOpen).toHaveBeenCalledWith("1º/SO/Semáforos.md", 6);
+  });
+
+  it("includes its visible number in its accessible name (WCAG 2.5.3)", () => {
+    render(<CitationChip citation={valid({ number: 12 })} onOpen={() => {}} />);
+    expect(screen.getByRole("button")).toHaveAccessibleName(/^Fuente 12: /);
   });
 
   it("activates with the keyboard", async () => {
@@ -63,7 +68,7 @@ describe("CitationChip", () => {
     render(<CitationChip citation={valid({ label: "Redes", hint: true })} onOpen={() => {}} />);
     const button = screen.getByRole("button");
     expect(button).toHaveAttribute("data-kind", "hint");
-    expect(button).toHaveAccessibleName(/Ver también «Redes»/);
+    expect(button).toHaveAccessibleName("Fuente 2 (relacionada): Redes");
   });
 
   it("is not interactive when the note cannot be opened", () => {

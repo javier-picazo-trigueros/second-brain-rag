@@ -31,7 +31,10 @@ Para usar otra ruta: `$env:BRAIN_VENV = "D:\venvs\brain"`.
 .\tasks.ps1 index       # indexa el vault
 .\tasks.ps1 watch       # sincroniza y vigila el vault
 .\tasks.ps1 serve       # API HTTP en http://127.0.0.1:8000
-.\tasks.ps1 dev         # API + interfaz (Fase 3b)
+.\tasks.ps1 dev         # API + interfaz en modo desarrollo
+.\tasks.ps1 web-install # dependencias de la interfaz (pnpm)
+.\tasks.ps1 web-build   # compila la interfaz en frontend\dist
+.\tasks.ps1 web-test    # tests de la interfaz (Vitest)
 ```
 
 ## Uso
@@ -97,6 +100,47 @@ contexto**, no que respalden la afirmación: un modelo de 7B puede extrapolar y 
 correcto (se ha visto). La señal `confidence` (coseno denso del mejor chunk, umbral 0,60 calibrado con
 27 preguntas) es un aviso, no un bloqueo: separa mal los temas ausentes más cercanos. En preguntas que
 cruzan asignaturas, la recuperación puede traer evidencia de una sola; ver `docs/PROGRESO.md`.
+
+## Interfaz web
+
+React + Vite + TypeScript + Tailwind, 100 % local (fuentes incluidas en el repo, sin CDN ni telemetría).
+Pantallas: **Preguntar** (hilo de conversación, citas numeradas, fuentes, avisos) y **Estado**
+(servicios, GPU, índice, reindexado y latencia de la sesión). Buscar y la vista de nota completa
+llegan en el siguiente checkpoint.
+
+```powershell
+.\tasks.ps1 web-install   # una vez
+.\tasks.ps1 web-build     # compila frontend\dist
+.\tasks.ps1 serve         # la API sirve también la interfaz: http://127.0.0.1:8000
+```
+
+Para desarrollar con recarga en caliente: `.\tasks.ps1 dev` (API en :8000 y Vite en :5173, que
+reenvía las peticiones a la API).
+
+**Cómo se ve cada respuesta.** Las citas son números discretos (`1`, `2`…) junto a la frase; el título
+y la página salen al pasar el ratón o enfocar, y en móvil, tocar el número abre la nota. Bajo la
+respuesta, la fila *Fuentes* repite cada número con el título corto de la nota y su página. Los avisos
+(confianza baja, citas no verificadas) son píldoras tenues; solo un servicio caído usa el rojo. «No lo
+encuentro en tus apuntes» es una tarjeta serena con las notas más cercanas.
+
+**pnpm y `node_modules` fuera de OneDrive.** El repo vive en OneDrive, que sincronizaría decenas de
+miles de ficheros de `node_modules`. La interfaz usa pnpm: su almacén y su almacén virtual están en
+`C:\venvs\second-brain-web` (ver `frontend/.npmrc`) y `node_modules` solo contiene enlaces. No
+ejecutes `npm install` en `frontend/`: sustituiría esos enlaces por una carpeta real dentro de OneDrive.
+`frontend/pnpm-workspace.yaml` lista, con versión exacta, los paquetes publicados hace pocos días que
+se permitieron saltándose la antigüedad mínima de pnpm (`typescript-eslint` y sus subpaquetes,
+`axe-core` y `@testing-library/user-event`).
+
+**Comprobaciones manuales** (no forman parte de los tests; escriben fuera del repo):
+
+```powershell
+cd frontend
+node scripts/screens.mjs <carpeta>   # 42 capturas (360/768/1280 px, claro y oscuro) + axe de cada una
+node scripts/ask-ui.mjs <carpeta> "una pregunta"   # pregunta en la interfaz real y mide
+```
+
+Usan el Edge instalado (`BRAIN_BROWSER` para otro navegador). La propuesta de diseño estática está en
+`docs/design/preguntar.html`.
 
 ## Servidor MCP (Claude Code y otros clientes)
 

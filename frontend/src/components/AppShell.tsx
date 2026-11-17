@@ -199,7 +199,7 @@ function Shell() {
         </div>
 
         {note ? (
-          <div className="w-full max-w-xl shrink-0 border-l border-border max-md:fixed max-md:inset-0 max-md:z-50 max-md:max-w-none">
+          <div className="w-full max-w-xl shrink-0 border-l border-border max-lg:fixed max-lg:inset-0 max-lg:z-50 max-lg:max-w-none">
             <NotePanel path={note.path} page={note.page} onClose={close} onOpenNote={open} />
           </div>
         ) : null}

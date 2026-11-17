@@ -10,7 +10,7 @@ Se actualiza en cada checkpoint.
 | 1. Parser, chunking, indexación incremental | Terminada, aprobada y publicada (`main`) |
 | 2. Grafo, búsqueda híbrida y watcher | Terminada, aprobada y publicada (`main`) |
 | 3a. Respuesta, API y MCP (sin interfaz) | Terminada, aprobada y publicada (`main`) |
-| 3b. Interfaz web | En curso (rama `feat/fase-3b-interfaz`): marco, Preguntar y Estado hechos |
+| 3b. Interfaz web | Checkpoint 1 hecho (marco, Preguntar con el diseño aprobado, Estado, API sirve `dist`); falta Buscar y Nota (checkpoint 2) |
 | Corrección de calidad | En curso (rama `fix/calidad-respuestas`): recuperación, citas, prompt, latencia y bugs de la interfaz; pendiente de aprobación |
 | 4. Evals | Pendiente |
 
@@ -343,6 +343,26 @@ los cambios. El top-1 de las visiones generales es 0 por construcción (no hay u
 - `3º/SISTEMAS` mezcla sistemas operativos con integración y cloud: el mapa de alias las une por pedido
   del usuario; una visión general de «sistemas operativos» incluye también esos temas.
 - Los umbrales (0,55 / 0,12) están calibrados con 21 preguntas; hay que revisarlos si cambia el vault.
+
+## Fase 3b, checkpoint 1: interfaz (marco, Preguntar y Estado)
+
+- **Diseño** (aprobado sobre `docs/design/preguntar.html`): hilo de chat con la pregunta a la derecha
+  y la respuesta sin caja a 720 px de lectura; campo de pregunta flotante fijo abajo; citas
+  numeradas con tooltip (CSS, nunca texto dentro del párrafo) y fila *Fuentes* con número, título corto
+  y página; avisos discretos; navegación en cajón en pantallas pequeñas; «Nueva conversación» e
+  historial de la sesión (la conversación vive sobre las rutas).
+- **Servido por la API**: `create_app(static_dir)` sirve `frontend/dist`; las rutas del navegador
+  (`/estado`) devuelven `index.html`; la API y los ficheros que faltan dan 404; no se sirve nada fuera
+  de `dist` (probado con `..`, `%2e%2e` y codificaciones).
+- **Pruebas**: 228 tests de interfaz (Vitest + axe por componente y página), 611 del backend
+  (97 % de cobertura), `tsc`, ESLint, `ruff` y `mypy --strict` limpios.
+- **Capturas y axe sobre la aplicación real** (360, 768 y 1280 px × claro y oscuro × 7 estados: inicio,
+  respuesta, nota abierta, confianza baja, «no lo encuentro», error y Estado = 42): 0 violaciones y 0
+  desbordes horizontales. La primera pasada encontró 3 problemas reales, ya corregidos: nombre
+  accesible que no contenía el texto visible (WCAG 2.5.3), página sin `h1` y panel de nota que
+  desbordaba a 768 px.
+- **Límites**: las fórmulas de las notas se muestran en texto (sin KaTeX); las copias casi idénticas con
+  nombre distinto se muestran como fuentes separadas.
 
 ## Decisiones aprobadas (Fase 3a)
 

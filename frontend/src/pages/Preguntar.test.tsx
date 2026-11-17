@@ -150,12 +150,20 @@ describe("Preguntar: respuesta", () => {
     setup();
     await ask("¿Qué es un semáforo?");
     expect(await screen.findByText("¿Qué es un semáforo?")).toBeInTheDocument();
-    const chips = await screen.findAllByRole("button", { name: "Abrir «Semáforos», página 7" });
+    const chips = await screen.findAllByRole("button", { name: /Semáforos/ });
     expect(chips).toHaveLength(2); // el número en el texto y su chip en la fila de fuentes
     await userEvent.click(chips[0]!);
     expect(open).toHaveBeenCalledWith("x/Semáforos.md", 7);
     expect(screen.getByRole("heading", { name: "Fuentes · 1" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Cómo se ha respondido/ })).toBeInTheDocument();
+  });
+
+  it("always has a level-one heading, even once the thread has started", async () => {
+    script([sourcesEvent(), doneEvent()]);
+    setup();
+    await ask("¿Hola?");
+    await screen.findByRole("button", { name: /Cómo se ha respondido/ });
+    expect(screen.getByRole("heading", { level: 1, name: "Preguntar" })).toBeInTheDocument();
   });
 
   it("announces progress and turns Send into Stop while answering", async () => {

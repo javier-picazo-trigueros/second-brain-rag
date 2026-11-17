@@ -50,7 +50,8 @@ export function CitationChip({ citation, onOpen }: Props) {
   }
 
   const target = citation.path;
-  const verb = hint ? `Ver también «${citation.label}»` : `Abrir «${citation.label}»`;
+  // El nombre accesible empieza por lo que se ve (el número): WCAG 2.5.3, «etiqueta en el nombre».
+  const verb = `Fuente ${shown}${hint ? " (relacionada)" : ""}: ${citation.label}`;
   return (
     <button
       type="button"

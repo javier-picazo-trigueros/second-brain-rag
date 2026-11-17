@@ -107,3 +107,29 @@ describe("wikilinks in markdown", () => {
     expect(await axe(container)).toHaveNoViolations();
   });
 });
+
+describe("heading levels of a note body", () => {
+  const levels = (container: HTMLElement) =>
+    [...container.querySelectorAll("h1,h2,h3,h4,h5,h6")].map((h) => `${h.tagName.toLowerCase()}:${h.textContent}`);
+
+  it("hangs the headings from the page title, keeping the structure and never skipping a level", () => {
+    const { container } = render(<Markdown headingBase={2}>{"# A\n\n### B\n\n#### C\n\n## D\n"}</Markdown>);
+    expect(levels(container)).toEqual(["h2:A", "h3:B", "h4:C", "h3:D"]);
+  });
+
+  it("starts at the base even if the note begins at a deeper level", () => {
+    const { container } = render(<Markdown headingBase={2}>{"### Primero\n\n#### Segundo\n"}</Markdown>);
+    expect(levels(container)).toEqual(["h2:Primero", "h3:Segundo"]);
+  });
+
+  it("never goes past h6", () => {
+    const md = "# 1\n\n## 2\n\n### 3\n\n#### 4\n\n##### 5\n\n###### 6\n";
+    const { container } = render(<Markdown headingBase={4}>{md}</Markdown>);
+    expect(levels(container).at(-1)).toBe("h6:6");
+  });
+
+  it("leaves the levels alone when no base is given", () => {
+    const { container } = render(<Markdown>{"# A\n\n### B\n"}</Markdown>);
+    expect(levels(container)).toEqual(["h1:A", "h3:B"]);
+  });
+});

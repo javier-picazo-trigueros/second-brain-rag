@@ -402,6 +402,36 @@ nuevo no arrancaba, así que las primeras respuestas de la interfaz salían con 
 - **Límites**: las fórmulas de las notas se muestran en texto (sin KaTeX); las copias casi idénticas con
   nombre distinto se muestran como fuentes separadas.
 
+## Fase 3b, checkpoint 2 (rama `feat/fase-3b-buscar-nota`, en curso)
+
+Hecho (entregas A y B1):
+
+- **`/search` con filtros y facetas.** `asignaturas`, `cursos` y `tags` son opcionales (MCP y el cliente
+  anterior no cambian). O dentro de cada lista, Y entre listas; los nombres ignoran mayúsculas y
+  acentos y usan la asignatura canónica (carpeta más alias), no el frontmatter. Las facetas cuentan
+  sobre los 20 mejores candidatos sin filtrar; los valores elegidos siguen listados con 0. `/subjects`
+  lista las asignaturas con su número de notas. Sobre el índice real: 220 ms sin filtros y ~300 ms con
+  filtros; la primera lectura de etiquetas y enlaces tarda unos segundos y se precalienta al arrancar.
+- **Pantalla Buscar**: facetas con casillas y recuentos, resultados con el fragmento sin marcas de
+  Markdown y los términos resaltados (sin distinguir acentos), estado en la URL, atajos por asignatura
+  y enlace desde «No lo encuentro».
+- **`/notes` enriquecido**: `[[enlaces]]` resueltos por título (ruta exacta o título; copias exactas
+  como una sola, la más cercana a la nota que enlaza), notas que enlazan aquí y el enlace de Obsidian.
+- **Pantalla Nota** (`/nota/<ruta>`): índice de encabezados, scroll a la página (`?p=`) o al apartado
+  (`#`), `[[enlaces]]` con tres estados (resuelto, ambiguo con selector, inexistente en gris),
+  incrustaciones y ficheros que no son notas nombrados sin cargarse, y los encabezados del cuerpo
+  recolocados bajo el título para no saltar niveles.
+- **Defectos que salieron al probar con el índice real**, corregidos con test de regresión: recargar
+  `/nota/…/x.md` daba 404 (la ruta acaba en `.md` y se tomaba por un fichero que falta), y dos copias
+  idénticas de un resumen se resolvían siempre a la de otra asignatura.
+- **Dato del vault**: de 2.994 «enlaces» solo 4 apuntan a una nota existente; el resto son conceptos
+  (que no son notas) y sintaxis de shell (`[[ -f x ]]`). La función está bien pero importa poco aquí.
+- Capturas y axe sobre la aplicación real (360/768/1280 px, claro y oscuro, 13 estados = 78): 0
+  violaciones, 0 desbordes.
+
+Falta (B2): KaTeX local (en notas y en las respuestas del modelo), Ctrl+K y la revisión final; y los
+tres puntos que se añadieron después de B1: citas adyacentes, copias casi idénticas y modo «apuntes».
+
 ## Pendiente para la Fase 4
 
 Lo que se sabe y se ha dejado a propósito para la Fase de evals, con su medida en el golden set:

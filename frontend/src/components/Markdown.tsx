@@ -5,6 +5,7 @@ import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 
 import { rehypeHeadingIds } from "../lib/rehypeHeadingIds";
+import { rehypeHeadingLevels } from "../lib/rehypeHeadingLevels";
 import { remarkWikilinks } from "../lib/remarkWikilinks";
 import { WikiEmbed, WikiLink } from "./WikiLink";
 
@@ -62,6 +63,8 @@ interface MarkdownProps {
   highlight?: boolean;
   /** `[[enlaces]]` de Obsidian como enlaces a notas (solo en notas, no en las respuestas). */
   wikilinks?: boolean;
+  /** Nivel del encabezado más alto del texto (p. ej. 2 bajo un `h1`); sin él, se respetan los niveles. */
+  headingBase?: number;
 }
 
 export function Markdown({
@@ -69,6 +72,7 @@ export function Markdown({
   components = noteComponents,
   highlight = false,
   wikilinks = false,
+  headingBase,
 }: MarkdownProps) {
   return (
     <ReactMarkdown
@@ -76,6 +80,7 @@ export function Markdown({
       rehypePlugins={[
         [rehypeSanitize, schema],
         rehypeHeadingIds, // tras el saneado, que cambiaría los ids
+        ...(headingBase ? [() => rehypeHeadingLevels(headingBase)] : []),
         ...(highlight ? [rehypeHighlight] : []),
       ]}
       urlTransform={urlTransform}

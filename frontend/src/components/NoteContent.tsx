@@ -115,7 +115,7 @@ export function NoteContent({ note, onOpenNote, titleLevel = 2 }: Props) {
 
       <WikiLinkContext.Provider value={{ resolved: note.resolved_links, open: onOpenNote }}>
         <div className="reading mt-5">
-          <Markdown highlight wikilinks>
+          <Markdown highlight wikilinks headingBase={titleLevel + 1}>
             {note.body}
           </Markdown>
         </div>

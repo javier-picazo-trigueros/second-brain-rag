@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { FragmentInfo } from "./api";
-import { answerToMarkdown, pagesLabel } from "./answer";
+import { answerToMarkdown, citedSources, pagesLabel } from "./answer";
 
 function fragment(
   id: string,
@@ -39,7 +39,7 @@ describe("answerToMarkdown", () => {
     const { markdown, refs } = answerToMarkdown("Cuenta [S1].", FRAGMENTS);
     expect(markdown).toBe("Cuenta [Semáforos · p. 7](cite:0).");
     expect(refs).toEqual([
-      { kind: "valid", label: "Semáforos", path: "x/Semáforos.md", pages: [7], hint: false },
+      { kind: "valid", label: "Semáforos", path: "x/Semáforos.md", pages: [7], number: 1, hint: false },
     ]);
   });
 
@@ -105,5 +105,33 @@ describe("answerToMarkdown", () => {
 
   it("does not touch bracketed text that is not a citation", () => {
     expect(answerToMarkdown("array[0] y [nota] y [1]", FRAGMENTS).markdown).toBe("array[0] y [nota] y [1]");
+  });
+});
+
+describe("numbered citations", () => {
+  it("numbers each cited note by first appearance and gives every chip its number", () => {
+    const { refs } = answerToMarkdown("A [S3] B [S1] C [S3][S2] D [S4]", FRAGMENTS);
+    const numbers = refs.map((r) => (r.kind === "valid" ? r.number : null));
+    // Hilos=1, Semáforos=2 (S1+S2 son la misma nota), Redes=3
+    expect(numbers).toEqual([1, 2, 1, 2, 3]);
+  });
+
+  it("lists the cited sources with their number and the pages that were cited", () => {
+    const cited = citedSources("A [S3] B [S2][S1] C [S4]", FRAGMENTS);
+    expect(cited).toEqual([
+      { number: 1, path: "x/Hilos.md", label: "Hilos", pages: [], hint: false },
+      { number: 2, path: "x/Semáforos.md", label: "Semáforos", pages: [7, 9], hint: false },
+      { number: 3, path: "x/Redes.md", label: "Redes", pages: [], hint: true },
+    ]);
+  });
+
+  it("ignores unverified and unknown citations when numbering", () => {
+    const cited = citedSources("[cita no verificada: S9] [S42] [S3]", FRAGMENTS);
+    expect(cited.map((c) => c.number)).toEqual([1]);
+  });
+
+  it("gives no number to a citation that cannot be opened", () => {
+    const { refs } = answerToMarkdown("[S42]", FRAGMENTS);
+    expect(refs[0]).toMatchObject({ kind: "valid", number: null });
   });
 });

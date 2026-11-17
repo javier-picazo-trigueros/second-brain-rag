@@ -7,6 +7,7 @@ export type CitationRef =
       label: string;
       path: string | null;
       pages: number[]; // páginas de los fragmentos citados (las pone el sistema, no el modelo)
+      number: number | null; // número de la nota en esta respuesta (orden de primera cita)
       hint: boolean; // la cita apunta a una nota relacionada (pista), no a evidencia
     }
   | { kind: "unverified"; label: string };
@@ -20,6 +21,36 @@ export interface AnswerMarkdown {
 // en el contexto: «[cita no verificada: S9]».
 const CITATION = /((?:\[S\d{1,3}\])+)|\[cita no verificada(?::\s*([^\]\n]*))?\]/gu;
 const ID = /\[(S\d{1,3})\]/gu;
+
+/** Una nota citada en la respuesta, con el número que lleva su chip. */
+export interface CitedSource {
+  number: number;
+  path: string;
+  label: string;
+  pages: number[];
+  hint: boolean;
+}
+
+/** Notas citadas en el texto, numeradas por orden de primera cita, con las páginas citadas. */
+export function citedSources(text: string, fragments: FragmentInfo[]): CitedSource[] {
+  const byId = new Map(fragments.map((f) => [f.id, f]));
+  const out: CitedSource[] = [];
+  for (const run of text.matchAll(/(?:\[S\d{1,3}\])+/gu)) {
+    for (const match of run[0].matchAll(ID)) {
+      const fragment = byId.get(match[1]!);
+      if (fragment === undefined) continue;
+      let entry = out.find((c) => c.path === fragment.path);
+      if (entry === undefined) {
+        entry = { number: out.length + 1, path: fragment.path, label: fragment.label, pages: [], hint: fragment.kind === "hint" };
+        out.push(entry);
+      }
+      if (fragment.page !== null && !entry.pages.includes(fragment.page)) {
+        entry.pages = [...entry.pages, fragment.page].sort((a, b) => a - b);
+      }
+    }
+  }
+  return out;
+}
 
 function escapeLinkText(text: string): string {
   return text.replace(/[\\`*_[\]]/g, (c) => `\\${c}`);
@@ -36,7 +67,7 @@ function mergeRun(ids: string[], byId: Map<string, FragmentInfo>): CitationRef[]
   for (const id of ids) {
     const fragment = byId.get(id);
     if (fragment === undefined) {
-      refs.push({ kind: "valid", label: id, path: null, pages: [], hint: false });
+      refs.push({ kind: "valid", label: id, path: null, pages: [], number: null, hint: false });
       continue;
     }
     const last = refs[refs.length - 1];
@@ -51,6 +82,7 @@ function mergeRun(ids: string[], byId: Map<string, FragmentInfo>): CitationRef[]
       label: fragment.label,
       path: fragment.path,
       pages: fragment.page === null ? [] : [fragment.page],
+      number: null,
       hint: fragment.kind === "hint",
     });
   }
@@ -64,6 +96,7 @@ function mergeRun(ids: string[], byId: Map<string, FragmentInfo>): CitationRef[]
  */
 export function answerToMarkdown(text: string, fragments: FragmentInfo[]): AnswerMarkdown {
   const byId = new Map(fragments.map((f) => [f.id, f]));
+  const numbers = new Map(citedSources(text, fragments).map((c) => [c.path, c.number]));
   const refs: CitationRef[] = [];
   const link = (ref: CitationRef): string => {
     const index = refs.push(ref) - 1;
@@ -76,7 +109,9 @@ export function answerToMarkdown(text: string, fragments: FragmentInfo[]): Answe
   const markdown = text.replace(CITATION, (_match, run?: string, unverified?: string) => {
     if (run === undefined) return link({ kind: "unverified", label: (unverified ?? "").trim() });
     const ids = [...run.matchAll(ID)].map((m) => m[1]!);
-    return mergeRun(ids, byId).map(link).join("");
+    return mergeRun(ids, byId)
+      .map((ref) => link(ref.kind === "valid" && ref.path !== null ? { ...ref, number: numbers.get(ref.path) ?? null } : ref))
+      .join("");
   });
   return { markdown, refs };
 }

@@ -10,6 +10,7 @@ import { SourceCards } from "../components/SourceCards";
 import type { AskState } from "../hooks/askState";
 import { useConversation } from "../hooks/conversation";
 import { useNotePanel } from "../hooks/notePanel";
+import { citedSources } from "../lib/answer";
 
 const EXAMPLES = [
   "¿Qué es un semáforo y para qué sirve?",
@@ -26,15 +27,28 @@ function Turn({ turn, index, focusInput }: { turn: AskState; index: number; focu
   const notFound = done?.not_found === true;
 
   return (
-    <article id={`pregunta-${index}`} className="scroll-mt-4 space-y-4">
-      <p className="ml-auto w-fit max-w-[85%] whitespace-pre-wrap rounded-md bg-accent-soft px-4 py-2 text-text">
+    <article id={`pregunta-${index}`} className="msg-enter scroll-mt-4 space-y-5">
+      <p className="ml-auto w-fit max-w-[85%] whitespace-pre-wrap rounded-[18px_18px_6px_18px] bg-accent-soft px-4 py-2.5 text-text">
         {turn.question}
       </p>
 
       {turn.status === "waiting" || turn.status === "streaming" ? (
-        <p role="status" className="text-sm text-muted">
-          {turn.status === "waiting" ? "Buscando en tus apuntes…" : "Redactando la respuesta…"}
-        </p>
+        <div className="space-y-3">
+          <p role="status" className="flex items-center gap-2 text-sm text-muted">
+            <span className="typing" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+            </span>
+            {turn.status === "waiting" ? "Buscando en tus apuntes…" : "Redactando la respuesta…"}
+          </p>
+          {turn.text === "" ? (
+            <div aria-hidden="true" className="space-y-2.5">
+              <div className="skeleton h-3 w-4/5" />
+              <div className="skeleton h-3 w-3/5" />
+            </div>
+          ) : null}
+        </div>
       ) : null}
 
       {notFound && done ? (
@@ -59,7 +73,9 @@ function Turn({ turn, index, focusInput }: { turn: AskState; index: number; focu
       {turn.status === "error" && turn.error ? <ErrorBanner message={turn.error} /> : null}
 
       {done ? <NoticeBar done={done} sources={turn.sources} hide={notFound ? HIDDEN_WHEN_NOT_FOUND : []} /> : null}
-      {done && !notFound ? <SourceCards sources={turn.sources} onOpen={open} /> : null}
+      {done && !notFound ? (
+        <SourceCards sources={turn.sources} cited={citedSources(turn.text, turn.fragments)} onOpen={open} />
+      ) : null}
     </article>
   );
 }
@@ -82,39 +98,43 @@ export function Preguntar() {
   const focusInput = () => inputRef.current?.focus();
 
   return (
-    <div className="mx-auto flex min-h-full max-w-3xl flex-col px-4 py-6">
-      <div className="flex-1 space-y-10">
-        {turns.length === 0 ? (
-          <section className="py-10">
-            <h1 className="text-2xl font-semibold">Pregunta a tus apuntes</h1>
-            <p className="mt-2 text-muted">
-              Respondo solo con lo que hay en tu vault y cito las notas de las que sale cada dato.
-            </p>
-            <ul className="mt-6 flex flex-wrap gap-2">
-              {EXAMPLES.map((example) => (
-                <li key={example}>
-                  <button
-                    type="button"
-                    onClick={() => ask(example)}
-                    className="rounded-full border border-border bg-surface px-3 py-1.5 text-left text-sm hover:border-accent"
-                  >
-                    {example}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : (
-          turns.map((turn, index) => <Turn key={index} turn={turn} index={index} focusInput={focusInput} />)
-        )}
-        <div ref={bottomRef} />
+    <div className="relative flex h-full flex-col">
+      <div className="min-h-0 flex-1 overflow-y-auto scroll-smooth">
+        <div className="mx-auto flex max-w-[720px] flex-col gap-9 px-4 pb-52 pt-8 sm:px-5">
+          {turns.length === 0 ? (
+            <section className="py-10">
+              <h1 className="text-2xl font-semibold tracking-tight">Pregunta a tus apuntes</h1>
+              <p className="mt-2 text-muted">
+                Respondo solo con lo que hay en tu vault y cito las notas de las que sale cada dato.
+              </p>
+              <ul className="mt-6 flex flex-wrap gap-2">
+                {EXAMPLES.map((example) => (
+                  <li key={example}>
+                    <button
+                      type="button"
+                      onClick={() => ask(example)}
+                      className="rounded-full border border-border bg-surface px-3.5 py-2 text-left text-sm transition-colors hover:border-border-strong hover:bg-surface-2"
+                    >
+                      {example}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : (
+            turns.map((turn, index) => <Turn key={index} turn={turn} index={index} focusInput={focusInput} />)
+          )}
+          <div ref={bottomRef} />
+        </div>
       </div>
 
-      <div className="sticky bottom-0 mt-6 bg-bg pb-2 pt-3">
-        <AskForm onSubmit={ask} onStop={stop} busy={busy} inputRef={inputRef} />
-        <p className="mt-2 text-xs text-muted">
-          Cada pregunta se responde de forma independiente: no recuerdo lo que preguntaste antes.
-        </p>
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-bg from-60% to-[var(--fade)] px-3 pb-3 pt-9 sm:px-5">
+        <div className="pointer-events-auto mx-auto max-w-[720px]">
+          <AskForm onSubmit={ask} onStop={stop} busy={busy} inputRef={inputRef} />
+          <p className="mt-2 text-center text-xs text-muted">
+            Cada pregunta se responde de forma independiente: no recuerdo lo que preguntaste antes.
+          </p>
+        </div>
       </div>
     </div>
   );

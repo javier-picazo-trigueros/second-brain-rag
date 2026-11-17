@@ -11,23 +11,31 @@ const valid = (over: Partial<Extract<CitationRef, { kind: "valid" }>> = {}): Cit
   label: "Semáforos",
   path: "1º/SO/Semáforos.md",
   pages: [],
+  number: 2,
   hint: false,
   ...over,
 });
 
 describe("CitationChip", () => {
-  it("is a button that opens the note", async () => {
+  it("is a small numbered button that opens the note", async () => {
     const onOpen = vi.fn();
     render(<CitationChip citation={valid()} onOpen={onOpen} />);
-    await userEvent.click(screen.getByRole("button", { name: /Semáforos/ }));
+    const button = screen.getByRole("button", { name: /Semáforos/ });
+    expect(button).toHaveTextContent(/^2$/);
+    await userEvent.click(button);
     expect(onOpen).toHaveBeenCalledWith("1º/SO/Semáforos.md", null);
   });
 
-  it("shows the page and passes it on", async () => {
+  it("keeps the title and page out of the text, in a tooltip attribute and the accessible name", async () => {
     const onOpen = vi.fn();
-    render(<CitationChip citation={valid({ pages: [7] })} onOpen={onOpen} />);
+    const { container } = render(
+      <p>
+        Dato <CitationChip citation={valid({ pages: [7] })} onOpen={onOpen} /> fin.
+      </p>,
+    );
     const button = screen.getByRole("button", { name: "Abrir «Semáforos», página 7" });
-    expect(button).toHaveTextContent("Semáforos·p. 7");
+    expect(button).toHaveAttribute("data-tip", "Semáforos · p. 7");
+    expect(container.textContent).toBe("Dato 2 fin."); // sin título dentro de la respuesta
     await userEvent.click(button);
     expect(onOpen).toHaveBeenCalledWith("1º/SO/Semáforos.md", 7);
   });
@@ -36,7 +44,7 @@ describe("CitationChip", () => {
     const onOpen = vi.fn();
     render(<CitationChip citation={valid({ pages: [6, 7, 9] })} onOpen={onOpen} />);
     const button = screen.getByRole("button", { name: "Abrir «Semáforos», páginas 6, 7 y 9" });
-    expect(button).toHaveTextContent("p. 6, 7, 9");
+    expect(button).toHaveAttribute("data-tip", "Semáforos · p. 6, 7, 9");
     await userEvent.click(button);
     expect(onOpen).toHaveBeenCalledWith("1º/SO/Semáforos.md", 6);
   });
@@ -59,13 +67,17 @@ describe("CitationChip", () => {
   });
 
   it("is not interactive when the note cannot be opened", () => {
-    render(<CitationChip citation={valid({ path: null })} onOpen={() => {}} />);
+    render(<CitationChip citation={valid({ path: null, number: null })} onOpen={() => {}} />);
     expect(screen.queryByRole("button")).toBeNull();
     expect(screen.getByText("Semáforos")).toBeInTheDocument();
   });
 
-  it("shows an unverified citation as a calm, focusable note (not an error)", () => {
-    render(<CitationChip citation={{ kind: "unverified", label: "Inventada" }} onOpen={() => {}} />);
+  it("shows an unverified citation as a calm, focusable «?» (not an error)", () => {
+    const { container } = render(
+      <p>
+        Dato <CitationChip citation={{ kind: "unverified", label: "Inventada" }} onOpen={() => {}} /> fin.
+      </p>,
+    );
     const note = screen.getByRole("note");
     expect(note).toHaveAccessibleName(/cita no verificada: Inventada/i);
     expect(note).toHaveAccessibleDescription(/no estaba entre las fuentes consultadas/);
@@ -73,17 +85,8 @@ describe("CitationChip", () => {
     expect(note).toHaveAttribute("data-kind", "unverified");
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.queryByRole("button")).toBeNull();
-  });
-
-  it("never writes the explanation of an unverified citation into the text of the answer", () => {
-    // Regresión: el texto del tooltip aparecía pegado dentro de la respuesta.
-    const { container } = render(
-      <p>
-        Dato <CitationChip citation={{ kind: "unverified", label: "Inventada" }} onOpen={() => {}} /> fin.
-      </p>,
-    );
-    expect(container).toHaveTextContent("Dato Inventada fin.");
-    expect(container.textContent).not.toMatch(/no estaba entre las fuentes/);
+    // Regresión: la explicación nunca se escribe dentro del texto de la respuesta.
+    expect(container.textContent).toBe("Dato ? fin.");
   });
 
   it("copes with an unverified citation that has no name", () => {
@@ -95,7 +98,7 @@ describe("CitationChip", () => {
     const { container } = render(
       <p>
         <CitationChip citation={valid({ pages: [7] })} onOpen={() => {}} />
-        <CitationChip citation={valid({ hint: true, label: "Redes" })} onOpen={() => {}} />
+        <CitationChip citation={valid({ hint: true, label: "Redes", number: 3 })} onOpen={() => {}} />
         <CitationChip citation={{ kind: "unverified", label: "X" }} onOpen={() => {}} />
       </p>,
     );

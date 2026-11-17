@@ -1,14 +1,9 @@
 import { pagesLabel, type CitationRef } from "../lib/answer";
-import { HelpIcon } from "./icons";
 
 interface Props {
   citation: CitationRef;
   onOpen: (path: string, page: number | null) => void;
 }
-
-const BASE =
-  "inline-flex max-w-full items-center gap-1 rounded-full border px-2 py-0.5 align-baseline text-sm leading-5 " +
-  "transition-colors duration-150";
 
 const UNVERIFIED_HELP =
   "Esta nota no estaba entre las fuentes consultadas; el modelo la nombró por su cuenta.";
@@ -19,11 +14,13 @@ function pagesName(pages: number[]): string {
   return `, páginas ${pages.slice(0, -1).join(", ")} y ${pages[pages.length - 1]}`;
 }
 
+/**
+ * Cita numerada, discreta. El título y la página salen como tooltip (CSS sobre `data-tip`, nunca
+ * como texto del párrafo) al pasar el ratón o enfocar; al tocarla se abre la nota.
+ */
 export function CitationChip({ citation, onOpen }: Props) {
   if (citation.kind === "unverified") {
     const name = citation.label ? `Cita no verificada: ${citation.label}` : "Cita no verificada";
-    // La explicación va en `title` (descripción accesible y tooltip), nunca como texto dentro del
-    // párrafo: así no puede aparecer mezclada con la respuesta.
     return (
       <span
         role="note"
@@ -31,33 +28,23 @@ export function CitationChip({ citation, onOpen }: Props) {
         data-kind="unverified"
         aria-label={name}
         title={UNVERIFIED_HELP}
-        className={`${BASE} border-dashed border-caution-border bg-caution-bg text-caution-fg`}
+        className="cite cite-warn"
       >
-        <HelpIcon size={13} />
-        <span className="truncate">{citation.label || "cita no verificada"}</span>
+        ?
       </span>
     );
   }
 
   const hint = citation.hint;
   const kind = hint ? "hint" : "evidence";
-  const tone = hint
-    ? "border-border bg-surface-2 text-muted hover:border-border-strong"
-    : "border-transparent bg-accent-soft text-accent hover:border-accent";
   const pages = pagesLabel(citation.pages);
-
-  const content = (
-    <>
-      <span className="truncate">{citation.label}</span>
-      {pages ? <span aria-hidden="true">·</span> : null}
-      {pages ? <span>{pages}</span> : null}
-    </>
-  );
+  const tip = [citation.label, pages].filter(Boolean).join(" · ");
+  const shown = citation.number === null ? citation.label : String(citation.number);
 
   if (citation.path === null) {
     return (
-      <span data-kind={kind} className={`${BASE} ${tone}`}>
-        {content}
+      <span data-kind={kind} className="cite">
+        {shown}
       </span>
     );
   }
@@ -68,11 +55,12 @@ export function CitationChip({ citation, onOpen }: Props) {
     <button
       type="button"
       data-kind={kind}
+      data-tip={tip}
       aria-label={`${verb}${pagesName(citation.pages)}`}
       onClick={() => onOpen(target, citation.pages[0] ?? null)}
-      className={`${BASE} ${tone} cursor-pointer`}
+      className={`cite ${hint ? "cite-hint" : ""}`}
     >
-      {content}
+      {shown}
     </button>
   );
 }

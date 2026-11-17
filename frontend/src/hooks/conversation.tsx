@@ -10,6 +10,8 @@ export interface ConversationApi {
   busy: boolean;
   ask: (question: string) => void;
   stop: () => void;
+  /** Empieza de cero: borra las preguntas y respuestas de la sesión. */
+  reset: () => void;
 }
 
 const ConversationContext = createContext<ConversationApi | null>(null);
@@ -19,7 +21,7 @@ const ConversationContext = createContext<ConversationApi | null>(null);
  * Cada pregunta es independiente para el modelo; esto solo conserva lo que se ve en pantalla.
  */
 export function ConversationProvider({ children }: { children: ReactNode }) {
-  const { state, ask, stop } = useAsk();
+  const { state, ask, stop, reset: resetAsk } = useAsk();
   const { record } = useSession();
   const [history, setHistory] = useState<AskState[]>([]);
   const recorded = useRef<unknown>(null);
@@ -39,14 +41,20 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
     [state, ask],
   );
 
+  const reset = useCallback(() => {
+    resetAsk();
+    setHistory([]);
+  }, [resetAsk]);
+
   const value = useMemo<ConversationApi>(
     () => ({
       turns: state.status === "idle" ? history : [...history, state],
       busy: state.status === "waiting" || state.status === "streaming",
       ask: submit,
       stop,
+      reset,
     }),
-    [history, state, submit, stop],
+    [history, state, submit, stop, reset],
   );
   return <ConversationContext.Provider value={value}>{children}</ConversationContext.Provider>;
 }

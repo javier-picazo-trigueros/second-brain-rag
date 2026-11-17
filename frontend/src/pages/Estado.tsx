@@ -152,6 +152,7 @@ export function Estado() {
   const summary = reindex ? reindexSummary(reindex) : null;
 
   return (
+    <div className="h-full overflow-y-auto">
     <div className="mx-auto max-w-4xl space-y-6 px-4 py-6">
       <h1 className="text-2xl font-semibold">Estado</h1>
 
@@ -287,6 +288,7 @@ export function Estado() {
           </p>
         )}
       </section>
+    </div>
     </div>
   );
 }

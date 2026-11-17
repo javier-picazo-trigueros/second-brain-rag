@@ -130,3 +130,31 @@ describe("theme button label", () => {
     expect(button.getAttribute("aria-label")).not.toMatch(/Tema: Tema/);
   });
 });
+
+describe("responsive navigation and new conversation", () => {
+  it("opens the navigation from a menu button on small screens", async () => {
+    setup();
+    const menu = screen.getByRole("button", { name: "Abrir navegación" });
+    expect(menu).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(menu);
+    expect(screen.getByRole("button", { name: "Cerrar navegación" })).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("closes the small-screen navigation after choosing a screen", async () => {
+    setup();
+    await userEvent.click(screen.getByRole("button", { name: "Abrir navegación" }));
+    await userEvent.click(screen.getByRole("link", { name: "Estado" }));
+    expect(screen.getByRole("button", { name: "Abrir navegación" })).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("has a «Nueva conversación» button that goes back to Preguntar", async () => {
+    setup("/estado");
+    await userEvent.click(screen.getByRole("button", { name: "Nueva conversación" }));
+    expect(screen.getByRole("heading", { name: "Pantalla Preguntar" })).toBeInTheDocument();
+  });
+
+  it("does not show «Buscar» until that screen exists", () => {
+    setup();
+    expect(screen.queryByRole("link", { name: "Buscar" })).toBeNull();
+  });
+});

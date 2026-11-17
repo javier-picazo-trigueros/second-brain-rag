@@ -77,3 +77,28 @@ describe("conversation across screens", () => {
     expect(screen.getAllByText("¿Qué es un grafo?").length).toBeGreaterThan(0);
   });
 });
+
+describe("new conversation", () => {
+  it("clears the thread and the history", async () => {
+    askStream.mockImplementation(async function* () {
+      yield { type: "sources", sources: [], fragments: [], confidence: "alta", similarity: 0.7, dropped_notes: 0 };
+      yield {
+        type: "done", answer: "Respuesta antigua", citations: [], invalid: [], warnings: [], not_found: false,
+        confidence: "alta", similarity: 0.7,
+        timings: { retrieval_ms: 1, first_token_ms: 1, total_ms: 2, llm_load_ms: 0, tokens_per_second: 40 },
+        prompt_tokens: 1, completion_tokens: 1,
+      };
+    });
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <App />
+      </MemoryRouter>,
+    );
+    await userEvent.type(screen.getByRole("textbox", { name: "Tu pregunta" }), "Algo{Enter}");
+    expect(await screen.findByText("Respuesta antigua")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Nueva conversación" }));
+    expect(screen.queryByText("Respuesta antigua")).toBeNull();
+    expect(screen.queryByRole("region", { name: "Esta sesión" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "Pregunta a tus apuntes" })).toBeInTheDocument();
+  });
+});

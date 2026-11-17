@@ -30,7 +30,7 @@ export function AnswerView({ text, fragments, streaming = false, onOpenNote }: P
   );
 
   return (
-    <div data-testid="answer" className="reading" aria-busy={streaming}>
+    <div data-testid="answer" className="reading answer-text" aria-busy={streaming}>
       <Markdown components={components}>{markdown}</Markdown>
       {streaming ? (
         <span

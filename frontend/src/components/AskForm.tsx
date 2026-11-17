@@ -35,7 +35,7 @@ export function AskForm({ onSubmit, onStop, busy, disabled = false, maxLength = 
         event.preventDefault();
         submit();
       }}
-      className="rounded-md border border-border-strong bg-surface p-2 focus-within:border-accent"
+      className="rounded-[22px] border border-border bg-surface p-2 pl-4 shadow-[var(--shadow)] transition-colors duration-150 focus-within:border-accent"
     >
       <label htmlFor="ask-input" className="sr-only">
         Tu pregunta
@@ -51,10 +51,10 @@ export function AskForm({ onSubmit, onStop, busy, disabled = false, maxLength = 
         placeholder="Pregunta algo sobre tus apuntes…"
         onChange={(event) => setValue(event.target.value)}
         onKeyDown={onKeyDown}
-        className="block max-h-48 w-full resize-none bg-transparent px-2 py-1 text-base outline-none placeholder:text-muted"
+        className="block max-h-44 w-full resize-none bg-transparent py-1.5 text-base outline-none placeholder:text-muted"
       />
       <div className="mt-1 flex items-center justify-between gap-3">
-        <p id={hintId} className="px-2 text-xs text-muted">
+        <p id={hintId} className="text-xs text-muted">
           Intro envía · Mayús+Intro nueva línea
           {value.length >= maxLength * 0.8 ? (
             <span className="ml-2 tabular-nums">
@@ -66,19 +66,21 @@ export function AskForm({ onSubmit, onStop, busy, disabled = false, maxLength = 
           <button
             type="button"
             onClick={onStop}
-            className="inline-flex items-center gap-1.5 rounded-md border border-border-strong bg-surface px-3 py-1.5 text-sm font-medium hover:bg-surface-2"
+            aria-label="Parar"
+            title="Parar"
+            className="grid h-9 w-9 place-items-center rounded-full border border-border-strong bg-surface hover:bg-surface-2"
           >
             <StopIcon size={14} />
-            Parar
           </button>
         ) : (
           <button
             type="submit"
             disabled={disabled || trimmed === ""}
-            className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-accent-fg disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label="Enviar"
+            title="Enviar"
+            className="grid h-9 w-9 place-items-center rounded-full bg-accent text-accent-fg transition-transform duration-150 hover:scale-105 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
           >
-            <SendIcon size={14} />
-            Enviar
+            <SendIcon size={15} />
           </button>
         )}
       </div>

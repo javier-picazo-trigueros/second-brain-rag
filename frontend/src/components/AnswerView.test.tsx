@@ -36,7 +36,7 @@ describe("AnswerView", () => {
     const { container } = render(
       <AnswerView text="Antes [S1] después." fragments={fragments} onOpenNote={() => {}} />,
     );
-    expect(container).toHaveTextContent(/^Antes Semáforos.*p\. 7 después\.$/);
+    expect(container).toHaveTextContent("Antes 1 después.");
   });
 
   it("shows the server's unverified-citation marker as a chip", () => {

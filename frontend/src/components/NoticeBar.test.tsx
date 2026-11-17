@@ -112,3 +112,16 @@ describe("NoticeBar", () => {
     expect(await axe(container)).toHaveNoViolations();
   });
 });
+
+describe("NoticeBar summary", () => {
+  it("shows total time and speed in one quiet line next to the toggle", () => {
+    render(<NoticeBar done={done()} sources={sources} />);
+    expect(screen.getByTestId("summary")).toHaveTextContent("5,6 s · 47 tok/s");
+  });
+
+  it("omits the speed when it is unknown", () => {
+    const d = done({ timings: { ...done().timings, tokens_per_second: null } });
+    render(<NoticeBar done={d} sources={sources} />);
+    expect(screen.getByTestId("summary")).toHaveTextContent(/^5,6 s$/);
+  });
+});

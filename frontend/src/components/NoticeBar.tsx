@@ -33,17 +33,23 @@ export function NoticeBar({ done, sources, hide = [] }: Props) {
   const evidence = sources.filter((s) => s.kind === "evidence").length;
   const hints = sources.length - evidence;
   const { timings } = done;
+  const summary = [
+    formatDuration(timings.total_ms),
+    timings.tokens_per_second === null ? null : `${Math.round(timings.tokens_per_second)} tok/s`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
-    <section aria-label="Avisos de la respuesta" className="mt-4 text-sm">
-      <div className="flex flex-wrap items-center gap-2">
+    <section aria-label="Avisos de la respuesta" className="mt-4 text-sm text-muted">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         {visible.map((notice) => (
           <span
             key={notice.code}
             data-testid="notice"
             data-tone={notice.tone}
             data-code={notice.code}
-            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 ${TONE[notice.tone]}`}
+            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[0.8125rem] ${TONE[notice.tone]}`}
           >
             {notice.tone === "caution" ? <AlertIcon size={14} /> : <InfoIcon size={14} />}
             {notice.title}
@@ -54,11 +60,12 @@ export function NoticeBar({ done, sources, hide = [] }: Props) {
           aria-expanded={open}
           aria-controls={panelId}
           onClick={() => setOpen((v) => !v)}
-          className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-muted hover:text-text"
+          className="-ml-1.5 inline-flex items-center gap-1 rounded-md px-1.5 py-1 hover:bg-surface-2 hover:text-text"
         >
           Cómo se ha respondido
           <ChevronIcon size={14} className={open ? "rotate-180" : undefined} />
         </button>
+        <span data-testid="summary">{summary}</span>
       </div>
 
       {open ? (
@@ -66,7 +73,7 @@ export function NoticeBar({ done, sources, hide = [] }: Props) {
           id={panelId}
           role="region"
           aria-label="Cómo se ha respondido"
-          className="mt-2 space-y-3 rounded-md border border-border bg-surface p-4"
+          className="mt-2 space-y-3 rounded-xl border border-border bg-surface p-4 text-text"
         >
           {notices.length > 0 ? (
             <ul className="space-y-1">

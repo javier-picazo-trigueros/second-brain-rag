@@ -502,6 +502,11 @@ Hecho (entregas A y B1):
   pregunta es independiente). Ya no se mezclan varios ejercicios en un contexto: el modelo se quedaba sin
   tokens y olvidaba citar. Las tablas de más de 8 filas se acortan en el contexto (el modelo las copiaba
   enteras). El prompt exige una cita por paso, copiar los resultados de la solución y no recalcular.
+- **Puerta de citas.** En el golden volvió a salir una respuesta de ejercicios sin ninguna cita (el modelo
+  de 7B se olvida a veces). Detectarlo no bastaba: en este modo la respuesta se genera completa, se
+  comprueba que cada «Paso N» cita su fuente y, si falta alguna (o todas), se pide una vez más avisando
+  de qué falló; el usuario ve solo la mejor de las dos. A cambio, en este modo no hay streaming (la
+  respuesta aparece entera a los 30-55 s) y un reintento duplica el tiempo.
 - **Verificación en código, no en el modelo.** Los números de una respuesta de ejercicios que no están en
   las fuentes (ni como ×100 o ÷100 de uno que sí está) se listan en un aviso («N números sin verificar»),
   y los pasos sin cita se cuentan («N pasos sin cita»). La suma 0,79209 que se inventó el modelo habría

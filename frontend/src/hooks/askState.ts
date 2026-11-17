@@ -15,6 +15,8 @@ export interface AskState {
   droppedNotes: number;
   done: DoneEvent | null;
   error: string | null;
+  /** Modo apuntes: la parte que se está escribiendo. */
+  progress: { part: number; total: number; title: string } | null;
 }
 
 export type AskAction =
@@ -35,6 +37,7 @@ export const initialAskState: AskState = {
   droppedNotes: 0,
   done: null,
   error: null,
+  progress: null,
 };
 
 const LIVE: readonly AskStatus[] = ["waiting", "streaming"];
@@ -65,10 +68,16 @@ export function askReducer(state: AskState, action: AskAction): AskState {
         similarity: action.similarity,
         droppedNotes: action.dropped_notes,
       };
+    case "progress":
+      return {
+        ...state,
+        status: "streaming",
+        progress: { part: action.part, total: action.total, title: action.title },
+      };
     case "token":
       return { ...state, status: "streaming", text: state.text + action.text };
     case "done":
-      return { ...state, status: "done", text: action.answer, done: action };
+      return { ...state, status: "done", text: action.answer, done: action, progress: null };
     case "error":
       return { ...state, status: "error", error: action.message };
   }

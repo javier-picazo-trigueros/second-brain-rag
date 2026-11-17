@@ -495,6 +495,32 @@ Hecho (entregas A y B1):
   `_generadas/` (exclusivo, sin sobrescribir, ruta confinada, enlaces `[[…]]` o Markdown si el título
   lleva `[ ] # ^ |`), comprobación de origen en la API y `_generadas/` fuera del índice.
 
+### Fase 3c: correcciones tras la primera prueba del checkpoint
+
+- **Modo ejercicios.** Se resuelve UN ejercicio completo (el que nombra la pregunta, «el ejercicio 2», o
+  el primero) y se terminan listando los demás con «¿Sigo con el ejercicio N?» y cómo pedirlo (cada
+  pregunta es independiente). Ya no se mezclan varios ejercicios en un contexto: el modelo se quedaba sin
+  tokens y olvidaba citar. Las tablas de más de 8 filas se acortan en el contexto (el modelo las copiaba
+  enteras). El prompt exige una cita por paso, copiar los resultados de la solución y no recalcular.
+- **Verificación en código, no en el modelo.** Los números de una respuesta de ejercicios que no están en
+  las fuentes (ni como ×100 o ÷100 de uno que sí está) se listan en un aviso («N números sin verificar»),
+  y los pasos sin cita se cuentan («N pasos sin cita»). La suma 0,79209 que se inventó el modelo habría
+  salido marcada. Limitación: un modelo de 7B sigue cometiendo estos fallos de vez en cuando; ahora se ven.
+- **Apuntes.** El código C salía dentro de `\[ \text{…} \]` porque el prompt pedía LaTeX: KaTeX lo pintaba
+  como matemáticas (texto duplicado HTML+MathML y llaves como agrupadores). Ahora el prompt exige bloques
+  ``` con lenguaje y el renderizado devuelve a código todo lo que parece código dentro de delimitadores de
+  fórmula (`remarkMathAsCode`). Los bloques de código con scroll son enfocables con teclado (axe). Cada
+  parte puede escribir hasta 2.000 tokens y la ventana baja a 3.000 estimados, para que ninguna se corte.
+- **«Abrir en Obsidian»** usa `obsidian://open?path=<ruta absoluta>`, que no depende del nombre con el que
+  Obsidian tenga registrado el vault; `BRAIN_OBSIDIAN_VAULT` queda como alternativa.
+- **Regla «No lo encuentro» tras contenido, variante suave.** Se conservan solo las líneas y frases con
+  citas verificadas anteriores a esa frase, se añade «No he encontrado en tus apuntes el resto de lo que
+  preguntas.» y la respuesta se marca como parcial. Sin ninguna frase citada se descarta entera.
+- **Ambigüedad entre asignaturas** («dame la fórmula de Euler»): si entre las mejores del ranking (también
+  las que el corte de coseno descarta) hay notas igual de relevantes de asignaturas distintas, el sistema
+  antepone una frase fija que lo dice y responde con la más relevante. La antepone el código porque el
+  modelo de 7B ignoraba la instrucción.
+
 ## Pendiente para la Fase 4
 
 Lo que se sabe y se ha dejado a propósito para la Fase de evals, con su medida en el golden set:

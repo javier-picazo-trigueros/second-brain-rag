@@ -139,8 +139,9 @@ si lo confirmas, crea un `.md` nuevo en `_generadas/` del vault (con asignatura,
 como enlaces). Es la única escritura que se hace en el vault: nunca sobrescribe (añade « (2)»), no sale
 de `_generadas/`, solo acepta peticiones del propio origen y esa carpeta no se reindexa.
 
-«Abrir en Obsidian» es un enlace `obsidian://open?vault=…&file=…` que construye la API; no ejecuta
-nada ni escribe en el vault. El nombre del vault es el de su carpeta; para otro, `BRAIN_OBSIDIAN_VAULT`.
+«Abrir en Obsidian» es un enlace `obsidian://open?path=<ruta absoluta>` que construye la API; no
+ejecuta nada ni escribe en el vault. Si prefieres abrir por el nombre con el que Obsidian conoce el
+vault, define `BRAIN_OBSIDIAN_VAULT` y usará `obsidian://open?vault=…&file=…`.
 Un `[[enlace]]` con varias notas candidatas pregunta cuál se quiere; las copias exactas cuentan como
 una y se elige la más cercana a la nota que enlaza.
 

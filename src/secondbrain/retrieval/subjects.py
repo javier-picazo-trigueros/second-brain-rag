@@ -5,12 +5,16 @@ from __future__ import annotations
 import re
 import tomllib
 import unicodedata
+from difflib import SequenceMatcher
 from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
 _COURSE = re.compile(r"^\d+º$")
+_EXACT_MAX = 3  # palabras de hasta 3 letras (y números): sin tolerancia a faltas
+_FUZZY_MIN_SINGLE = 6  # un alias de una sola palabra necesita al menos 6 letras para tolerar faltas
+_FUZZY_RATIO = 0.8
 _NON_ALNUM = re.compile(r"[^0-9a-z]+")
 
 
@@ -19,6 +23,14 @@ def norm(text: str) -> str:
     decomposed = unicodedata.normalize("NFD", text.casefold())
     plain = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
     return _NON_ALNUM.sub(" ", plain).strip()
+
+
+def _close(alias_word: str, word: str) -> bool:
+    if alias_word == word:
+        return True
+    if len(alias_word) <= _EXACT_MAX or len(word) <= _EXACT_MAX:
+        return False
+    return SequenceMatcher(None, alias_word, word).ratio() >= _FUZZY_RATIO
 
 
 def subject_of(path: str) -> str | None:
@@ -130,15 +142,38 @@ class SubjectIndex:
         return next((s for s in self._subjects if key in s.aliases or norm(s.name) == key), None)
 
     def detect(self, question: str) -> Subject | None:
-        """Asignatura que nombra la pregunta (alias más largo; palabras completas)."""
-        text = f" {norm(question)} "
+        """Asignatura que nombra la pregunta (alias más largo; palabras completas).
+
+        Si no aparece tal cual, se tolera una falta de ortografía en las palabras largas («artificicial»,
+        «mineria de datoss»); las cortas y los números («I», «II», «2») tienen que coincidir exactos,
+        para que un fallo nunca convierta «IA II» en «IA I».
+        """
+        text = norm(question)
+        padded = f" {text} "
         best: tuple[int, int, Subject] | None = None
         for subject in self._subjects:
             for alias in subject.aliases:
-                if f" {alias} " in text:
+                if f" {alias} " in padded:
                     rank = (len(alias), len(self._notes[subject.name]))
                     if best is None or rank > best[:2]:
                         best = (*rank, subject)
+        return best[2] if best else self._detect_fuzzy(text.split())
+
+    def _detect_fuzzy(self, words: list[str]) -> Subject | None:
+        best: tuple[int, int, Subject] | None = None
+        for subject in self._subjects:
+            for alias in subject.aliases:
+                tokens = alias.split()
+                if all(len(t) <= _EXACT_MAX for t in tokens) or (
+                    len(tokens) == 1 and len(tokens[0]) < _FUZZY_MIN_SINGLE
+                ):
+                    continue
+                for start in range(len(words) - len(tokens) + 1):
+                    window = words[start : start + len(tokens)]
+                    if all(_close(a, b) for a, b in zip(tokens, window, strict=True)):
+                        rank = (len(alias), len(self._notes[subject.name]))
+                        if best is None or rank > best[:2]:
+                            best = (*rank, subject)
         return best[2] if best else None
 
     def detect_all(self, question: str) -> list[Subject]:

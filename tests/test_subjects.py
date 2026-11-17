@@ -256,3 +256,178 @@ def test_an_alias_never_matches_inside_another_word(split: SubjectIndex, text: s
 def test_an_alias_matches_as_a_whole_word(split: SubjectIndex, text: str) -> None:
     found = split.detect(text)
     assert found is not None and found.name == "Computación de Alto Rendimiento"
+
+
+# --- frases informales y alias de IA I / IA II sin ambigüedad -----------------------------------
+
+INFORMAL_ALIASES = """
+[subjects."Inteligencia Artificial I"]
+aliases = ["ia i", "ia 1", "inteligencia artificial i", "inteligencia artificial 1"]
+folders = ["IA I"]
+
+[subjects."Inteligencia Artificial II"]
+aliases = ["ia ii", "ia 2", "inteligencia artificial ii", "inteligencia artificial 2"]
+folders = ["IA II"]
+
+[subjects."Data Mining"]
+aliases = ["data mining", "mineria de datos"]
+folders = ["DM"]
+include = ["ia ii dm"]
+
+[subjects."Sistemas Operativos"]
+aliases = ["sistemas operativos", "so", "ssoo"]
+folders = ["SISTEMAS OPERATIVOS"]
+
+[subjects."Matemática Discreta"]
+aliases = ["matemática discreta", "discretas"]
+folders = ["Discretas"]
+"""
+
+INFORMAL_PATHS = [
+    "3º/IA I/AII - Unit 1 - Background.md",
+    "3º/IA I/AII - Unit 2 - Human intelligence.md",
+    "3º/IA II/AIII - Unit 1 - Background.md",
+    "3º/IA II/AIII - Unit 2 - Neural Networks.md",
+    "3º/IA II/DM - Unit 0 - Introduction.md",
+    "3º/DM/DM - Unit 1 - Introduction to Data Mining.md",
+    "2º/SISTEMAS OPERATIVOS/Tema 4.1 - Sincronizacion.md",
+    "3º/Discretas/Tema 5 Teoría de grafos.md",
+    "3º/Redes/Redes_Tema4.md",
+]
+
+
+@pytest.fixture
+def informal(tmp_path: Path) -> SubjectIndex:
+    f = tmp_path / "informal.toml"
+    f.write_text(INFORMAL_ALIASES, encoding="utf-8")
+    return SubjectIndex(INFORMAL_PATHS, load_aliases(f))
+
+
+@pytest.mark.parametrize(
+    ("text", "name"),
+    [
+        ("inteligencia artificial II", "Inteligencia Artificial II"),
+        ("inteligencia artificial 2", "Inteligencia Artificial II"),
+        ("IA II", "Inteligencia Artificial II"),
+        ("ia 2", "Inteligencia Artificial II"),
+        ("inteligencia artificial I", "Inteligencia Artificial I"),
+        ("inteligencia artificial 1", "Inteligencia Artificial I"),
+        ("IA I", "Inteligencia Artificial I"),
+        ("ia 1", "Inteligencia Artificial I"),
+    ],
+)
+def test_ai_one_and_two_are_never_confused(informal: SubjectIndex, text: str, name: str) -> None:
+    found = informal.detect(f"de que trata {text}")
+    assert found is not None and found.name == name
+
+
+def test_dm_notes_inside_the_ia_ii_folder_belong_to_data_mining(informal: SubjectIndex) -> None:
+    ia2 = informal.by_name("Inteligencia Artificial II")
+    dm = informal.by_name("Data Mining")
+    assert ia2 is not None and dm is not None
+    assert "3º/IA II/DM - Unit 0 - Introduction.md" in informal.notes_of(dm)
+    assert "3º/IA II/DM - Unit 0 - Introduction.md" not in informal.notes_of(ia2)
+    assert "3º/IA I/AII - Unit 1 - Background.md" not in informal.notes_of(ia2)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "inteligencia artificicial II",
+        "inteligenzia artificial 2",
+        "inteligencia artifical II",
+        "mineria de datoss",
+    ],
+)
+def test_a_misspelled_subject_is_still_found(informal: SubjectIndex, text: str) -> None:
+    found = informal.detect(f"dime de q trata {text}")
+    assert found is not None
+    assert found.name in {"Inteligencia Artificial II", "Data Mining"}
+
+
+def test_a_typo_never_turns_one_numeral_into_the_other(informal: SubjectIndex) -> None:
+    found = informal.detect("inteligencia artificicial II")
+    assert found is not None and found.name == "Inteligencia Artificial II"
+    found = informal.detect("inteligencia artificicial I")
+    assert found is not None and found.name == "Inteligencia Artificial I"
+    assert informal.detect("inteligencia artificial y la receta") is None  # sin numeral: no se adivina
+
+
+def test_fuzzy_matching_does_not_invent_subjects_from_common_words(informal: SubjectIndex) -> None:
+    assert informal.detect("de que trata la receta de la paella") is None
+    assert informal.detect("quiero un resumen de datos mineros") is None
+
+
+@pytest.mark.parametrize(
+    ("question", "kind", "subject", "topic"),
+    [
+        # las tres frases tal cual se escribieron
+        (
+            "dime de q trata la asignatura de inteligencia artificicial II sabes en un par de parrafos cuantos temas tiene todo",
+            "overview_subject",
+            "Inteligencia Artificial II",
+            None,
+        ),
+        (
+            "dime de q va el tema 5 de matematica discreta",
+            "overview_topic",
+            "Matemática Discreta",
+            5,
+        ),
+        (
+            "de q va la asignatura de sistemas operativos",
+            "overview_subject",
+            "Sistemas Operativos",
+            None,
+        ),
+        # variantes informales
+        ("q se da en ia 1", "overview_subject", "Inteligencia Artificial I", None),
+        ("cuantos temas tiene data mining y de q va", "overview_subject", "Data Mining", None),
+        ("resumeme la asignatura de redes pls", "overview_subject", "Redes", None),
+        ("de que va el tema 4 de redes", "overview_topic", "Redes", 4),
+        (
+            "¿Qué temas tiene la asignatura de IA 2?",
+            "overview_subject",
+            "Inteligencia Artificial II",
+            None,
+        ),
+        ("explicame la asignatura de data mining", "overview_subject", "Data Mining", None),
+        (
+            "cuántas unidades tiene inteligencia artificial 2",
+            "overview_subject",
+            "Inteligencia Artificial II",
+            None,
+        ),
+        ("de qué va ssoo", "overview_subject", "Sistemas Operativos", None),
+        ("que se da en el tema 5 de discretas", "overview_topic", "Matemática Discreta", 5),
+        ("hablame de la materia de data mining", "overview_subject", "Data Mining", None),
+        ("DE QUE TRATA DATA MINING??", "overview_subject", "Data Mining", None),
+    ],
+)
+def test_informal_overview_questions_are_recognised(
+    informal: SubjectIndex, question: str, kind: str, subject: str, topic: int | None
+) -> None:
+    index = informal
+    intent = detect_intent(question, index)
+    assert (intent.kind, intent.subject.name if intent.subject else None, intent.topic) == (
+        kind,
+        subject,
+        topic,
+    )
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "como se calcula la entropia en data mining",
+        "¿Qué es una red neuronal en ia 2?",
+        "diferencia entre proceso e hilo en sistemas operativos",
+        "por que falla un semaforo en ssoo",
+        "q es un grafo bipartito",
+        "ejemplo de clustering en data mining",
+    ],
+)
+def test_concrete_informal_questions_stay_normal_searches(
+    informal: SubjectIndex, question: str
+) -> None:
+    assert detect_intent(question, informal).kind == "search"

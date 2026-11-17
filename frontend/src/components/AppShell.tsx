@@ -121,11 +121,11 @@ export function AppShell() {
             <button
               type="button"
               onClick={cycleTheme}
-              aria-label={`Tema: ${THEME_LABEL[theme]}. Cambiar`}
+              aria-label={`${THEME_LABEL[theme]}. Cambiar`}
               className="mt-auto flex h-10 items-center gap-3 rounded-md px-3 text-muted hover:bg-surface-2 hover:text-text"
             >
               <ThemeIcon size={18} />
-              {collapsed ? null : <span>Tema: {THEME_LABEL[theme]}</span>}
+              {collapsed ? null : <span>{THEME_LABEL[theme]}</span>}
             </button>
           </nav>
 

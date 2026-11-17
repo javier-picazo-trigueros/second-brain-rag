@@ -121,3 +121,12 @@ describe("AppShell", () => {
     expect(await axe(container)).toHaveNoViolations();
   });
 });
+
+describe("theme button label", () => {
+  it("does not repeat the word «Tema»", () => {
+    setup();
+    const button = screen.getByRole("button", { name: /Tema: sistema/ });
+    expect(button).toHaveTextContent(/^Tema: sistema$/);
+    expect(button.getAttribute("aria-label")).not.toMatch(/Tema: Tema/);
+  });
+});

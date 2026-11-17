@@ -643,7 +643,7 @@ def table(rows: int) -> str:
 
 def test_a_long_table_keeps_its_header_and_the_first_rows_and_says_how_many_are_left() -> None:
     out = shorten_tables(f"Antes\n\n{table(13)}\n\nDespués", keep=8)
-    assert out.count("\n|") == 9 + 1 - 1  # cabecera + separador + 8 filas, contadas por saltos
+    assert out.count("\n|") == 10  # cabecera + separador + 8 filas
     assert "|8|0.008|" in out and "|9|0.009|" not in out
     assert "5 filas más de esta tabla en la fuente" in out
     assert out.startswith("Antes") and out.endswith("Después")

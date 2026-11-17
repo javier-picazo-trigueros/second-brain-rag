@@ -14,6 +14,7 @@ from secondbrain.retrieval.exercises import ChunkSource, ExerciseBuilder, availa
 from secondbrain.retrieval.families import CopyFamilies
 from secondbrain.retrieval.hybrid import NoteHit, SearchResult
 from secondbrain.retrieval.intent import detect_intent
+from secondbrain.retrieval.study import StudyPlanner
 from secondbrain.retrieval.subjects import (
     Subject,
     SubjectIndex,
@@ -194,6 +195,7 @@ class IntentRetriever:
         self._manifest = manifest
         self._builder = OverviewBuilder(settings, store, manifest, families)
         self._exercises = ExerciseBuilder(settings, store, manifest, families)
+        self._study = StudyPlanner(settings, store, manifest, families)
         self._aliases = load_aliases(settings.aliases_path) if aliases is None else aliases
         self._index_key: int | None = None
         self._index: SubjectIndex | None = None
@@ -209,6 +211,8 @@ class IntentRetriever:
     def search(self, query: str, k: int = 5, *, with_graph: bool = True) -> SearchResult:
         index = self._subjects()
         intent = detect_intent(query, index)
+        if intent.subject is not None and intent.kind == "notes" and intent.topic is not None:
+            return self._study_result(index, intent.subject, intent.topic)
         if intent.subject is not None and intent.kind == "exercises" and intent.topic is not None:
             return self._exercise_result(query, index, intent.subject, intent.topic)
         if intent.subject is not None and intent.kind != "search":
@@ -230,6 +234,21 @@ class IntentRetriever:
         if intent.kind == "search" and len(named) >= 2:
             return self._cross(query, k, [index.notes_of(s) for s in named])
         return self._base.search(query, k, with_graph=with_graph)
+
+    def _study_result(self, index: SubjectIndex, subject: Subject, topic: int) -> SearchResult:
+        notes = index.topic_notes(subject, topic)
+        plan = self._study.plan(subject, topic, notes) if notes else None
+        if plan is not None:
+            return SearchResult([], [], None, mode="notes", study=plan)
+        text = f"No encuentro apuntes del tema {topic} de {subject.name}."
+        if not notes:
+            have = available_topics(index.notes_of(subject))
+            text += f" {subject.name} no tiene notas del tema {topic}."
+            if have:
+                text += f" Los temas que sí tiene son: {', '.join(str(n) for n in have)}."
+        else:
+            text += f" El tema {topic} solo tiene ejercicios o guías, no notas de teoría."
+        return SearchResult([], [], None, mode="notes_none", canned=text)
 
     def _exercise_result(
         self, query: str, index: SubjectIndex, subject: Subject, topic: int

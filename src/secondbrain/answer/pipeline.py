@@ -9,13 +9,42 @@ from typing import Protocol
 from secondbrain.answer.citations import CitationStream
 from secondbrain.answer.context import BuiltContext, Fragment, Source, build_context
 from secondbrain.answer.llm import LLM, Delta, Finished, LLMError
-from secondbrain.answer.prompt import NOT_FOUND, build_messages
+from secondbrain.answer.prompt import NOT_FOUND, build_messages, build_study_messages
 from secondbrain.config import Settings
 from secondbrain.retrieval.hybrid import SearchResult
+from secondbrain.retrieval.study import StudyPlan
 
 log = logging.getLogger(__name__)
 
 _EMPTY = BuiltContext("", (), 0, 0, "search", ())
+
+
+def _study_sources(plan: StudyPlan) -> tuple[Source, ...]:
+    """Una fuente por nota usada, con las páginas de sus fragmentos."""
+    pages: dict[str, list[int]] = {}
+    labels: dict[str, tuple[str, str]] = {}
+    for part in plan.parts:
+        for f in part.fragments:
+            labels.setdefault(f.path, (f.label, f.title))
+            pages.setdefault(f.path, [])
+            if f.page is not None and f.page not in pages[f.path]:
+                pages[f.path].append(f.page)
+    out: list[Source] = []
+    for path, (label, title) in labels.items():
+        first = path.split("/")[0]
+        out.append(
+            Source(
+                label=label,
+                path=path,
+                title=title,
+                kind="evidence",
+                pages=tuple(sorted(pages[path])),
+                asignatura=plan.subject,
+                curso=first if first.endswith("º") else None,
+                truncated=False,
+            )
+        )
+    return tuple(out)
 
 
 def _contradiction(answer: str) -> bool:
@@ -37,6 +66,15 @@ class SourcesEvent:
     confidence: str
     similarity: float | None
     dropped_notes: int
+
+
+@dataclass(frozen=True, slots=True)
+class ProgressEvent:
+    """Modo apuntes: se va a escribir la parte `part` de `total` (empieza en 1)."""
+
+    part: int
+    total: int
+    title: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,6 +105,9 @@ class DoneEvent:
     timings: Timings
     prompt_tokens: int | None
     completion_tokens: int | None
+    mode: str = "search"  # «notes»: apuntes (se pueden guardar como nota)
+    subject: str | None = None
+    topic: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,7 +115,7 @@ class ErrorEvent:
     message: str
 
 
-Event = SourcesEvent | TokenEvent | DoneEvent | ErrorEvent
+Event = SourcesEvent | ProgressEvent | TokenEvent | DoneEvent | ErrorEvent
 
 
 _TOP_NOTES = 3  # solo importa lo que se pierde de las notas más relevantes
@@ -126,6 +167,10 @@ class AnswerPipeline:
             result.top_similarity,
             context.dropped_notes,
         )
+
+        if result.study is not None:
+            yield from self._write_study(result.study, start, retrieval_ms)
+            return
 
         if result.canned:
             # Respuesta fija (p. ej. «no hay ejercicios de ese tema»): no pasa por el modelo.
@@ -204,6 +249,92 @@ class AnswerPipeline:
             "".join(parts), stream, context, finished, confidence, result.top_similarity,
             retrieval_ms, first_token_ms, (self._clock() - start) * 1000,
         )  # fmt: skip
+
+    def _write_study(self, plan: StudyPlan, start: float, retrieval_ms: float) -> Iterator[Event]:
+        """Apuntes: una llamada al modelo por parte, con su ventana de fragmentos reales."""
+        fragments = tuple(
+            Fragment(f.id, f.label, f.path, f.title, "evidence", f.page, f.heading)
+            for part in plan.parts
+            for f in part.fragments
+        )
+        sources = _study_sources(plan)
+        yield SourcesEvent(sources, fragments, "alta", None, 0)
+
+        heading = f"# {plan.title}"
+        pieces = [heading]
+        yield TokenEvent(f"{heading}\n\n")
+        citations: dict[str, Fragment] = {}
+        invalid: dict[str, None] = {}
+        warnings: dict[str, None] = {}
+        total_tokens = 0
+        first_token_ms: float | None = None
+        finished: Finished | None = None
+        for number, part in enumerate(plan.parts, start=1):
+            yield ProgressEvent(number, len(plan.parts), part.title)
+            stream = CitationStream(fragments)
+            text: list[str] = []
+            part_head = f"## {part.title}\n\n"
+            if number > 1:
+                yield TokenEvent("\n\n")  # separa de la parte anterior
+            yield TokenEvent(part_head)
+            try:
+                for item in self._llm.stream_chat(
+                    build_study_messages(plan, part, number, len(plan.parts)),
+                    self._s.notes_part_max_tokens,
+                ):
+                    if isinstance(item, Delta):
+                        piece = stream.feed(item.text)
+                    else:
+                        finished, piece = item, ""
+                    if piece:
+                        if first_token_ms is None:
+                            first_token_ms = (self._clock() - start) * 1000
+                        text.append(piece)
+                        yield TokenEvent(piece)
+                        if _contradiction("".join(text)):
+                            break
+                tail = "" if _contradiction("".join(text)) else stream.finish()
+            except LLMError as exc:
+                log.warning("Fallo del modelo: %s", exc)
+                yield ErrorEvent(str(exc))
+                return
+            if tail:
+                text.append(tail)
+                yield TokenEvent(tail)
+            body = "".join(text)
+            if _contradiction(body):
+                warnings["respuesta_contradictoria"] = None
+                continue  # lo escrito en esta parte no es de fiar: no entra en los apuntes
+            if finished is not None:
+                total_tokens += finished.completion_tokens
+                if finished.truncated:
+                    warnings["respuesta_truncada"] = None
+            for fragment in stream.report.citations:
+                citations.setdefault(fragment.id, fragment)
+            invalid.update(dict.fromkeys(stream.report.invalid))
+            pieces.append(f"{part_head.rstrip()}\n\n{body.strip()}")
+
+        if invalid:
+            warnings["citas_no_verificadas"] = None
+        if not citations:
+            warnings["sin_citas"] = None
+        yield DoneEvent(
+            answer="\n\n".join(pieces),
+            citations=tuple(citations.values()),
+            invalid=tuple(invalid),
+            warnings=tuple(warnings),
+            not_found=False,
+            confidence="alta",
+            similarity=None,
+            timings=Timings(
+                retrieval_ms, first_token_ms, (self._clock() - start) * 1000, None, None
+            ),
+            prompt_tokens=None,
+            completion_tokens=total_tokens or None,
+            mode="notes",
+            subject=plan.subject,
+            topic=plan.topic,
+        )
 
     def _contradictory(
         self,

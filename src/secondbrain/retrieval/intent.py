@@ -12,7 +12,7 @@ from typing import Literal
 
 from secondbrain.retrieval.subjects import Subject, SubjectIndex, norm
 
-Kind = Literal["search", "overview_subject", "overview_topic", "exercises"]
+Kind = Literal["search", "overview_subject", "overview_topic", "exercises", "notes"]
 
 # Sobre el texto normalizado (sin acentos ni signos) y con las abreviaturas expandidas.
 _OVERVIEW = re.compile(
@@ -38,6 +38,12 @@ _ABBREVIATIONS = (
 )
 # «los ejercicios / el problema / el taller»: tolera faltas («ejercisios», «ejercicos»).
 _EXERCISES = re.compile(r"\b(?:ejer\w{3,9}|problemas?|actividad(?:es)?|talleres|taller)\b")
+# «unos apuntes del tema N» o «explícame en detalle el tema N» (con alguna falta: «aputnes»).
+_NOTES = re.compile(
+    r"\b(?:apunt\w*|aputn\w*|apnut\w*)\b|"
+    r"\b(?:en detalle|con detalle|detalladamente|a fondo|en profundidad|con profundidad)\b"
+)
+_SUMMARY_WORD = re.compile(r"\bresum\w*")
 # Preguntas concretas aunque nombren una asignatura: no son visión general.
 _CONCRETE = re.compile(
     r"\b(?:como|por que|para que|cual es la diferencia|diferencia|define|definicion|ejemplo|"
@@ -73,6 +79,9 @@ def detect_intent(question: str, index: SubjectIndex) -> Intent:
     topic_asked = _TOPIC.search(text)
     if topic_asked and _EXERCISES.search(text):
         return Intent("exercises", subject, int(topic_asked.group(1)))
+    # Apuntes o explicación detallada del tema N (un «resumen» sigue siendo visión general).
+    if topic_asked and _NOTES.search(text) and not _SUMMARY_WORD.search(text):
+        return Intent("notes", subject, int(topic_asked.group(1)))
     asks_overview = _OVERVIEW.search(text) is not None
     names_the_course = _NOUN.search(text) is not None and _CONCRETE.search(text) is None
     if not (asks_overview or names_the_course):

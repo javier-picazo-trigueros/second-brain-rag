@@ -4,6 +4,7 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from pathlib import PurePosixPath
+from typing import TYPE_CHECKING
 
 from secondbrain.config import Settings
 from secondbrain.domain import Hit
@@ -11,6 +12,9 @@ from secondbrain.protocols import Embedder, Store
 from secondbrain.retrieval.families import CopyFamilies
 from secondbrain.retrieval.graph import ConceptGraph
 from secondbrain.store.manifest import Manifest
+
+if TYPE_CHECKING:
+    from secondbrain.retrieval.study import StudyPlan
 
 _SNIPPET_CHARS = 300
 _COSINE_LOOKUPS = 20  # notas del ranking cuyo coseno se pide aparte si falta en el denso
@@ -53,6 +57,7 @@ class SearchResult:
     mode: str = "search"  # "overview": resumen de una asignatura o tema, no fragmentos
     facts: str = ""  # datos exactos del índice que se pasan al modelo (p. ej. nº de temas)
     canned: str = ""  # respuesta fija, sin modelo (p. ej. «no hay ejercicios de ese tema»)
+    study: StudyPlan | None = None  # modo «apuntes»: qué se escribe en cada parte
 
 
 class HybridRetriever:

@@ -4,6 +4,7 @@ import re
 
 from secondbrain.answer.context import BuiltContext
 from secondbrain.answer.llm import Message
+from secondbrain.retrieval.study import StudyPart, StudyPlan
 from secondbrain.retrieval.subjects import norm
 
 NOT_FOUND = "No lo encuentro en el vault."
@@ -68,6 +69,24 @@ EXERCISES_PROMPT = (
     "la frase «No lo encuentro en el vault» si has respondido con contenido."
 )
 
+STUDY_PROMPT = (
+    "\n6. Estás escribiendo UNA PARTE de unos apuntes de estudio, no un resumen. Usa solo los "
+    "FRAGMENTOS de esta parte y sigue su orden. Incluye TODAS las definiciones, propiedades y "
+    "teoremas con su enunciado completo, y los ejemplos resueltos paso a paso; no los condenses en "
+    "una frase. Escribe las fórmulas en LaTeX ($...$ en línea, $$...$$ en bloque). Usa "
+    "subtítulos (###) y listas. Empieza directamente por el contenido: el sistema ya pone el "
+    "título de la parte; no hagas introducción ni conclusión. Una cita [S#] por afirmación. No "
+    "inventes nada que no esté en los fragmentos ni escribas «No lo encuentro en el vault»."
+)
+
+STUDY_EXERCISES_PROMPT = (
+    "\n6. Esta es la última parte de unos apuntes: «Tipos de ejercicio». Los FRAGMENTOS son "
+    "enunciados de ejercicios y sus soluciones. Describe qué tipos de ejercicio hay, el método "
+    "para resolver cada tipo en pasos cortos y un enunciado de ejemplo (con su cita). Fórmulas "
+    "en LaTeX. No resuelvas todos los ejercicios ni inventes datos. No escribas «No lo "
+    "encuentro en el vault»."
+)
+
 _NUMBERS = {"un par de": 2, "un": 1, "dos": 2, "tres": 3, "cuatro": 4}
 _PARAGRAPHS = re.compile(r"\b(un par de|un|dos|tres|cuatro|[1-4])\s+parrafos?\b")
 
@@ -87,6 +106,30 @@ def format_request(question: str) -> str:
         f"FORMATO PEDIDO: exactamente {n} {noun} de texto corrido, sin listas ni subtítulos; "
         "mantén las citas [S#] y los datos exactos del índice."
     )
+
+
+def build_study_messages(
+    plan: StudyPlan, part: StudyPart, number: int, total: int
+) -> list[Message]:
+    """Mensaje de UNA parte de los apuntes: esquema del tema + sus fragmentos + qué se pide."""
+    blocks: list[str] = []
+    for f in part.fragments:
+        lines = [f"### [{f.id}]", f"Nota: {f.label}"]
+        if f.page is not None:
+            lines.append(f"Página: {f.page}")
+        if f.heading:
+            lines.append(f"Encabezado: {f.heading}")
+        blocks.append("\n".join(lines) + f"\n{f.text}")
+    skeleton = f"ESQUEMA DEL TEMA (resumen):\n{plan.skeleton}\n\n" if plan.skeleton else ""
+    sources = "FUENTES (esta parte):\n\n" + "\n\n".join(blocks)
+    ask = (
+        f"PARTE {number} de {total}: {part.title} (apuntes del tema {plan.topic} de {plan.subject})"
+    )
+    extra = STUDY_EXERCISES_PROMPT if part.kind == "exercises" else STUDY_PROMPT
+    return [
+        Message("system", SYSTEM_PROMPT + extra),
+        Message("user", f"{skeleton}{sources}\n\n{ask}\n\n{REMINDER}"),
+    ]
 
 
 def build_messages(question: str, context: BuiltContext) -> list[Message]:

@@ -88,7 +88,7 @@ class ExerciseBuilder:
     ) -> SearchResult:
         """Evidencia de los ejercicios del tema, o la respuesta fija si no hay ninguno."""
         reps, copies = self._families.collapse(notes)
-        exercises, theory_paths = self._classify(reps)
+        exercises, theory_paths = self.classify(reps)
         if not exercises:
             return self._none(subject.name, topic, reps)
 
@@ -119,7 +119,7 @@ class ExerciseBuilder:
             hits, [], None, mode="exercises", facts=self._facts(subject, topic, exercises)
         )
 
-    def _classify(self, reps: Sequence[str]) -> tuple[list[_Exercise], list[str]]:
+    def classify(self, reps: Sequence[str]) -> tuple[list[_Exercise], list[str]]:
         grouped: dict[str, _Exercise] = {}
         theory: list[str] = []
         for path in sorted(reps):

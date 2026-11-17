@@ -1,13 +1,14 @@
 ﻿#requires -Version 5.1
 <#
 .SYNOPSIS
-  Tareas del proyecto. Uso: .\tasks.ps1 <install|test|lint|typecheck|up|index|watch|serve|dev>
+  Tareas del proyecto. Uso: .\tasks.ps1 <install|test|lint|typecheck|up|index|watch|serve|dev|web-install|web-test|web-lint|web-typecheck|web-build|web-dev>
 .NOTES
   El venv vive fuera del repo (OneDrive). Se puede cambiar con $env:BRAIN_VENV.
 #>
 param(
     [Parameter(Mandatory = $true, Position = 0)]
-    [ValidateSet("install", "test", "lint", "typecheck", "up", "index", "watch", "serve", "dev")]
+    [ValidateSet("install", "test", "lint", "typecheck", "up", "index", "watch", "serve", "dev",
+        "web-install", "web-test", "web-lint", "web-typecheck", "web-build", "web-dev")]
     [string]$Task,
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$Rest
@@ -33,6 +34,28 @@ function Assert-Venv {
     if (-not (Test-Path $Py)) {
         throw "No existe el venv en $Venv. Créalo con: python -m venv $Venv"
     }
+}
+
+# La interfaz usa pnpm 10 (junctions): node_modules queda casi entero fuera de OneDrive.
+# No uses `npm install` en frontend/: reemplazaría los enlaces por una carpeta real.
+$WebHome = "C:\venvs\second-brain-web"
+$Pnpm = Join-Path $WebHome "tools10\node_modules\.bin\pnpm.cmd"
+
+function Install-Pnpm {
+    if (Test-Path $Pnpm) { return }
+    $tools = Join-Path $WebHome "tools10"
+    New-Item -ItemType Directory -Force $tools | Out-Null
+    if (-not (Test-Path (Join-Path $tools "package.json"))) {
+        Set-Content (Join-Path $tools "package.json") '{"name":"tools10","private":true}'
+    }
+    Invoke-Checked "npm" @("install", "pnpm@10.34.9", "--prefix", $tools, "--no-audit", "--no-fund")
+}
+
+function Invoke-Web {
+    param([string[]]$PnpmArgs)
+    Install-Pnpm
+    Push-Location (Join-Path $PSScriptRoot "frontend")
+    try { Invoke-Checked $Pnpm $PnpmArgs } finally { Pop-Location }
 }
 
 switch ($Task) {
@@ -71,6 +94,12 @@ switch ($Task) {
         Assert-Venv
         Invoke-Checked $Py (@("-m", "secondbrain.cli", "serve") + $Rest)
     }
+    "web-install" { Invoke-Web @("install") }
+    "web-test" { Invoke-Web (@("test") + $Rest) }
+    "web-lint" { Invoke-Web @("lint") }
+    "web-typecheck" { Invoke-Web @("typecheck") }
+    "web-build" { Invoke-Web @("build") }
+    "web-dev" { Invoke-Web @("dev") }
     "dev" {
         Assert-Venv
         Write-Host "dev (API + interfaz) se implementa en la Fase 3."

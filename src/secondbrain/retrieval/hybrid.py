@@ -53,6 +53,7 @@ class SearchResult:
     # Coseno del mejor chunk: mide cuánto se parece la consulta al vault (el RRF no está calibrado).
     top_similarity: float | None = None
     mode: str = "search"  # "overview": resumen de una asignatura o tema, no fragmentos
+    facts: str = ""  # datos exactos del índice que se pasan al modelo (p. ej. nº de temas)
 
 
 def canonical_key(path: str) -> tuple[bool, int, str]:

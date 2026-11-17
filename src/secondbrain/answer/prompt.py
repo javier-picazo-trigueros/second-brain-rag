@@ -34,10 +34,12 @@ REMINDER = "Recuerda: termina cada afirmación con su cita [S#] y no escribas t�
 
 OVERVIEW_PROMPT = (
     "\n6. Esta es una pregunta de visión general: cada fuente es el resumen de una nota, con sus "
-    "conceptos y apartados. Empieza con una frase que diga de qué trata el conjunto; después, "
-    "una lista de los temas o bloques principales (agrupa las fuentes afines; una o dos frases "
-    "por bloque, cada una con su cita); y termina con «Destacaría:» y tres o cuatro ideas clave. "
-    "No inventes temas que no estén en las fuentes."
+    "conceptos y apartados. El DATO DEL ÍNDICE (si lo hay) da el número exacto de temas y su "
+    "lista: úsalo tal cual, no lo recalcules. Estructura: 1) una primera frase que diga de qué "
+    "trata; 2) cuántos temas tiene y su lista, según el DATO; 3) por cada tema o bloque, dos o "
+    "tres frases con su cita; 4) cierra con «Destacaría:» y tres o cuatro ideas clave. Si la "
+    "pregunta pide una extensión o un formato (p. ej. «un par de párrafos»), respétalo en vez de "
+    "esta estructura. No inventes temas, requisitos ni prerrequisitos que no estén en las fuentes."
 )
 
 

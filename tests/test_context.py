@@ -227,3 +227,21 @@ def test_the_frontmatter_subject_is_used_only_outside_a_subject_folder(tmp_path:
     hit = Hit(0.5, {"note_path": "Suelta.md", "text": "t", "asignatura": "Propia"})
     ctx = build_context(result([note("Suelta.md", hit)]), settings(tmp_path))
     assert ctx.sources[0].asignatura == "Propia"
+
+
+def test_the_index_fact_goes_first_and_takes_its_share_of_the_budget(tmp_path: Path) -> None:
+    fact = (
+        "DATO DEL ÍNDICE (cuenta exacta, no la cambies): la asignatura tiene 7 temas numerados. "
+        + "x" * 600
+    )
+    notes = [note(f"3º/IA/Unit {i}.md", chunk(f"3º/IA/Unit {i}.md", "y" * 900)) for i in range(8)]
+    s = settings(tmp_path, context_budget_tokens=1500)
+    ctx = build_context(SearchResult(notes, [], None, mode="overview", facts=fact), s)
+    assert ctx.text.startswith("DATO DEL ÍNDICE")
+    assert ctx.text.index("DATO DEL ÍNDICE") < ctx.text.index("FUENTES (evidencia)")
+    assert ctx.tokens <= 1500
+
+
+def test_without_a_fact_the_context_is_unchanged(tmp_path: Path) -> None:
+    ctx = build_context(result([note("a/X.md", chunk("a/X.md", "texto"))]), settings(tmp_path))
+    assert ctx.text.startswith("FUENTES (evidencia)")

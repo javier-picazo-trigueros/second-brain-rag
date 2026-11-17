@@ -19,13 +19,13 @@ from secondbrain.retrieval.subjects import (
     norm,
     subject_of,
 )
+from secondbrain.retrieval.topics import index_topics, is_exercise, is_guide, topic_key, topics_fact
 from secondbrain.store.manifest import Manifest
 
 _COURSE = re.compile(r"^\d+º$")
-_EXERCISE = re.compile(
-    r"\b(?:exercis\w*|ejercicio\w*|solution|solucion\w*|taller|practic\w*|lab\w*|examen|test)\b"
+_MIN_NUMBERED_TOPICS = (
+    3  # a partir de aquí hay un temario numerado y solo él representa la asignatura
 )
-_TOPIC = re.compile(r"(?<![0-9a-z])(?:tema|unidad|unit|capitulo)\s*0?\d+(?: \d+)?")
 _NO_SUMMARY = "Sin resumen."
 _HEADING_LEVELS = 2  # solo los dos primeros niveles de cada encabezado
 
@@ -61,7 +61,7 @@ class OverviewBuilder:
         self._manifest = manifest
 
     def build(
-        self, notes: Sequence[str], headings: int, max_chars: int | None = None
+        self, notes: Sequence[str], headings: int, max_chars: int | None = None, facts: str = ""
     ) -> SearchResult:
         """Una «nota» sintética por cada nota real, sin copias exactas y dentro del tope."""
         counts = self._manifest.chunk_counts()
@@ -98,7 +98,7 @@ class OverviewBuilder:
                     n_chunks=counts.get(path, 1),
                 )
             )
-        return SearchResult(hits, [], None, mode="overview")
+        return SearchResult(hits, [], None, mode="overview", facts=facts)
 
     def _collapse(self, notes: Sequence[str]) -> tuple[list[str], dict[str, tuple[str, ...]]]:
         wanted = set(notes)
@@ -116,30 +116,45 @@ class OverviewBuilder:
         return list(reps), others
 
     def _choose(self, reps: list[str], counts: Mapping[str, int]) -> list[str]:
-        """Si sobran notas: teoría antes que ejercicios y repartidas por tema (las más grandes
-        de cada «tema N» primero); el resultado va siempre en orden natural."""
+        """Qué notas representan la asignatura (en orden natural).
+
+        Fuera los libros (las «notas grandes» del ranking) y las guías docentes, salvo que no quede
+        otra cosa. Si hay un temario numerado (Unit/Tema N, tres o más), solo entra el temario: la
+        teoría de cada tema (las más grandes primero, con tope por tema) y, para un tema que solo
+        tenga ejercicios, uno de ellos. Sin temario numerado, teoría antes que ejercicios.
+        """
 
         def title(path: str) -> str:
             return PurePosixPath(path).stem
 
-        by_size = sorted(reps, key=lambda p: (-counts.get(p, 0), p))
-        seen: dict[str, int] = {}
-        first: list[str] = []
+        usable = [
+            p for p in reps if counts.get(p, 0) < self._s.big_note_chunks and not is_guide(title(p))
+        ] or reps
+        by_size = sorted(usable, key=lambda p: (-counts.get(p, 0), p))
+        syllabus = {key[0] for p in usable if (key := topic_key(p)) is not None}
+        per_key: dict[str, int] = {}
+        theory: list[str] = []
         rest: list[str] = []
         for path in by_size:
-            if _EXERCISE.search(norm(title(path))):
+            key = topic_key(path)
+            if is_exercise(title(path)) or (
+                key is not None and per_key.get(key[1], 0) >= self._s.overview_per_topic
+            ):
                 rest.append(path)
-                continue
-            topic = _TOPIC.search(norm(path))
-            key = topic.group(0) if topic else None
-            if key is not None and seen.get(key, 0) >= self._s.overview_per_topic:
-                rest.append(path)
-                continue
-            if key is not None:
-                seen[key] = seen.get(key, 0) + 1
-            first.append(path)
-        kept = (first + rest)[: self._s.overview_max_notes]
-        return sorted(kept, key=lambda p: _natural_key(title(p)))
+            else:
+                if key is not None:
+                    per_key[key[1]] = per_key.get(key[1], 0) + 1
+                theory.append(path)
+        if len(syllabus) >= _MIN_NUMBERED_TOPICS:
+            covered = {key[0] for p in theory if (key := topic_key(p)) is not None}
+            only_exercises = [
+                next(p for p in rest if (k := topic_key(p)) is not None and k[0] == number)
+                for number in sorted(syllabus - covered)
+            ]
+            kept = [p for p in theory if topic_key(p) is not None] + only_exercises
+        else:
+            kept = theory + rest
+        return sorted(kept[: self._s.overview_max_notes], key=lambda p: _natural_key(title(p)))
 
     @staticmethod
     def _text(own: list[dict[str, Any]], concepts: Sequence[str], headings: int) -> str:
@@ -195,10 +210,12 @@ class IntentRetriever:
                 if notes:
                     return self._builder.build(notes, self._s.overview_headings_topic)
             else:
+                every_note = index.notes_of(intent.subject)
                 return self._builder.build(
-                    index.notes_of(intent.subject),
+                    every_note,
                     self._s.overview_headings_subject,
                     self._s.overview_text_chars,
+                    facts=topics_fact(index_topics(every_note)),
                 )
         named = index.detect_all(query)
         if intent.kind == "search" and len(named) >= 2:

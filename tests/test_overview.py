@@ -279,3 +279,130 @@ def test_questions_naming_two_subjects_search_each_one(tmp_path: Path, manifest:
     assert {n.path for n in result.notes} == {"3º/Discretas/A.md", "3º/Redes/C.md"}
     assert result.mode == "search" and result.related == []
     assert result.top_similarity == 0.7
+
+
+# --- visión general: temario primero, sin libros ni guías, con el dato de los temas ------------
+
+
+def _add_sized(manifest: Manifest, path: str, chunks: int) -> None:
+    manifest.upsert(path, "h", chunks)
+    manifest.set_meta(path, (), None)
+
+
+def _build(tmp_path: Path, manifest: Manifest, paths: Sequence[str], **over: Any) -> list[str]:
+    store = OutlineStore([chunk(p, 0, "T") for p in paths])
+    result = OverviewBuilder(settings(tmp_path, **over), store, manifest).build(list(paths), 0)
+    return [n.path for n in result.notes]
+
+
+def test_books_are_left_out_of_an_overview(tmp_path: Path, manifest: Manifest) -> None:
+    sizes = {"3º/IA/Unit 1 - A.md": 10, "3º/IA/Unit 2 - B.md": 12, "3º/IA/Libro grande.md": 500}
+    for path, n in sizes.items():
+        _add_sized(manifest, path, n)
+    assert "3º/IA/Libro grande.md" not in _build(tmp_path, manifest, list(sizes))
+
+
+def test_the_big_note_threshold_is_the_one_already_used_for_the_ranking(
+    tmp_path: Path, manifest: Manifest
+) -> None:
+    sizes = {"3º/IA/Unit 1 - A.md": 10, "3º/IA/Apuntes.md": 60}
+    for path, n in sizes.items():
+        _add_sized(manifest, path, n)
+    assert "3º/IA/Apuntes.md" not in _build(tmp_path, manifest, list(sizes), big_note_chunks=50)
+
+
+def test_if_only_books_exist_they_are_used_rather_than_nothing(
+    tmp_path: Path, manifest: Manifest
+) -> None:
+    _add_sized(manifest, "3º/IA/Libro.md", 500)
+    assert _build(tmp_path, manifest, ["3º/IA/Libro.md"]) == ["3º/IA/Libro.md"]
+
+
+def test_course_guides_are_left_out_of_an_overview(tmp_path: Path, manifest: Manifest) -> None:
+    paths = [
+        "3º/IA/Guía docente IA.md",
+        "3º/IA/Unit 1 - A.md",
+        "3º/IA/Unit 2 - B.md",
+        "3º/IA/Unit 3 - C.md",
+    ]
+    for p in paths:
+        _add_sized(manifest, p, 10)
+    assert "3º/IA/Guía docente IA.md" not in _build(tmp_path, manifest, paths)
+
+
+def test_with_a_numbered_syllabus_only_the_syllabus_is_listed(
+    tmp_path: Path, manifest: Manifest
+) -> None:
+    paths = [
+        "3º/IA/Unit 1 - A.md",
+        "3º/IA/Unit 2 - B.md",
+        "3º/IA/Unit 3 - C.md",
+        "3º/IA/paper-sobre-algo.md",
+        "3º/IA/RESEARCH_GROUP1.md",
+        "3º/IA/Unit 3 - exercise 1.md",
+    ]
+    for p in paths:
+        _add_sized(manifest, p, 10)
+    assert _build(tmp_path, manifest, paths) == [
+        "3º/IA/Unit 1 - A.md",
+        "3º/IA/Unit 2 - B.md",
+        "3º/IA/Unit 3 - C.md",
+    ]
+
+
+def test_a_unit_that_only_has_exercises_is_still_represented(
+    tmp_path: Path, manifest: Manifest
+) -> None:
+    paths = [
+        "3º/IA/Unit 1 - A.md",
+        "3º/IA/Unit 2 - B.md",
+        "3º/IA/Unit 3 - C.md",
+        "3º/IA/Unit 4 - exercise 1.md",
+    ]
+    for p in paths:
+        _add_sized(manifest, p, 10)
+    assert "3º/IA/Unit 4 - exercise 1.md" in _build(tmp_path, manifest, paths)
+
+
+def test_without_a_numbered_syllabus_loose_notes_are_kept(
+    tmp_path: Path, manifest: Manifest
+) -> None:
+    paths = ["3º/IA/apuntes-a.md", "3º/IA/apuntes-b.md"]
+    for p in paths:
+        _add_sized(manifest, p, 10)
+    assert len(_build(tmp_path, manifest, paths)) == 2
+
+
+def test_a_subject_overview_carries_the_exact_topic_count_from_the_index(
+    tmp_path: Path, manifest: Manifest
+) -> None:
+    paths = [f"3º/IA/AIII - Unit {n} - Tema {n}.md" for n in range(1, 8)] + [
+        "3º/IA/AIII - Unit 2 - Tema 2 (1).md"
+    ]
+    for p in paths:
+        _add_sized(manifest, p, 10)
+    router = IntentRetriever(
+        settings(tmp_path),
+        MarkerRetriever(),
+        OutlineStore([chunk(p, 0, "T") for p in paths]),
+        manifest,
+        aliases={},
+    )
+    result = router.search("de q va la asignatura de ia", k=5)
+    assert result.mode == "overview"
+    assert "7 temas" in result.facts and "1. Tema 1" in result.facts
+
+
+def test_a_topic_overview_has_no_topic_count(tmp_path: Path, manifest: Manifest) -> None:
+    paths = ["3º/IA/Tema 1 - A.md", "3º/IA/Tema 2 - B.md"]
+    for p in paths:
+        _add_sized(manifest, p, 10)
+    router = IntentRetriever(
+        settings(tmp_path),
+        MarkerRetriever(),
+        OutlineStore([chunk(p, 0, "T") for p in paths]),
+        manifest,
+        aliases={},
+    )
+    result = router.search("de q va el tema 2 de ia", k=5)
+    assert result.mode == "overview" and result.facts == ""

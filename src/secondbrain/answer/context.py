@@ -129,6 +129,8 @@ def build_context(result: SearchResult, settings: Settings) -> BuiltContext:
     main_budget = settings.context_budget_tokens - (
         0 if overview else settings.related_budget_tokens
     )
+    if result.facts:
+        main_budget -= estimate_tokens(result.facts) + 2  # el dato también ocupa contexto
 
     sources: list[Source] = []
     fragments: list[Fragment] = []
@@ -160,6 +162,8 @@ def build_context(result: SearchResult, settings: Settings) -> BuiltContext:
             dropped += 1
 
     text = _SOURCES_HEADER + body.rstrip() if body else ""
+    if text and result.facts:
+        text = f"{result.facts}\n\n{text}"
     if body and settings.related_budget_tokens > 0:
         hint_text, hints = _build_hints(result.related, labels, settings, text, len(fragments))
         if hints:

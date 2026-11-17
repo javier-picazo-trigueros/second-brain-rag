@@ -16,7 +16,7 @@ Kind = Literal["search", "overview_subject", "overview_topic"]
 
 # Sobre el texto normalizado (sin acentos ni signos) y con las abreviaturas expandidas.
 _OVERVIEW = re.compile(
-    r"(?:"
+    r"\b(?:"
     r"de que (?:trata|tratan|va|vamos|se trata|iba|es)|"
     r"que (?:se )?(?:da|ve|explica|explican|estudia|estudian|entra|entran|contiene|incluye|abarca|"
     r"cubre|aprende|aprendo|aprenden|temas|contenidos|unidades|apartados|bloques|lecciones)|"
@@ -26,7 +26,7 @@ _OVERVIEW = re.compile(
     r"en que consiste|que cosas destacarias|"
     r"(?:explica\w*|habla\w*|cuenta\w*|descri\w*|presenta\w*) (?:me )?(?:de |sobre )?"
     r"(?:la |el )?(?:asignatura|materia|tema|temario)"
-    r")"
+    r")\b"
 )
 # «la asignatura de X»: nombrar la asignatura como tal ya es pedir una visión general.
 _NOUN = re.compile(r"\b(?:asignatura|materia|temario)\b")
@@ -35,12 +35,11 @@ _ABBREVIATIONS = (
     (re.compile(r"\bq\b"), "que"),
     (re.compile(r"\b(?:xq|pq|porq)\b"), "por que"),
     (re.compile(r"\bk\b"), "que"),
-    (re.compile(r"\bcuant[oa]s?\b"), lambda m: m.group(0)),  # (se deja como está)
 )
 # Preguntas concretas aunque nombren una asignatura: no son visión general.
 _CONCRETE = re.compile(
-    r"(?:como|por que|para que|cual es la diferencia|diferencia|define|definicion|ejemplo|"
-    r"calcula\w*|implementa\w*|demuestra\w*|resuelve\w*|que es (?:un|una|el|la))"
+    r"\b(?:como|por que|para que|cual es la diferencia|diferencia|define|definicion|ejemplo|"
+    r"calcula\w*|implementa\w*|demuestra\w*|resuelve\w*|que es (?:un|una|el|la))\b"
 )
 
 

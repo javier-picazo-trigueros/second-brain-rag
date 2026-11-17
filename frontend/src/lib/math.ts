@@ -2,11 +2,14 @@ import "katex/dist/katex.min.css"; // fuentes y estilos empaquetados por Vite: n
 import rehypeKatex, { type Options } from "rehype-katex";
 import remarkMath from "remark-math";
 
+import { remarkMathAsCode } from "./remarkMathAsCode";
+
 /**
  * Fórmulas LaTeX con KaTeX. Este módulo se carga bajo demanda (import dinámico desde `Markdown`)
  * solo cuando el texto lleva delimitadores de fórmula, para no pesar en el arranque.
  */
-export const remarkMathPlugin = remarkMath;
+// El código que el modelo envuelve en delimitadores de fórmula se devuelve a código antes de KaTeX.
+export const remarkMathPlugins = [remarkMath, remarkMathAsCode];
 
 /** `trust` apagado: sin `\href`, `\url`, `\includegraphics` ni `\htmlClass`; TeX inválido no rompe. */
 const OPTIONS: Options = { trust: false, strict: "ignore", output: "htmlAndMathml" };

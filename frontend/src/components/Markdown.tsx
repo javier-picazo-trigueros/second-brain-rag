@@ -100,7 +100,7 @@ export function Markdown({
     <ReactMarkdown
       remarkPlugins={[
         remarkGfm,
-        ...(math ? [math.remarkMathPlugin] : []),
+        ...(math ? math.remarkMathPlugins : []),
         ...(wikilinks ? [remarkWikilinks] : []),
       ]}
       rehypePlugins={[

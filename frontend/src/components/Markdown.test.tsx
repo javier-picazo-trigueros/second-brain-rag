@@ -218,3 +218,47 @@ describe("math in notes vs answers", () => {
     expect(container.querySelector(".katex-display")).toBeNull();
   });
 });
+
+describe("code is never rendered as a formula", () => {
+  const CODE = String.raw`char* arguments[] = { "ls", "-l", "/usr/include", 0 }; execv("/bin/ls", arguments);`;
+
+  it("shows code the model wrapped in \\[ \\text{...} \\] as a code block, braces and all", async () => {
+    const md = String.raw`Ejemplo:
+
+\[ \text{${CODE}} \]
+
+Fin.`;
+    const { container } = render(<Markdown latexDelimiters>{md}</Markdown>);
+    await waitFor(() => expect(container.querySelector("pre code")).not.toBeNull());
+    expect(container.querySelector(".katex")).toBeNull();
+    expect(container.querySelector("pre code")!.textContent).toContain('{ "ls", "-l", "/usr/include", 0 }');
+    expect(container.textContent).toContain("Fin.");
+  });
+
+  it("does the same with $$...$$ blocks and with inline $...$", async () => {
+    const md = `$$\n${CODE}\n$$\n\nY en línea: $printf("hola");$ fin.`;
+    const { container } = render(<Markdown>{md}</Markdown>);
+    await waitFor(() => expect(container.querySelector("pre code")).not.toBeNull());
+    expect(container.querySelector(".katex")).toBeNull();
+    expect(container.querySelector("pre code")!.textContent).toContain("execv(");
+    expect(container.querySelector("code:not(pre code)")!.textContent).toBe('printf("hola");');
+  });
+
+  it("keeps a fenced C block with braces exactly as written, once", async () => {
+    const md = "```c\nint main(void) {\n  char* a[] = { \"ls\", 0 };\n  return 0;\n}\n```";
+    const { container } = render(<Markdown>{md}</Markdown>);
+    const code = container.querySelector("pre code")!;
+    expect(code.textContent).toContain('char* a[] = { "ls", 0 };');
+    expect(container.querySelectorAll("pre")).toHaveLength(1);
+    expect(container.querySelector(".katex")).toBeNull();
+  });
+
+  it("still renders a real formula next to the code", async () => {
+    const md = String.raw`\[ \text{${CODE}} \]
+
+Y la fórmula \(E = mc^2\).`;
+    const { container } = render(<Markdown latexDelimiters>{md}</Markdown>);
+    await waitFor(() => expect(container.querySelectorAll(".katex")).toHaveLength(1));
+    expect(container.querySelector("pre code")).not.toBeNull();
+  });
+});

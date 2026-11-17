@@ -743,3 +743,17 @@ def test_the_generated_folder_is_not_indexed_after_saving(make_api: MakeApi) -> 
     api = make_api()
     api.client.post("/generated/save", json={"path": "_generadas/x.md", "content": "hola"})
     assert api.env.settings().is_excluded("_generadas/x.md")
+
+
+def test_notes_and_saved_notes_link_by_absolute_path_unless_a_vault_name_is_set(
+    make_api: MakeApi,
+) -> None:
+    api = make_api()
+    body = api.client.get(f"/notes/{CARRERA}").json()
+    assert body["obsidian_url"].startswith("obsidian://open?path=")
+    assert "vault=" not in body["obsidian_url"]
+    saved = api.client.post(
+        "/generated/save", json={"path": "_generadas/x.md", "content": "hola"}
+    ).json()
+    assert saved["obsidian_url"].startswith("obsidian://open?path=")
+    assert saved["obsidian_url"].endswith("_generadas%2Fx.md")

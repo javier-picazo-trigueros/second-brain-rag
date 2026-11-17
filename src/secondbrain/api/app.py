@@ -56,7 +56,7 @@ from secondbrain.api.schemas import (
 from secondbrain.config import Settings
 from secondbrain.generated import GeneratedError, build_note, preview, save
 from secondbrain.ingest.parser import parse_note
-from secondbrain.obsidian import obsidian_url
+from secondbrain.obsidian import obsidian_link
 from secondbrain.retrieval.catalog import Catalog
 from secondbrain.retrieval.faceted import FacetedSearch, Filters
 from secondbrain.retrieval.graph import ConceptGraph
@@ -365,7 +365,7 @@ def create_app(services: AppServices, static_dir: Path | None = None) -> FastAPI
                 if services.catalog
                 else []
             ),
-            obsidian_url=obsidian_url(settings.obsidian_vault_name, clean),
+            obsidian_url=obsidian_link(settings, clean),
         )
 
     @app.get("/graph/neighbors/{path:path}", response_model=NeighborsOut, tags=["notas"])
@@ -426,9 +426,7 @@ def create_app(services: AppServices, static_dir: Path | None = None) -> FastAPI
             final = save(settings, body.path, body.content)
         except GeneratedError as exc:
             raise HTTPException(400, str(exc)) from exc
-        return GeneratedSaveOut(
-            path=final, obsidian_url=obsidian_url(settings.obsidian_vault_name, final)
-        )
+        return GeneratedSaveOut(path=final, obsidian_url=obsidian_link(settings, final))
 
     @app.post("/reindex", response_model=ReindexStatusOut, status_code=202, tags=["índice"])
     def reindex() -> ReindexStatusOut:

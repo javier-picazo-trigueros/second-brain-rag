@@ -19,6 +19,9 @@ class Tags:
         self.calls += 1
         return self.data
 
+    def note_links(self) -> dict[str, tuple[str, ...]]:
+        return {}
+
 
 @pytest.fixture
 def manifest(tmp_path: Path) -> Iterator[Manifest]:
@@ -69,3 +72,91 @@ def test_tags_are_read_once_per_index_state(tmp_path: Path, manifest: Manifest) 
     add(manifest, "3º/Redes/b.md")
     catalog.note_tags()
     assert tags.calls == 2
+
+
+# --- enlaces [[...]] por título y notas que enlazan -----------------------------------------------
+
+
+class Meta:
+    def __init__(self, links: dict[str, tuple[str, ...]] | None = None) -> None:
+        self.links = links or {}
+        self.link_calls = 0
+
+    def note_tags(self) -> dict[str, tuple[str, ...]]:
+        return {}
+
+    def note_links(self) -> dict[str, tuple[str, ...]]:
+        self.link_calls += 1
+        return self.links
+
+
+def with_links(
+    tmp_path: Path, m: Manifest, links: dict[str, tuple[str, ...]] | None = None
+) -> Catalog:
+    settings = Settings(_env_file=None, vault_path=tmp_path)  # type: ignore[call-arg]
+    return Catalog(settings, m, Meta(links), aliases={})
+
+
+def test_a_link_resolves_by_title_ignoring_case(tmp_path: Path, manifest: Manifest) -> None:
+    add(manifest, "3º/Redes/Tema 1.md", "3º/Redes/Otra.md")
+    catalog = with_links(tmp_path, manifest)
+    assert catalog.resolve_link("tema 1") == ["3º/Redes/Tema 1.md"]
+    assert catalog.resolve_link("  Tema 1  ") == ["3º/Redes/Tema 1.md"]
+
+
+def test_a_link_resolves_by_path_with_or_without_extension(
+    tmp_path: Path, manifest: Manifest
+) -> None:
+    add(manifest, "3º/Redes/Tema 1.md")
+    catalog = with_links(tmp_path, manifest)
+    assert catalog.resolve_link("3º/Redes/Tema 1") == ["3º/Redes/Tema 1.md"]
+    assert catalog.resolve_link("3º/Redes/Tema 1.md") == ["3º/Redes/Tema 1.md"]
+
+
+def test_a_title_in_two_different_notes_gives_every_candidate(
+    tmp_path: Path, manifest: Manifest
+) -> None:
+    add(manifest, "3º/Redes/Intro.md", "3º/DM/Intro.md")
+    assert with_links(tmp_path, manifest).resolve_link("Intro") == [
+        "3º/DM/Intro.md",
+        "3º/Redes/Intro.md",
+    ]
+
+
+def test_exact_copies_count_as_one_candidate(tmp_path: Path, manifest: Manifest) -> None:
+    manifest.upsert("1º/D/Tema 5.md", "h", 2)
+    manifest.set_meta("1º/D/Tema 5.md", (), "g")
+    manifest.upsert("3º/D/Tema 5.md", "h", 2)
+    manifest.set_meta("3º/D/Tema 5.md", (), "g")
+    assert with_links(tmp_path, manifest).resolve_link("Tema 5") == ["1º/D/Tema 5.md"]
+
+
+def test_a_link_to_nothing_gives_no_candidates(tmp_path: Path, manifest: Manifest) -> None:
+    add(manifest, "3º/Redes/Tema 1.md")
+    assert with_links(tmp_path, manifest).resolve_link("No existe") == []
+
+
+def test_backlinks_are_the_notes_whose_links_resolve_to_this_one(
+    tmp_path: Path, manifest: Manifest
+) -> None:
+    add(manifest, "a/Tema 1.md", "a/Tema 2.md", "b/Resumen.md", "b/Suelta.md")
+    links = {
+        "a/Tema 2.md": ("Tema 1",),
+        "b/Resumen.md": ("tema 1", "Tema 2", "Inventada"),
+        "b/Suelta.md": ("Tema 2",),
+        "a/Tema 1.md": ("Tema 1",),  # un enlace a sí misma no cuenta
+    }
+    catalog = with_links(tmp_path, manifest, links)
+    assert catalog.backlinks("a/Tema 1.md") == ["a/Tema 2.md", "b/Resumen.md"]
+    assert catalog.backlinks("a/Tema 2.md") == ["b/Resumen.md", "b/Suelta.md"]
+    assert catalog.backlinks("b/Suelta.md") == []
+
+
+def test_links_are_read_once_per_index_state(tmp_path: Path, manifest: Manifest) -> None:
+    add(manifest, "a/Tema 1.md", "a/Tema 2.md")
+    meta = Meta({"a/Tema 2.md": ("Tema 1",)})
+    settings = Settings(_env_file=None, vault_path=tmp_path)  # type: ignore[call-arg]
+    catalog = Catalog(settings, manifest, meta, aliases={})
+    catalog.backlinks("a/Tema 1.md")
+    catalog.backlinks("a/Tema 2.md")
+    assert meta.link_calls == 1

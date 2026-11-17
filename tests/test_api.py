@@ -576,3 +576,32 @@ def test_subjects_lists_the_canonical_subjects_with_their_notes(make_api: MakeAp
     by_name = {s["name"]: s["notes"] for s in body}
     assert by_name["SISTEMAS OPERATIVOS"] == 2
     assert [s["name"].casefold() for s in body] == sorted(s["name"].casefold() for s in body)
+
+
+# --- enlaces resueltos, notas que enlazan y Obsidian en /notes ---------------------------
+
+
+def test_a_note_comes_with_its_links_resolved_to_candidate_notes(make_api: MakeApi) -> None:
+    body = make_api().client.get(f"/notes/{ENLACES}").json()
+    resolved = body["resolved_links"]
+    assert set(resolved) == set(body["links"])
+    assert resolved["Semáforos y monitores"] == [SEMAFOROS]
+    assert all(isinstance(v, list) for v in resolved.values())
+
+
+def test_a_link_to_a_missing_note_resolves_to_nothing(make_api: MakeApi) -> None:
+    body = make_api().client.get(f"/notes/{ENLACES}").json()
+    missing = [t for t, found in body["resolved_links"].items() if not found]
+    assert missing  # la nota de ejemplo enlaza a notas que no existen
+
+
+def test_notes_that_link_here_are_listed_as_backlinks(make_api: MakeApi) -> None:
+    body = make_api().client.get(f"/notes/{SEMAFOROS}").json()
+    assert ENLACES in [b["path"] for b in body["backlinks"]]
+    assert all(set(b) == {"path", "title"} for b in body["backlinks"])
+
+
+def test_a_note_comes_with_its_obsidian_link(make_api: MakeApi) -> None:
+    body = make_api(obsidian_vault="Cerebro").client.get(f"/notes/{CARRERA}").json()
+    assert body["obsidian_url"].startswith("obsidian://open?vault=Cerebro&file=1%C2%BA%2FSISTEMAS")
+    assert body["obsidian_url"].endswith("Condiciones%20de%20carrera")

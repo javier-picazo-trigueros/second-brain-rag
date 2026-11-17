@@ -185,6 +185,25 @@ class VectorStore:
             if offset is None:
                 return out
 
+    def note_links(self) -> dict[str, tuple[str, ...]]:
+        """Destinos de los `[[enlaces]]` de cada nota (los del cuerpo y del frontmatter)."""
+        out: dict[str, tuple[str, ...]] = {}
+        offset = None
+        while True:
+            points, offset = self._client.scroll(
+                self._name,
+                limit=1000,
+                offset=offset,
+                with_payload=["note_path", "links"],
+                with_vectors=False,
+            )
+            for point in points:
+                payload = point.payload or {}
+                links = tuple(str(t) for t in payload.get("links") or [])
+                out.setdefault(str(payload["note_path"]), links)
+            if offset is None:
+                return out
+
     def outline(self, paths: Sequence[str]) -> list[dict[str, Any]]:
         """Resumen, posición y encabezado de todos los chunks de esas notas (sin vectores)."""
         out: list[dict[str, Any]] = []

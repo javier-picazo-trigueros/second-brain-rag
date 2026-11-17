@@ -26,6 +26,7 @@ def _warm_up(retriever: HybridRetriever, catalog: Catalog) -> None:
     """Una búsqueda de prueba (bge-m3, modelo BM25, conexión a Qdrant) y las etiquetas."""
     retriever.search("calentamiento", k=1, with_graph=False)
     catalog.note_tags()
+    catalog.backlinks("")  # lee y resuelve los enlaces de todas las notas una vez
 
 
 def build_services(settings: Settings | None = None) -> AppServices:

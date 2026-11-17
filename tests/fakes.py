@@ -107,6 +107,9 @@ class FakeStore:
     def note_tags(self) -> dict[str, tuple[str, ...]]:
         return {path: tuple(chunks[0].tags) for path, chunks in self.chunks.items() if chunks}
 
+    def note_links(self) -> dict[str, tuple[str, ...]]:
+        return {path: tuple(chunks[0].links) for path, chunks in self.chunks.items() if chunks}
+
     def outline(self, paths: Sequence[str]) -> list[dict[str, Any]]:
         return [
             {
@@ -165,6 +168,9 @@ class ScriptedStore:
         return self.hits[:limit]
 
     def note_tags(self) -> dict[str, tuple[str, ...]]:
+        return {}
+
+    def note_links(self) -> dict[str, tuple[str, ...]]:
         return {}
 
     def outline(self, paths: Sequence[str]) -> list[dict[str, Any]]:

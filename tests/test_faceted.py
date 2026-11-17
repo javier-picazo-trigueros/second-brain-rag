@@ -31,6 +31,9 @@ class TagStore:
     def __init__(self) -> None:
         self.calls = 0
 
+    def note_links(self) -> dict[str, tuple[str, ...]]:
+        return {}
+
     def note_tags(self) -> dict[str, tuple[str, ...]]:
         self.calls += 1
         return {p: tuple(t) for p, t in NOTES.items()}

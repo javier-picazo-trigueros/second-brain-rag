@@ -144,6 +144,11 @@ class NeighborOut(BaseModel):
     via: list[str]
 
 
+class BacklinkOut(BaseModel):
+    path: str
+    title: str
+
+
 class NoteOut(BaseModel):
     path: str
     title: str
@@ -155,6 +160,10 @@ class NoteOut(BaseModel):
     links: list[str]
     body: str
     related: list[NeighborOut]
+    # Destino de cada [[enlace]] -> notas candidatas (vacío: no existe; varias: ambiguo).
+    resolved_links: dict[str, list[str]] = Field(default_factory=dict)
+    backlinks: list[BacklinkOut] = Field(default_factory=list)
+    obsidian_url: str = ""
 
 
 class ConceptOut(BaseModel):

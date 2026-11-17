@@ -31,6 +31,7 @@ from secondbrain.api.health import HealthReport
 from secondbrain.api.reindex import AlreadyRunning, ReindexManager, ReindexStatus
 from secondbrain.api.schemas import (
     AskRequest,
+    BacklinkOut,
     ChunkOut,
     ConceptOut,
     FacetsOut,
@@ -49,6 +50,7 @@ from secondbrain.api.schemas import (
 )
 from secondbrain.config import Settings
 from secondbrain.ingest.parser import parse_note
+from secondbrain.obsidian import obsidian_url
 from secondbrain.retrieval.catalog import Catalog
 from secondbrain.retrieval.faceted import FacetedSearch, Filters
 from secondbrain.retrieval.graph import ConceptGraph
@@ -339,6 +341,17 @@ def create_app(services: AppServices, static_dir: Path | None = None) -> FastAPI
             links=list(parsed.links),
             body=parsed.body,
             related=neighbours(clean, related) if related else [],
+            resolved_links=(
+                {t: services.catalog.resolve_link(t) for t in parsed.links}
+                if services.catalog
+                else {}
+            ),
+            backlinks=(
+                [BacklinkOut(path=p, title=_title(p)) for p in services.catalog.backlinks(clean)]
+                if services.catalog
+                else []
+            ),
+            obsidian_url=obsidian_url(settings.obsidian_vault_name, clean),
         )
 
     @app.get("/graph/neighbors/{path:path}", response_model=NeighborsOut, tags=["notas"])

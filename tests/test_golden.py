@@ -155,3 +155,36 @@ def test_render_comparison_shows_before_and_after() -> None:
     table = render_comparison(before, after)
     assert "concrete" in table
     assert "0,50" in table and "0,90" in table  # decimales con coma
+
+
+# --- familias de copias: una nota y su «(1)» valen un único acierto ---------------------------
+
+
+def _fam(*groups: tuple[str, ...]) -> dict[str, tuple[str, ...]]:
+    return {path: group for group in groups for path in group}
+
+
+def test_copies_of_one_family_count_as_a_single_hit_for_precision_and_noise() -> None:
+    q = _q()
+    family = _fam(("x/Semáforos.md", "x/Semáforos (1).md"), ("x/R.md", "x/R (1).md"))
+    s = score_retrieval(q, ["x/Semáforos.md", "x/Semáforos (1).md", "x/R.md", "x/R (1).md"], family)
+    assert (s.precision, s.noise) == (0.5, 1)  # 1 familia esperada y 1 de ruido, no 2 y 2
+
+
+def test_without_families_every_path_counts_on_its_own() -> None:
+    s = score_retrieval(_q(), ["x/Semáforos.md", "x/Semáforos (1).md"])
+    assert s.precision == 1.0 and s.noise == 0 and len(s.retrieved) == 2
+
+
+def test_a_family_matches_if_any_of_its_members_matches() -> None:
+    q = GoldenQuestion("q", "concrete", "?", ("IA II/Unit 5",), (), False)
+    family = _fam(("3º/DM/Unit 5 (1).md", "3º/IA II/Unit 5.md"))
+    s = score_retrieval(q, ["3º/DM/Unit 5 (1).md"], family)
+    assert s.recall == 1.0 and s.top1_hit
+
+
+def test_top1_and_recall_do_not_change_when_a_copy_follows_its_original() -> None:
+    q = _q()
+    family = _fam(("x/Semáforos.md", "x/Semáforos (1).md"))
+    s = score_retrieval(q, ["x/Semáforos.md", "x/Semáforos (1).md"], family)
+    assert s.top1_hit and s.recall == 0.5 and s.noise == 0  # la otra expectativa no aparece

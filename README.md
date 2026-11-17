@@ -69,12 +69,28 @@ verificado), `done` (citas, avisos, confianza, tiempos y tokens) o `error`.
 
 ### Cómo se responde y qué garantiza
 
-1. Se recuperan notas con la búsqueda híbrida y se arma un contexto con un presupuesto de tokens
-   (4.500 de los 8.192 de `num_ctx`; se estima con 3 caracteres por token, que sobreestima 9-21 %).
-2. `qwen2.5:7b` responde solo con ese contexto y debe citar `[[Nombre de la nota]]` y `(p. N)`.
-3. Cada cita se comprueba mientras llega el texto: una nota que no está en el contexto se sustituye por
-   `[cita no verificada: X]` y una página que no está en el contexto se marca `(p. N no verificada)`.
-4. Si el contexto no basta, el modelo debe responder exactamente «No lo encuentro en el vault.».
+1. Se detecta la intención de la pregunta. Si pide una **visión general** de una asignatura o de un
+   «tema N» («de qué trata…», «qué se da en el tema 5 de…»), no se buscan fragmentos: se resumen las
+   notas de esa asignatura o tema con su `resumen`, sus conceptos y sus apartados. Si nombra dos
+   asignaturas, se busca en cada una y se intercalan los resultados. En cualquier otro caso, búsqueda
+   híbrida normal.
+2. Solo pasan como evidencia las notas parecidas a la pregunta: el coseno de su mejor fragmento debe
+   llegar a `BRAIN_MIN_NOTE_COSINE` (0,55) y no quedar más de `BRAIN_COSINE_MARGIN` (0,12) por debajo
+   del mejor. Si ninguna pasa, la respuesta es «No lo encuentro en el vault.» sin llamar al modelo.
+3. Con ellas se arma un contexto con presupuesto de tokens (4.500 de los 8.192 de `num_ctx`; se estima
+   con 3 caracteres por token). Cada fragmento lleva un identificador corto: `[S1]`, `[S2]`…
+4. `qwen2.5:7b` responde solo con ese contexto y cita con esos identificadores. El título y la página
+   que se muestran son los del fragmento, los pone el sistema: el modelo no puede inventarlos.
+5. Cada cita se comprueba mientras llega el texto: un identificador que no está en el contexto se
+   sustituye por `[cita no verificada: S9]`.
+6. Si el contexto no basta, el modelo debe responder exactamente «No lo encuentro en el vault.».
+
+#### Alias de asignaturas
+
+La asignatura de una nota es su carpeta de segundo nivel (`curso/ASIGNATURA/...`); cada carpeta
+funciona sola con su nombre. Para que «Data Mining» o «matemática discreta» lleguen a las carpetas
+`DM` o `Discretas`, copia `docs/aliases.example.toml` a `data/aliases.toml` (esa carpeta está ignorada
+por git) y ajústalo a tu vault. Cambiar el fichero no requiere reindexar.
 
 **Limitaciones conocidas.** Verificar una cita garantiza que la nota y la página **existen en el
 contexto**, no que respalden la afirmación: un modelo de 7B puede extrapolar y citar con formato
@@ -106,6 +122,22 @@ claude mcp list
 > `BRAIN_MCP_MAX_CHARS`), las herramientas son de solo lectura y puedes dejar notas sensibles fuera del
 > índice con `BRAIN_EXCLUDE_GLOBS` (ver `.env.example`). Solo conéctalo a clientes en los que confíes
 > con esas notas. La API HTTP y la CLI no envían nada fuera.
+
+## Evaluación (preguntas de referencia)
+
+`evals/golden/` contiene el formato de un conjunto de preguntas con las notas que deberían
+recuperarse (`golden.example.yaml`, ficticio). Copia el ejemplo a `golden.local.yaml` (ignorado por
+git, porque lleva nombres de tu vault) y ejecuta:
+
+```powershell
+brain golden run --out evals/results/antes.json            # solo recuperación (rápido, sin GPU)
+brain golden run --answers --out evals/results/despues.json  # además genera las respuestas
+brain golden compare evals/results/antes.json evals/results/despues.json
+```
+
+Mide recall, precisión, notas de ruido y top-1 por tipo de pregunta (concreta, visión general de una
+asignatura o tema, cruzada, trampa). Con `--answers` añade longitud, citas no verificadas y latencias,
+y anota el estado de la GPU: si está compartida con otro proceso, las latencias no son comparables.
 
 ## Configuración
 

@@ -18,6 +18,7 @@ from secondbrain.api.app import AppServices, create_app
 from secondbrain.api.health import HealthChecker
 from secondbrain.api.reindex import ReindexManager
 from secondbrain.ingest.indexer import SyncReport
+from secondbrain.retrieval.catalog import Catalog
 from secondbrain.retrieval.hybrid import HybridRetriever, SearchResult
 from tests.env import Env
 from tests.fakes import ScriptedLLM
@@ -75,6 +76,7 @@ def make_api(env: Env) -> Iterator[MakeApi]:
         )
         services = AppServices(
             settings=s,
+            catalog=Catalog(s, env.manifest, env.store, aliases={}),
             retriever=used,
             pipeline=AnswerPipeline(s, used, llm),
             manifest=env.manifest,
@@ -506,3 +508,71 @@ def test_without_a_build_the_root_explains_how_to_make_one(
     assert r.status_code == 404
     r = make_api().client.get("/")
     assert r.status_code == 404
+
+
+# --- filtros y facetas de /search, y /subjects ---------------------------------------------------
+
+
+def _facet(body: dict[str, Any], name: str) -> dict[str, int]:
+    return {f["value"]: f["count"] for f in body["facets"][name]}
+
+
+def test_search_returns_facets_with_canonical_subjects(make_api: MakeApi) -> None:
+    body = make_api().client.post("/search", json={"query": "estrategias"}).json()
+    assert _facet(body, "asignaturas") == {"SISTEMAS OPERATIVOS": 1}
+    assert _facet(body, "cursos") == {"1º": 1}
+
+
+def test_search_filters_by_subject_ignoring_case_and_accents(make_api: MakeApi) -> None:
+    body = (
+        make_api()
+        .client.post(
+            "/search", json={"query": "estrategias", "asignaturas": ["sistemas operativos"]}
+        )
+        .json()
+    )
+    assert [n["path"] for n in body["notes"]] == [CARRERA]
+
+
+def test_search_filters_are_anded_across_facets_and_keep_the_alternatives(
+    make_api: MakeApi,
+) -> None:
+    body = (
+        make_api()
+        .client.post(
+            "/search",
+            json={"query": "estrategias", "asignaturas": ["SISTEMAS OPERATIVOS"], "cursos": ["4º"]},
+        )
+        .json()
+    )
+    assert body["notes"] == []
+    assert _facet(body, "asignaturas")["SISTEMAS OPERATIVOS"] == 1  # lo que habría sin el filtro
+    assert _facet(body, "cursos")["4º"] == 0  # el valor elegido se puede desmarcar
+
+
+def test_search_filters_by_tag(make_api: MakeApi) -> None:
+    api = make_api()
+    tags = _facet(api.client.post("/search", json={"query": "estrategias"}).json(), "tags")
+    assert tags, "la nota de ejemplo tiene etiquetas"
+    some = next(iter(tags))
+    body = api.client.post("/search", json={"query": "estrategias", "tags": [some]}).json()
+    assert [n["path"] for n in body["notes"]] == [CARRERA]
+    other = api.client.post("/search", json={"query": "estrategias", "tags": ["no-existe"]}).json()
+    assert other["notes"] == []
+
+
+def test_search_validates_the_filters(make_api: MakeApi) -> None:
+    api = make_api()
+    assert (
+        api.client.post("/search", json={"query": "x", "asignaturas": "no-es-lista"}).status_code
+        == 422
+    )
+    too_many = {"query": "x", "tags": [f"t{i}" for i in range(60)]}
+    assert api.client.post("/search", json=too_many).status_code == 422
+
+
+def test_subjects_lists_the_canonical_subjects_with_their_notes(make_api: MakeApi) -> None:
+    body = make_api().client.get("/subjects").json()
+    by_name = {s["name"]: s["notes"] for s in body}
+    assert by_name["SISTEMAS OPERATIVOS"] == 2
+    assert [s["name"].casefold() for s in body] == sorted(s["name"].casefold() for s in body)

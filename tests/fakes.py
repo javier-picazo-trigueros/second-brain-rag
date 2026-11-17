@@ -104,6 +104,9 @@ class FakeStore:
     def dense_top(self, query_dense: list[float]) -> float | None:
         return 0.5 if self.chunks else None
 
+    def note_tags(self) -> dict[str, tuple[str, ...]]:
+        return {path: tuple(chunks[0].tags) for path, chunks in self.chunks.items() if chunks}
+
     def outline(self, paths: Sequence[str]) -> list[dict[str, Any]]:
         return [
             {
@@ -160,6 +163,9 @@ class ScriptedStore:
         self.last_search = {"query": query, "limit": limit, "prefetch": prefetch}
         self.last_only_paths = only_paths
         return self.hits[:limit]
+
+    def note_tags(self) -> dict[str, tuple[str, ...]]:
+        return {}
 
     def outline(self, paths: Sequence[str]) -> list[dict[str, Any]]:
         return []

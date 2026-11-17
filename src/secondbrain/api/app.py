@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
-from collections.abc import AsyncIterator, Callable, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
@@ -33,6 +33,8 @@ from secondbrain.api.schemas import (
     AskRequest,
     ChunkOut,
     ConceptOut,
+    FacetsOut,
+    FacetValueOut,
     HealthOut,
     NeighborOut,
     NeighborsOut,
@@ -43,9 +45,12 @@ from secondbrain.api.schemas import (
     SearchRequest,
     SearchResponse,
     StatsOut,
+    SubjectOut,
 )
 from secondbrain.config import Settings
 from secondbrain.ingest.parser import parse_note
+from secondbrain.retrieval.catalog import Catalog
+from secondbrain.retrieval.faceted import FacetedSearch, Filters
 from secondbrain.retrieval.graph import ConceptGraph
 from secondbrain.retrieval.hybrid import NoteHit, RelatedNote, SearchResult
 from secondbrain.store.manifest import Manifest
@@ -57,7 +62,14 @@ _QDRANT_DOWN = "Qdrant no responde en {url}: arráncalo con `.\\tasks.ps1 up`."
 
 
 class Retriever(Protocol):
-    def search(self, query: str, k: int = 5, *, with_graph: bool = True) -> SearchResult: ...
+    def search(
+        self,
+        query: str,
+        k: int = 5,
+        *,
+        with_graph: bool = True,
+        only_paths: Sequence[str] | None = None,
+    ) -> SearchResult: ...
 
 
 class Pipeline(Protocol):
@@ -76,22 +88,25 @@ class AppServices:
     reindex: ReindexManager
     points: Callable[[], int]  # chunks indexados en Qdrant
     warmup: Callable[[], None] | None = None  # precalienta embedder, BM25 y Qdrant al arrancar
+    catalog: Catalog | None = None  # asignaturas canónicas y etiquetas (filtros y facetas)
 
 
 def _title(path: str) -> str:
     return PurePosixPath(path).stem
 
 
-def _note_hit(note: NoteHit) -> NoteHitOut:
+def _note_hit(note: NoteHit, catalog: Catalog | None = None) -> NoteHitOut:
     first = note.chunks[0].payload if note.chunks else {}
+    subject = catalog.subject_name(note.path) if catalog else None
+    course = catalog.course(note.path) if catalog else None
     return NoteHitOut(
         path=note.path,
         title=note.title,
         score=note.score,
         raw_score=note.raw_score,
         n_chunks=note.n_chunks,
-        asignatura=first.get("asignatura"),
-        curso=first.get("curso"),
+        asignatura=subject or first.get("asignatura"),
+        curso=course or first.get("curso"),
         tags=list(first.get("tags") or []),
         also_in=list(note.also_in),
         chunks=[
@@ -254,13 +269,37 @@ def create_app(services: AppServices, static_dir: Path | None = None) -> FastAPI
 
     @app.post("/search", response_model=SearchResponse, tags=["búsqueda"])
     def search(request: SearchRequest) -> SearchResponse:
-        result = services.retriever.search(request.query, k=request.k, with_graph=request.graph)
+        facets = FacetsOut()
+        if services.catalog is None:
+            result = services.retriever.search(request.query, k=request.k, with_graph=request.graph)
+        else:
+            filters = Filters(
+                tuple(request.asignaturas), tuple(request.cursos), tuple(request.tags)
+            )
+            out = FacetedSearch(services.retriever, services.catalog).search(
+                request.query, request.k, with_graph=request.graph, filters=filters
+            )
+            result = out.result
+            facets = FacetsOut(
+                asignaturas=[
+                    FacetValueOut(value=f.value, count=f.count) for f in out.facets.asignaturas
+                ],
+                cursos=[FacetValueOut(value=f.value, count=f.count) for f in out.facets.cursos],
+                tags=[FacetValueOut(value=f.value, count=f.count) for f in out.facets.tags],
+            )
         return SearchResponse(
-            notes=[_note_hit(n) for n in result.notes],
+            facets=facets,
+            notes=[_note_hit(n, services.catalog) for n in result.notes],
             related=[_related(r) for r in result.related],
             top_similarity=result.top_similarity,
             confidence=confidence_label(result.top_similarity, settings.confidence_threshold),
         )
+
+    @app.get("/subjects", response_model=list[SubjectOut], tags=["búsqueda"])
+    def subjects() -> list[SubjectOut]:
+        if services.catalog is None:
+            return []
+        return [SubjectOut(name=n, notes=c) for n, c in services.catalog.subjects()]
 
     @app.post("/ask", tags=["búsqueda"], response_class=StreamingResponse)
     def ask(request: AskRequest) -> StreamingResponse:

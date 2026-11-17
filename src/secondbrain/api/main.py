@@ -13,6 +13,7 @@ from secondbrain.api.reindex import ReindexManager
 from secondbrain.config import PROJECT_ROOT, Settings, load_settings
 from secondbrain.embeddings.ollama import OllamaEmbedder
 from secondbrain.ingest.indexer import Indexer
+from secondbrain.retrieval.catalog import Catalog
 from secondbrain.retrieval.hybrid import HybridRetriever
 from secondbrain.retrieval.overview import IntentRetriever
 from secondbrain.store.manifest import Manifest
@@ -47,6 +48,7 @@ def build_services(settings: Settings | None = None) -> AppServices:
         reindex=ReindexManager(lambda progress: indexer.sync(on_progress=progress)),
         points=store.count,
         warmup=lambda: _warm_up(retriever),
+        catalog=Catalog(s, manifest, store),
     )
 
 

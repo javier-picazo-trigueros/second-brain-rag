@@ -165,6 +165,26 @@ class VectorStore:
         )
         return [Hit(score=p.score, payload=dict(p.payload or {})) for p in res.points]
 
+    def note_tags(self) -> dict[str, tuple[str, ...]]:
+        """Etiquetas de cada nota (las del frontmatter, repetidas en sus chunks), sin vectores."""
+        out: dict[str, tuple[str, ...]] = {}
+        offset = None
+        while True:
+            points, offset = self._client.scroll(
+                self._name,
+                limit=1000,
+                offset=offset,
+                with_payload=["note_path", "tags"],
+                with_vectors=False,
+            )
+            for point in points:
+                payload = point.payload or {}
+                out.setdefault(
+                    str(payload["note_path"]), tuple(str(t) for t in payload.get("tags") or [])
+                )
+            if offset is None:
+                return out
+
     def outline(self, paths: Sequence[str]) -> list[dict[str, Any]]:
         """Resumen, posición y encabezado de todos los chunks de esas notas (sin vectores)."""
         out: list[dict[str, Any]] = []

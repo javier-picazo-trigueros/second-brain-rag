@@ -33,6 +33,7 @@ class Settings(BaseSettings):
             ".venv",
             "venv",
             "_conceptos",
+            "_generadas",  # apuntes que genera la propia herramienta: no se reindexan
             "_archivo",
             "_pruebas",
         }

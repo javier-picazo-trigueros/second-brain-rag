@@ -87,7 +87,9 @@ class SubjectIndex:
     ) -> None:
         self._paths = sorted(set(note_paths))
         self._subjects = self._build(extra or {})
-        self._notes = {s.name: self._collect(s) for s in self._subjects}
+        # Un `include` mueve la nota: la reclama su asignatura y las demás no la cogen por carpeta.
+        claimed = {p: s.name for s in self._subjects for p in self._paths if self._included(s, p)}
+        self._notes = {s.name: self._collect(s, claimed) for s in self._subjects}
 
     def _build(self, extra: Mapping[str, SubjectSpec]) -> list[Subject]:
         spelled: dict[str, Counter[str]] = {}
@@ -111,12 +113,16 @@ class SubjectIndex:
                 )
         return subjects
 
-    def _collect(self, subject: Subject) -> list[str]:
+    @staticmethod
+    def _included(subject: Subject, path: str) -> bool:
+        return any(frag in norm(path) for frag in subject.include)
+
+    def _collect(self, subject: Subject, claimed: Mapping[str, str]) -> list[str]:
         return [
             p
             for p in self._paths
-            if norm(subject_of(p) or "") in subject.folders
-            or any(frag in norm(p) for frag in subject.include)
+            if claimed.get(p) == subject.name
+            or (norm(subject_of(p) or "") in subject.folders and p not in claimed)
         ]
 
     def by_name(self, name: str) -> Subject | None:

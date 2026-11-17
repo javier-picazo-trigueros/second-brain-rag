@@ -194,3 +194,65 @@ def test_detect_all_ignores_an_alias_inside_a_longer_one(index: SubjectIndex) ->
 
 def test_detect_all_of_a_question_without_subjects_is_empty(index: SubjectIndex) -> None:
     assert index.detect_all("receta de paella") == []
+
+
+# --- una carpeta repartida entre dos asignaturas, y alias como palabra completa ----------------
+
+SPLIT = """
+[subjects."Sistemas Operativos"]
+aliases = ["sistemas operativos", "so", "ssoo"]
+folders = ["SISTEMAS OPERATIVOS"]
+include = ["sistemas tema 3 1", "sistemas tema 3 2"]
+
+[subjects."Administración de Sistemas"]
+aliases = ["administración de sistemas", "asi", "sistemas", "cloud"]
+folders = ["SISTEMAS"]
+
+[subjects."Computación de Alto Rendimiento"]
+aliases = ["car"]
+folders = ["CAR"]
+"""
+
+
+@pytest.fixture
+def split(tmp_path: Path) -> SubjectIndex:
+    f = tmp_path / "split.toml"
+    f.write_text(SPLIT, encoding="utf-8")
+    return SubjectIndex([*PATHS, "4º/CAR/CAR_T1.md"], load_aliases(f))
+
+
+def test_an_include_moves_notes_out_of_the_other_subjects_folder(split: SubjectIndex) -> None:
+    so = split.by_name("Sistemas Operativos")
+    asi = split.by_name("Administración de Sistemas")
+    assert so is not None and asi is not None
+    so_notes, asi_notes = set(split.notes_of(so)), set(split.notes_of(asi))
+    assert "3º/SISTEMAS/Tema-3.1 Procesos e Hilos v2021.md" in so_notes
+    assert "2º/SISTEMAS OPERATIVOS/Tema-3.3 Procesos e Hilos en C v2021.md" in so_notes
+    assert "3º/SISTEMAS/Tema-3.1 Procesos e Hilos v2021.md" not in asi_notes
+    assert "3º/SISTEMAS/Tema 3 - Seguridad en Sistemas IT.md" in asi_notes
+    assert not so_notes & asi_notes  # ninguna nota en las dos
+
+
+def test_the_split_subjects_are_told_apart_by_their_alias(split: SubjectIndex) -> None:
+    for text, name in [
+        ("qué se da en sistemas operativos", "Sistemas Operativos"),
+        ("de qué trata la asignatura de ssoo", "Sistemas Operativos"),
+        ("temario de administración de sistemas", "Administración de Sistemas"),
+        ("resume el cloud", "Administración de Sistemas"),
+        ("resume sistemas", "Administración de Sistemas"),
+    ]:
+        found = split.detect(text)
+        assert found is not None and found.name == name, text
+
+
+@pytest.mark.parametrize(
+    "text", ["el carácter especial", "un carro rojo", "descargar el archivo", "escaso", "cargo"]
+)
+def test_an_alias_never_matches_inside_another_word(split: SubjectIndex, text: str) -> None:
+    assert split.detect(f"de qué trata {text}") is None
+
+
+@pytest.mark.parametrize("text", ["de qué trata car", "resume CAR", "¿Qué es la asignatura CAR?"])
+def test_an_alias_matches_as_a_whole_word(split: SubjectIndex, text: str) -> None:
+    found = split.detect(text)
+    assert found is not None and found.name == "Computación de Alto Rendimiento"

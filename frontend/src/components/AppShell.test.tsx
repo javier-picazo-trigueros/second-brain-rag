@@ -47,6 +47,9 @@ const note: NoteDetail = {
   links: [],
   body: "Contenido",
   related: [],
+  resolved_links: {},
+  backlinks: [],
+  obsidian_url: "obsidian://open?vault=Cerebro&file=x",
 };
 
 beforeEach(() => {

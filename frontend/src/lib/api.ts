@@ -69,6 +69,10 @@ export interface NoteDetail {
   links: string[];
   body: string;
   related: Neighbor[];
+  /** Destino de cada [[enlace]] -> notas candidatas (vacío: no existe; varias: ambiguo). */
+  resolved_links: Record<string, string[]>;
+  backlinks: { path: string; title: string }[];
+  obsidian_url: string;
 }
 
 // --- eventos de /ask ------------------------------------------------------------------------

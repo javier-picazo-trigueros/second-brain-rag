@@ -240,9 +240,13 @@ class ScriptedLLM:
         self.fail_after = fail_after
         self.messages: list[Message] = []
         self.calls = 0
+        self.max_tokens: int | None = None
 
-    def stream_chat(self, messages: Sequence[Message]) -> Iterator[Delta | Finished]:
+    def stream_chat(
+        self, messages: Sequence[Message], max_tokens: int | None = None
+    ) -> Iterator[Delta | Finished]:
         self.calls += 1
+        self.max_tokens = max_tokens
         self.messages = list(messages)
         for i, text in enumerate(self.deltas):
             if self.fail_after is not None and i == self.fail_after:

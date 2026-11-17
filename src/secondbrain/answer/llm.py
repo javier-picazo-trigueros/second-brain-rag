@@ -42,7 +42,9 @@ class LLMError(RuntimeError):
 
 
 class LLM(Protocol):
-    def stream_chat(self, messages: Sequence[Message]) -> Iterator[Delta | Finished]: ...
+    def stream_chat(
+        self, messages: Sequence[Message], max_tokens: int | None = None
+    ) -> Iterator[Delta | Finished]: ...
 
 
 class OllamaLLM:
@@ -59,13 +61,18 @@ class OllamaLLM:
             "temperature": settings.llm_temperature,
         }
 
-    def stream_chat(self, messages: Sequence[Message]) -> Iterator[Delta | Finished]:
+    def stream_chat(
+        self, messages: Sequence[Message], max_tokens: int | None = None
+    ) -> Iterator[Delta | Finished]:
+        options = (
+            self._options if max_tokens is None else {**self._options, "num_predict": max_tokens}
+        )
         payload = {
             "model": self._model,
             "stream": True,
             "keep_alive": self._keep_alive,
             "messages": [{"role": m.role, "content": m.content} for m in messages],
-            "options": self._options,
+            "options": options,
         }
         try:
             with self._client.stream("POST", "/api/chat", json=payload) as response:

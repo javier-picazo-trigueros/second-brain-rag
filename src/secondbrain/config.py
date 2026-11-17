@@ -93,7 +93,8 @@ class Settings(BaseSettings):
     context_budget_tokens: int = Field(4500, ge=500)
     related_budget_tokens: int = Field(800, ge=0)  # parte del anterior reservada a las pistas
     # Modo «ejercicios»: enunciados, soluciones y teoría del tema caben en un contexto mayor.
-    exercises_budget_tokens: int = Field(9000, ge=1000)
+    exercises_budget_tokens: int = Field(7000, ge=1000)  # estimados; ~1,5x en texto numérico
+    exercises_max_tokens: int = Field(2000, ge=1)  # tope de la respuesta en este modo
     exercises_theory_notes: int = Field(2, ge=0)  # notas de teoría que acompañan a los ejercicios
 
     # API HTTP: solo escucha en la propia máquina. El front de desarrollo (Vite) necesita su origen

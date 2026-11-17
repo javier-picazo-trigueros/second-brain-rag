@@ -359,7 +359,9 @@ def test_the_exercise_prompt_asks_for_the_statement_then_the_steps_with_the_theo
     messages = build_messages("¿" + "p " * 3000 + "?", build_context(result, s))
     from secondbrain.answer.context import estimate_tokens
 
-    assert sum(estimate_tokens(m.content) for m in messages) + s.llm_max_tokens <= s.llm_num_ctx
+    assert (
+        sum(estimate_tokens(m.content) for m in messages) + s.exercises_max_tokens <= s.llm_num_ctx
+    )
 
 
 def _pipeline(
@@ -425,3 +427,22 @@ def test_an_ordinary_answer_is_untouched(tmp_path: Path) -> None:
     done = events[-1]
     assert isinstance(done, DoneEvent)
     assert done.answer == "Un dato [S1]." and "respuesta_contradictoria" not in done.warnings
+
+
+def test_exercise_answers_get_a_larger_output_limit_than_ordinary_ones(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    result, _, _ = build(tmp_path, manifest, index)
+    _, llm = _pipeline(tmp_path, result, ["Paso 1 [S1]."])
+    assert llm.max_tokens == settings(tmp_path).exercises_max_tokens
+    assert llm.max_tokens is not None and llm.max_tokens > settings(tmp_path).llm_max_tokens
+    _, ordinary = _pipeline(tmp_path, found(tmp_path), ["Un dato [S1]."])
+    assert ordinary.max_tokens is None
+
+
+def test_the_budget_leaves_room_for_the_long_answer_even_with_numeric_text(
+    tmp_path: Path,
+) -> None:
+    """El estimador de tokens infravalora el texto numérico (~1,5x): el margen lo absorbe."""
+    s = settings(tmp_path)
+    assert s.exercises_budget_tokens * 1.6 + s.exercises_max_tokens + 1200 <= s.llm_num_ctx

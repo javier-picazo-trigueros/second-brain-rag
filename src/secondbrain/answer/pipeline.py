@@ -168,7 +168,8 @@ class AnswerPipeline:
         first_token_ms: float | None = None
         finished: Finished | None = None
         try:
-            for item in self._llm.stream_chat(build_messages(question, context)):
+            limit = self._s.exercises_max_tokens if context.mode == "exercises" else None
+            for item in self._llm.stream_chat(build_messages(question, context), limit):
                 if isinstance(item, Delta):
                     piece = stream.feed(item.text)
                 else:

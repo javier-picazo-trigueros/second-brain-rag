@@ -64,8 +64,8 @@ EXERCISES_PROMPT = (
     "tema para justificar cada paso (con su cita) y usa la solución de la fuente para el resultado "
     "final; 3) si son varios y la petición es general, resuelve el primero y pregunta cuál quiere "
     "después. Usa SOLO datos y pasos que estén en las fuentes: si falta un dato, dilo; no "
-    "inventes pasos genéricos. No escribas la frase «No lo encuentro en el vault» si has "
-    "respondido con contenido."
+    "inventes pasos genéricos. Una cita por afirmación, sin encadenar más de dos. No escribas "
+    "la frase «No lo encuentro en el vault» si has respondido con contenido."
 )
 
 _NUMBERS = {"un par de": 2, "un": 1, "dos": 2, "tres": 3, "cuatro": 4}

@@ -72,11 +72,15 @@ verificado), `done` (citas, avisos, confianza, tiempos y tokens) o `error`.
 
 ### Cómo se responde y qué garantiza
 
-1. Se detecta la intención de la pregunta. Si pide una **visión general** de una asignatura o de un
-   «tema N» («de qué trata…», «qué se da en el tema 5 de…»), no se buscan fragmentos: se resumen las
-   notas de esa asignatura o tema con su `resumen`, sus conceptos y sus apartados. Si nombra dos
-   asignaturas, se busca en cada una y se intercalan los resultados. En cualquier otro caso, búsqueda
-   híbrida normal.
+1. Se detecta la intención de la pregunta, escrita como se habla («de q va», «q se da», «cuantos
+   temas tiene», sin tildes, con faltas y con relleno). Si pide una **visión general** de una
+   asignatura o de un «tema N», no se buscan fragmentos: se resumen las notas de esa asignatura o tema
+   con su `resumen`, sus conceptos y sus apartados. Quedan fuera los libros (las «notas grandes»), las
+   guías docentes y, si hay un temario numerado (`Unit N`, `Tema N`), todo lo que no sea temario. El
+   **número de temas sale del índice** (unidades distintas por nombre de archivo) y se le pasa al
+   modelo como dato exacto; si la pregunta pide «un par de párrafos» u otro número, se le da como
+   instrucción explícita. Si nombra dos asignaturas, se busca en cada una y se intercalan los
+   resultados. En cualquier otro caso, búsqueda híbrida normal.
 2. Solo pasan como evidencia las notas parecidas a la pregunta: el coseno de su mejor fragmento debe
    llegar a `BRAIN_MIN_NOTE_COSINE` (0,55) y no quedar más de `BRAIN_COSINE_MARGIN` (0,12) por debajo
    del mejor. Si ninguna pasa, la respuesta es «No lo encuentro en el vault.» sin llamar al modelo.
@@ -93,7 +97,9 @@ verificado), `done` (citas, avisos, confianza, tiempos y tokens) o `error`.
 La asignatura de una nota es su carpeta de segundo nivel (`curso/ASIGNATURA/...`); cada carpeta
 funciona sola con su nombre. Para que «Data Mining» o «matemática discreta» lleguen a las carpetas
 `DM` o `Discretas`, copia `docs/aliases.example.toml` a `data/aliases.toml` (esa carpeta está ignorada
-por git) y ajústalo a tu vault. Cambiar el fichero no requiere reindexar.
+por git) y ajústalo a tu vault. Cambiar el fichero no requiere reindexar. Los alias se comparan como
+palabra completa (`car` no coincide dentro de «carácter») y toleran una falta en las palabras largas;
+los números y las palabras cortas deben coincidir exactos. Un `include` mueve la nota a esa asignatura.
 
 **Limitaciones conocidas.** Verificar una cita garantiza que la nota y la página **existen en el
 contexto**, no que respalden la afirmación: un modelo de 7B puede extrapolar y citar con formato

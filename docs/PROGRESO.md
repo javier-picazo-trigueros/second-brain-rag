@@ -335,6 +335,42 @@ Respuestas (medias; «antes» con la GPU compartida, «después» con la GPU lib
 La mejora de latencia total se debe sobre todo a haber liberado la GPU, no al código: no es atribuible a
 los cambios. El top-1 de las visiones generales es 0 por construcción (no hay un «primero»).
 
+### Segunda ronda: preguntas escritas «como se habla»
+
+Al probar con frases reales («de q va la asignatura de…», «cuantos temas tiene…», con faltas), 2 de 3
+salían mal. Causas medidas: el detector exigía una frase exacta («de q» y «artificicial» no
+encajaban), así que iban por búsqueda normal; una nota de otra asignatura salía como si fuera de ésta;
+el número de temas no existía como dato; y la plantilla de visión general se aplicaba también a un
+tema suelto, donde el modelo inventaba «un total de 6 temas».
+
+| Cambio | Resultado |
+|---|---|
+| Intención por señales sueltas (abreviaturas, sin tildes, relleno); un alias tolera una falta solo en palabras largas y nunca en números | Las 3 frases literales y 11 variantes se reconocen; 6 preguntas concretas siguen siendo búsquedas |
+| IA I / IA II sin ambigüedad; las notas `DM - Unit` de la carpeta de IA II pasan a Data Mining (un `include` mueve la nota) | IA I 13 notas, IA II 40, Data Mining 46 |
+| El número de temas sale del índice (`Unit N` / `Tema N`) y entra al prompt como dato | IA II 7, IA I 7, Data Mining 8 (0 a 7), Sistemas Operativos 8 |
+| La visión general excluye libros (≥ `BRAIN_BIG_NOTE_CHUNKS`) y guías docentes, y con temario numerado solo lista el temario | Desaparecen el libro y la guía de otra asignatura |
+| Plantilla propia para asignatura (frase inicial, nº de temas, 2-3 frases por tema, «Destacaría») y para un tema | Sin aviso de «confianza baja» en visión general |
+| «Un par de párrafos» (u otro número) pasa al modelo como instrucción explícita | Se respeta |
+
+Golden set ampliado a 28 preguntas (7 informales). Recuperación, antes → después:
+
+| Tipo | n | Recall | Precisión | Ruido (notas) |
+|---|---|---|---|---|
+| concretas | 8 | 0,85 → 0,85 | 0,81 → 0,81 | 0,88 → 0,88 |
+| visión general de asignatura | 9 | 0,57 → 0,97 | 0,66 → 0,99 | 0,78 → 0,11 |
+| «tema N» | 6 | 0,89 → 1,00 | 0,89 → 1,00 | 0,33 → 0,00 |
+| cruzadas | 2 | 0,75 → 0,75 | 1,00 → 1,00 | 0,00 → 0,00 |
+| trampas | 3 | 1,00 → 1,00 | — | 0,33 → 0,33 |
+| **Total** | **28** | **0,78 → 0,93** | **0,71 → 0,84** | **0,61 → 0,32** |
+
+Respuestas: 0 citas no verificadas (antes 1), trampas 3 de 3, longitud media 970 → 1.100 caracteres.
+Latencia con la GPU libre: total 7,0 s de media (recuperación 120 ms, primer token 0,5 s). Los 17 s de
+la primera prueba no se reproducen: con la GPU libre la misma pregunta tardó 3,7 s (158 tokens). Con la
+GPU compartida la generación cae a 9-14 tok/s y 158 tokens son ~16 s; es la explicación más probable.
+
+**Un error de la comprobación, no del código:** un servidor antiguo seguía vivo en el puerto 8000 y el
+nuevo no arrancaba, así que las primeras respuestas de la interfaz salían con el código de antes.
+
 ### Límites conocidos
 
 - Una cita válida sigue sin garantizar que la nota respalde la frase (comprobación de respaldo por frase:
@@ -342,7 +378,9 @@ los cambios. El top-1 de las visiones generales es 0 por construcción (no hay u
 - Copias casi idénticas con nombres distintos (`Nota`, `Nota (1)`) no se funden si su contenido difiere.
 - `3º/SISTEMAS` mezcla sistemas operativos con integración y cloud: el mapa de alias las une por pedido
   del usuario; una visión general de «sistemas operativos» incluye también esos temas.
-- Los umbrales (0,55 / 0,12) están calibrados con 21 preguntas; hay que revisarlos si cambia el vault.
+- La visión general puede añadir un último «tema» inventado a partir de la última fuente aunque el dato
+  diga 7 (visto una vez); el dato exacto va primero en el contexto y en las instrucciones.
+- Los umbrales (0,55 / 0,12) están calibrados con 28 preguntas; hay que revisarlos si cambia el vault.
 
 ## Fase 3b, checkpoint 1: interfaz (marco, Preguntar y Estado)
 

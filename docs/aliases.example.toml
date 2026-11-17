@@ -17,3 +17,20 @@ folders = ["ALGEBRA"]
 aliases = ["estructuras de datos", "eda"]
 folders = ["Estructuras"]
 include = ["Optativas/Estructuras - "]   # notas de esta asignatura guardadas en otra carpeta
+
+# Dos asignaturas con nombres casi iguales: el número tiene que coincidir exacto («IA II» nunca
+# se confunde con «IA I»), aunque una palabra larga lleve una falta («inteligencia artificicial»).
+[subjects."Inteligencia Artificial I"]
+aliases = ["ia i", "ia 1", "inteligencia artificial i", "inteligencia artificial 1"]
+folders = ["IA1"]
+
+[subjects."Inteligencia Artificial II"]
+aliases = ["ia ii", "ia 2", "inteligencia artificial ii", "inteligencia artificial 2"]
+folders = ["IA2"]
+
+# Un `include` MUEVE la nota: estas unidades están guardadas dentro de la carpeta IA2, pero son de
+# otra asignatura, y por eso ya no cuentan como notas de Inteligencia Artificial II.
+[subjects."Data Mining"]
+aliases = ["data mining", "minería de datos"]
+folders = ["DM"]
+include = ["ia2 dm"]   # fragmento de ruta normalizado (minúsculas, sin acentos ni signos)

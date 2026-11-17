@@ -1,11 +1,20 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { axe } from "vitest-axe";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ConversationProvider } from "../hooks/conversation";
 import { NoteContext } from "../hooks/notePanel";
 import { SessionContext } from "../hooks/session";
-import { ApiError, type AskEvent, type DoneEvent, type SourceInfo, type SourcesEvent } from "../lib/api";
+import {
+  ApiError,
+  type AskEvent,
+  type DoneEvent,
+  type FragmentInfo,
+  type SourceInfo,
+  type SourcesEvent,
+} from "../lib/api";
 import { Preguntar } from "./Preguntar";
 
 const askStream = vi.hoisted(() => vi.fn());
@@ -25,9 +34,15 @@ const source = (label: string, kind: "evidence" | "hint" = "evidence", pages: nu
   truncated: false,
 });
 
+const fragments: FragmentInfo[] = [
+  { id: "S1", label: "Semáforos", path: "x/Semáforos.md", title: "Semáforos", kind: "evidence", page: 7, heading: null },
+  { id: "S2", label: "Redes", path: "x/Redes.md", title: "Redes", kind: "hint", page: null, heading: null },
+];
+
 const sourcesEvent = (over: Partial<SourcesEvent> = {}): SourcesEvent => ({
   type: "sources",
   sources: [source("Semáforos", "evidence", [7]), source("Redes", "hint")],
+  fragments,
   confidence: "alta",
   similarity: 0.7,
   dropped_notes: 0,
@@ -36,10 +51,9 @@ const sourcesEvent = (over: Partial<SourcesEvent> = {}): SourcesEvent => ({
 
 const doneEvent = (over: Partial<DoneEvent> = {}): DoneEvent => ({
   type: "done",
-  answer: "Un semáforo es un contador [[Semáforos]] (p. 7).",
+  answer: "Un semáforo es un contador [S1].",
   citations: [],
   invalid: [],
-  bad_pages: [],
   warnings: [],
   not_found: false,
   confidence: "alta",
@@ -92,11 +106,15 @@ const record = vi.fn();
 
 function setup() {
   return render(
-    <SessionContext.Provider value={{ entries: [], record }}>
-      <NoteContext.Provider value={{ open, close: vi.fn() }}>
-        <Preguntar />
-      </NoteContext.Provider>
-    </SessionContext.Provider>,
+    <MemoryRouter>
+      <SessionContext.Provider value={{ entries: [], record }}>
+        <NoteContext.Provider value={{ open, close: vi.fn() }}>
+          <ConversationProvider>
+            <Preguntar />
+          </ConversationProvider>
+        </NoteContext.Provider>
+      </SessionContext.Provider>
+    </MemoryRouter>,
   );
 }
 
@@ -208,7 +226,7 @@ describe("Preguntar: avisos", () => {
     script([
       sourcesEvent(),
       doneEvent({
-        answer: "Dato [cita no verificada: Inventada] y [[Semáforos]].",
+        answer: "Dato [cita no verificada: Inventada] y [S1].",
         warnings: ["citas_no_verificadas"],
         invalid: ["Inventada"],
       }),
@@ -224,7 +242,7 @@ describe("Preguntar: avisos", () => {
     script([
       sourcesEvent({ confidence: "baja", similarity: 0.56 }),
       doneEvent({
-        answer: "No lo encuentro en el vault. Podrías mirar: [[Semáforos]].",
+        answer: "No lo encuentro en el vault. Podrías mirar: [S1].",
         not_found: true,
         warnings: ["confianza_baja"],
         confidence: "baja",

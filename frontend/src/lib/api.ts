@@ -84,12 +84,15 @@ export interface SourceInfo {
   truncated: boolean;
 }
 
-export interface CitationInfo {
+/** Un trozo citable del contexto: el modelo lo cita con su `id` (p. ej. «S3»). */
+export interface FragmentInfo {
+  id: string;
   label: string;
   path: string;
   title: string;
-  kind: string;
+  kind: "evidence" | "hint";
   page: number | null;
+  heading: string | null;
 }
 
 export interface Timings {
@@ -105,6 +108,7 @@ export type Confidence = "alta" | "baja" | "desconocida";
 export interface SourcesEvent {
   type: "sources";
   sources: SourceInfo[];
+  fragments: FragmentInfo[];
   confidence: Confidence;
   similarity: number | null;
   dropped_notes: number;
@@ -118,9 +122,8 @@ export interface TokenEvent {
 export interface DoneEvent {
   type: "done";
   answer: string;
-  citations: CitationInfo[];
+  citations: FragmentInfo[];
   invalid: string[];
-  bad_pages: [string, number][];
   warnings: string[];
   not_found: boolean;
   confidence: Confidence;

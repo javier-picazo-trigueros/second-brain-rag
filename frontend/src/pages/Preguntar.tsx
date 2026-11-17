@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
+import { useLocation } from "react-router-dom";
 
 import { AnswerView } from "../components/AnswerView";
 import { AskForm } from "../components/AskForm";
@@ -7,9 +8,8 @@ import { NoticeBar } from "../components/NoticeBar";
 import { NotFoundCard } from "../components/NotFoundCard";
 import { SourceCards } from "../components/SourceCards";
 import type { AskState } from "../hooks/askState";
+import { useConversation } from "../hooks/conversation";
 import { useNotePanel } from "../hooks/notePanel";
-import { useSession } from "../hooks/session";
-import { useAsk } from "../hooks/useAsk";
 
 const EXAMPLES = [
   "¿Qué es un semáforo y para qué sirve?",
@@ -19,14 +19,14 @@ const EXAMPLES = [
 
 const HIDDEN_WHEN_NOT_FOUND = ["confianza_baja", "sin_citas", "solo_pistas"];
 
-function Turn({ turn, focusInput }: { turn: AskState; focusInput: () => void }) {
+function Turn({ turn, index, focusInput }: { turn: AskState; index: number; focusInput: () => void }) {
   const { open } = useNotePanel();
   const evidence = turn.sources.filter((s) => s.kind === "evidence").length;
   const done = turn.done;
   const notFound = done?.not_found === true;
 
   return (
-    <article className="space-y-4">
+    <article id={`pregunta-${index}`} className="scroll-mt-4 space-y-4">
       <p className="ml-auto w-fit max-w-[85%] whitespace-pre-wrap rounded-md bg-accent-soft px-4 py-2 text-text">
         {turn.question}
       </p>
@@ -40,14 +40,19 @@ function Turn({ turn, focusInput }: { turn: AskState; focusInput: () => void }) 
       {notFound && done ? (
         <NotFoundCard
           answer={done.answer}
-          sources={turn.sources}
+          fragments={turn.fragments}
           evidenceCount={evidence}
           lowConfidence={done.confidence === "baja"}
           onOpenNote={open}
           onRephrase={focusInput}
         />
       ) : turn.text ? (
-        <AnswerView text={turn.text} sources={turn.sources} streaming={turn.status === "streaming"} onOpenNote={open} />
+        <AnswerView
+          text={turn.text}
+          fragments={turn.fragments}
+          streaming={turn.status === "streaming"}
+          onOpenNote={open}
+        />
       ) : null}
 
       {turn.status === "stopped" ? <p className="text-sm text-muted">Respuesta detenida</p> : null}
@@ -60,38 +65,26 @@ function Turn({ turn, focusInput }: { turn: AskState; focusInput: () => void }) 
 }
 
 export function Preguntar() {
-  const { state, ask, stop } = useAsk();
-  const { record } = useSession();
-  const [history, setHistory] = useState<AskState[]>([]);
+  const { turns, busy, ask, stop } = useConversation();
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const recorded = useRef<unknown>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
-
-  const busy = state.status === "waiting" || state.status === "streaming";
-
-  useEffect(() => {
-    if (state.done && recorded.current !== state.done) {
-      recorded.current = state.done;
-      record(state.done);
-    }
-  }, [state.done, record]);
+  const { hash } = useLocation();
+  const last = turns[turns.length - 1];
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView?.({ block: "end" });
-  }, [state.text, state.status]);
+    if (hash) document.getElementById(hash.slice(1))?.scrollIntoView?.({ block: "start" });
+  }, [hash]);
 
-  function submit(question: string) {
-    if (state.status !== "idle") setHistory((prev) => [...prev, state]);
-    void ask(question);
-  }
+  useEffect(() => {
+    if (!hash) bottomRef.current?.scrollIntoView?.({ block: "end" });
+  }, [last?.text, last?.status, turns.length, hash]);
 
   const focusInput = () => inputRef.current?.focus();
-  const empty = history.length === 0 && state.status === "idle";
 
   return (
     <div className="mx-auto flex min-h-full max-w-3xl flex-col px-4 py-6">
       <div className="flex-1 space-y-10">
-        {empty ? (
+        {turns.length === 0 ? (
           <section className="py-10">
             <h1 className="text-2xl font-semibold">Pregunta a tus apuntes</h1>
             <p className="mt-2 text-muted">
@@ -102,7 +95,7 @@ export function Preguntar() {
                 <li key={example}>
                   <button
                     type="button"
-                    onClick={() => submit(example)}
+                    onClick={() => ask(example)}
                     className="rounded-full border border-border bg-surface px-3 py-1.5 text-left text-sm hover:border-accent"
                   >
                     {example}
@@ -112,18 +105,13 @@ export function Preguntar() {
             </ul>
           </section>
         ) : (
-          <>
-            {history.map((turn, index) => (
-              <Turn key={index} turn={turn} focusInput={focusInput} />
-            ))}
-            <Turn turn={state} focusInput={focusInput} />
-          </>
+          turns.map((turn, index) => <Turn key={index} turn={turn} index={index} focusInput={focusInput} />)
         )}
         <div ref={bottomRef} />
       </div>
 
       <div className="sticky bottom-0 mt-6 bg-bg pb-2 pt-3">
-        <AskForm onSubmit={submit} onStop={stop} busy={busy} inputRef={inputRef} />
+        <AskForm onSubmit={ask} onStop={stop} busy={busy} inputRef={inputRef} />
         <p className="mt-2 text-xs text-muted">
           Cada pregunta se responde de forma independiente: no recuerdo lo que preguntaste antes.
         </p>

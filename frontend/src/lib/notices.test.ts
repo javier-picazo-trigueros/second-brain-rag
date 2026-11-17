@@ -9,7 +9,6 @@ function done(overrides: Partial<DoneEvent> = {}): DoneEvent {
     answer: "x",
     citations: [],
     invalid: [],
-    bad_pages: [],
     warnings: [],
     not_found: false,
     confidence: "alta",
@@ -41,13 +40,6 @@ describe("describeNotices", () => {
     expect(one[0]!.title).toBe("1 cita no verificada");
     expect(two[0]!.title).toBe("2 citas no verificadas");
     expect(one[0]!.tone).toBe("caution");
-  });
-
-  it("counts unverified pages", () => {
-    const [notice] = describeNotices(
-      done({ warnings: ["paginas_no_verificadas"], bad_pages: [["a.md", 7], ["b.md", 9]] }),
-    );
-    expect(notice!.title).toBe("2 páginas no verificadas");
   });
 
   it.each([

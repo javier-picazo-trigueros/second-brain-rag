@@ -1,4 +1,4 @@
-import type { AskEvent, Confidence, DoneEvent, SourceInfo } from "../lib/api";
+import type { AskEvent, Confidence, DoneEvent, FragmentInfo, SourceInfo } from "../lib/api";
 
 export type AskStatus = "idle" | "waiting" | "streaming" | "done" | "error" | "stopped";
 
@@ -8,6 +8,8 @@ export interface AskState {
   /** Texto ya verificado por el servidor: nunca contiene una cita sin comprobar. */
   text: string;
   sources: SourceInfo[];
+  /** Cada identificador [S#] que el modelo podía citar. */
+  fragments: FragmentInfo[];
   confidence: Confidence | null;
   similarity: number | null;
   droppedNotes: number;
@@ -27,6 +29,7 @@ export const initialAskState: AskState = {
   question: "",
   text: "",
   sources: [],
+  fragments: [],
   confidence: null,
   similarity: null,
   droppedNotes: 0,
@@ -57,6 +60,7 @@ export function askReducer(state: AskState, action: AskAction): AskState {
         ...state,
         status: "streaming",
         sources: action.sources,
+        fragments: action.fragments,
         confidence: action.confidence,
         similarity: action.similarity,
         droppedNotes: action.dropped_notes,

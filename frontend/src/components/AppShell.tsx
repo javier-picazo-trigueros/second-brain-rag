@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { Link, NavLink, Outlet } from "react-router-dom";
 
+import { ConversationProvider, useConversation } from "../hooks/conversation";
 import { NoteContext } from "../hooks/notePanel";
 import { SessionProvider } from "../hooks/session";
 import { applyTheme, loadTheme, nextTheme, saveTheme, THEME_LABEL, type Theme } from "../lib/theme";
@@ -21,6 +22,29 @@ function readCollapsed(): boolean {
 }
 
 const THEME_ICON = { system: MonitorIcon, light: SunIcon, dark: MoonIcon } as const;
+
+function History() {
+  const { turns } = useConversation();
+  if (turns.length === 0) return null;
+  return (
+    <section aria-label="Esta sesión" className="mt-6 min-h-0 flex-1 overflow-y-auto">
+      <h2 className="px-3 pb-1 text-xs font-semibold uppercase tracking-wide text-muted">Esta sesión</h2>
+      <ol className="space-y-0.5">
+        {turns.map((turn, index) => (
+          <li key={index}>
+            <Link
+              to={{ pathname: "/", hash: `#pregunta-${index}` }}
+              title={turn.question}
+              className="block truncate rounded-md px-3 py-1.5 text-sm text-muted hover:bg-surface-2 hover:text-text"
+            >
+              {turn.question}
+            </Link>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
 
 export function AppShell() {
   const [collapsed, setCollapsed] = useState(readCollapsed);
@@ -52,6 +76,7 @@ export function AppShell() {
   return (
     <SessionProvider>
       <NoteContext.Provider value={{ open, close }}>
+        <ConversationProvider>
         <a
           href="#contenido"
           className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:rounded-md focus:bg-accent focus:px-3 focus:py-2 focus:text-accent-fg"
@@ -92,6 +117,7 @@ export function AppShell() {
                 </li>
               ))}
             </ul>
+            {collapsed ? <div className="flex-1" /> : <History />}
             <button
               type="button"
               onClick={cycleTheme}
@@ -113,6 +139,7 @@ export function AppShell() {
             </div>
           ) : null}
         </div>
+        </ConversationProvider>
       </NoteContext.Provider>
     </SessionProvider>
   );

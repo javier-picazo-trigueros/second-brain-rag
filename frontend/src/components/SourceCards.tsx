@@ -6,8 +6,9 @@ interface Props {
   onOpen: (path: string, page: number | null) => void;
 }
 
-function describe(source: SourceInfo): string {
-  return [source.asignatura, source.curso].filter(Boolean).join(" · ");
+function metaParts(source: SourceInfo): string[] {
+  const pages = source.pages.length > 0 ? `p. ${source.pages.join(", ")}` : null;
+  return [source.asignatura, source.curso, pages].filter((part): part is string => Boolean(part));
 }
 
 const CARD =
@@ -34,15 +35,16 @@ export function SourceCards({ sources, onOpen }: Props) {
                 >
                   <span className="flex items-center gap-2 font-medium">
                     <FileIcon size={15} />
-                    <span className="truncate">{source.label}</span>
+                    <span className="min-w-0 break-words">{source.label}</span>
+                  </span>{" "}
+                  <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
+                    {metaParts(source).map((part) => (
+                      <span key={part} className="rounded bg-surface-2 px-1.5 py-0.5">
+                        {part}
+                      </span>
+                    ))}
+                    {source.truncated ? <span className="italic">recortada para caber</span> : null}
                   </span>
-                  <span className="text-sm text-muted">
-                    {describe(source)}
-                    {source.pages.length > 0 ? `${describe(source) ? " · " : ""}p. ${source.pages.join(", ")}` : ""}
-                  </span>
-                  {source.truncated ? (
-                    <span className="text-xs text-muted">recortada para caber en el contexto</span>
-                  ) : null}
                 </button>
               </li>
             ))}

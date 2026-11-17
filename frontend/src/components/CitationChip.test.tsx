@@ -10,8 +10,7 @@ const valid = (over: Partial<Extract<CitationRef, { kind: "valid" }>> = {}): Cit
   kind: "valid",
   label: "Semáforos",
   path: "1º/SO/Semáforos.md",
-  page: null,
-  pageVerified: true,
+  pages: [],
   hint: false,
   ...over,
 });
@@ -26,22 +25,20 @@ describe("CitationChip", () => {
 
   it("shows the page and passes it on", async () => {
     const onOpen = vi.fn();
-    render(<CitationChip citation={valid({ page: "7" })} onOpen={onOpen} />);
+    render(<CitationChip citation={valid({ pages: [7] })} onOpen={onOpen} />);
     const button = screen.getByRole("button", { name: "Abrir «Semáforos», página 7" });
-    expect(button).toHaveTextContent("p. 7");
+    expect(button).toHaveTextContent("Semáforos·p. 7");
     await userEvent.click(button);
     expect(onOpen).toHaveBeenCalledWith("1º/SO/Semáforos.md", 7);
   });
 
-  it.each([
-    ["7-9", 7],
-    ["7, 9", 7],
-    ["7 y 9", 7],
-  ])("opens the first page of %s", async (page, first) => {
+  it("lists several pages and opens the first", async () => {
     const onOpen = vi.fn();
-    render(<CitationChip citation={valid({ page })} onOpen={onOpen} />);
-    await userEvent.click(screen.getByRole("button"));
-    expect(onOpen).toHaveBeenCalledWith("1º/SO/Semáforos.md", first);
+    render(<CitationChip citation={valid({ pages: [6, 7, 9] })} onOpen={onOpen} />);
+    const button = screen.getByRole("button", { name: "Abrir «Semáforos», páginas 6, 7 y 9" });
+    expect(button).toHaveTextContent("p. 6, 7, 9");
+    await userEvent.click(button);
+    expect(onOpen).toHaveBeenCalledWith("1º/SO/Semáforos.md", 6);
   });
 
   it("activates with the keyboard", async () => {
@@ -52,14 +49,6 @@ describe("CitationChip", () => {
     await userEvent.keyboard("{Enter}");
     await userEvent.keyboard(" ");
     expect(onOpen).toHaveBeenCalledTimes(2);
-  });
-
-  it("flags an unverified page without hiding the citation", () => {
-    render(<CitationChip citation={valid({ page: "99", pageVerified: false })} onOpen={() => {}} />);
-    const button = screen.getByRole("button");
-    expect(button).toHaveAccessibleName(/página 99 no verificada/);
-    expect(button).toHaveTextContent("p. 99");
-    expect(button).toHaveAttribute("data-page-verified", "false");
   });
 
   it("presents a related-note citation as 'ver también'", () => {
@@ -86,17 +75,27 @@ describe("CitationChip", () => {
     expect(screen.queryByRole("button")).toBeNull();
   });
 
+  it("never writes the explanation of an unverified citation into the text of the answer", () => {
+    // Regresión: el texto del tooltip aparecía pegado dentro de la respuesta.
+    const { container } = render(
+      <p>
+        Dato <CitationChip citation={{ kind: "unverified", label: "Inventada" }} onOpen={() => {}} /> fin.
+      </p>,
+    );
+    expect(container).toHaveTextContent("Dato Inventada fin.");
+    expect(container.textContent).not.toMatch(/no estaba entre las fuentes/);
+  });
+
   it("copes with an unverified citation that has no name", () => {
     render(<CitationChip citation={{ kind: "unverified", label: "" }} onOpen={() => {}} />);
-    expect(screen.getByRole("note")).toHaveAccessibleName(/cita no verificada/i);
+    expect(screen.getByRole("note")).toHaveAccessibleName("Cita no verificada");
   });
 
   it("has no accessibility violations", async () => {
     const { container } = render(
       <p>
-        <CitationChip citation={valid({ page: "7" })} onOpen={() => {}} />
-        <CitationChip citation={valid({ page: "9", pageVerified: false })} onOpen={() => {}} />
-        <CitationChip citation={valid({ label: "Redes", hint: true })} onOpen={() => {}} />
+        <CitationChip citation={valid({ pages: [7] })} onOpen={() => {}} />
+        <CitationChip citation={valid({ hint: true, label: "Redes" })} onOpen={() => {}} />
         <CitationChip citation={{ kind: "unverified", label: "X" }} onOpen={() => {}} />
       </p>,
     );

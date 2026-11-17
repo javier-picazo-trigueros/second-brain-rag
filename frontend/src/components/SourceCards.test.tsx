@@ -29,8 +29,17 @@ describe("SourceCards", () => {
     render(<SourceCards sources={sources} onOpen={() => {}} />);
     expect(screen.getByRole("heading", { name: "Fuentes usadas (2)" })).toBeInTheDocument();
     const card = screen.getByRole("button", { name: /Doc iptables/ });
-    expect(card).toHaveTextContent("SEGURIDAD · 4º");
+    expect(card).toHaveTextContent("SEGURIDAD");
+    expect(card).toHaveTextContent("4º");
     expect(card).toHaveTextContent("p. 4, 21");
+  });
+
+  it("keeps the title, the subject and the pages visibly and textually apart", () => {
+    // Regresión: salía «Tema-3.1 Procesos e Hilos v2021SISTEMAS».
+    render(<SourceCards sources={sources} onOpen={() => {}} />);
+    const text = screen.getByRole("button", { name: /Doc iptables/ }).textContent ?? "";
+    expect(text).toMatch(/Doc iptables\s+SEGURIDAD/);
+    expect(text).not.toMatch(/iptablesSEGURIDAD/);
   });
 
   it("opens the note at its first page", async () => {
@@ -49,7 +58,7 @@ describe("SourceCards", () => {
 
   it("says when a source was shortened to fit", () => {
     render(<SourceCards sources={sources} onOpen={() => {}} />);
-    expect(screen.getByRole("button", { name: /Práctica/ })).toHaveTextContent("recortada");
+    expect(screen.getByRole("button", { name: /Práctica/ })).toHaveTextContent("recortada para caber");
   });
 
   it("keeps the related notes apart, as hints", () => {

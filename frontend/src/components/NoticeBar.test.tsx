@@ -12,7 +12,6 @@ function done(over: Partial<DoneEvent> = {}): DoneEvent {
     answer: "x",
     citations: [],
     invalid: [],
-    bad_pages: [],
     warnings: [],
     not_found: false,
     confidence: "alta",

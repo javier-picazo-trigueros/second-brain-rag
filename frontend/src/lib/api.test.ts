@@ -67,7 +67,7 @@ describe("askStream", () => {
     'event: sources\ndata: {"sources":[],"confidence":"alta","similarity":0.7,"dropped_notes":0}\n\n' +
     'event: token\ndata: {"text":"Hola "}\n\n' +
     'event: token\ndata: {"text":"mundo"}\n\n' +
-    'event: done\ndata: {"answer":"Hola mundo","citations":[],"invalid":[],"bad_pages":[],' +
+    'event: done\ndata: {"answer":"Hola mundo","citations":[],"invalid":[],' +
     '"warnings":[],"not_found":false,"confidence":"alta","similarity":0.7,' +
     '"timings":{"retrieval_ms":1,"first_token_ms":2,"total_ms":3,"llm_load_ms":0,"tokens_per_second":50},' +
     '"prompt_tokens":10,"completion_tokens":2}\n\n';

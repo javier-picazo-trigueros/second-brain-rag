@@ -1,12 +1,12 @@
 import { useId } from "react";
 
-import type { SourceInfo } from "../lib/api";
+import type { FragmentInfo } from "../lib/api";
 import { AnswerView } from "./AnswerView";
 import { InfoIcon } from "./icons";
 
 const FIXED_SENTENCE = "No lo encuentro en el vault.";
 
-/** Lo que el modelo añadió tras la frase fija (normalmente «Podrías mirar: [[Nota]]»). */
+/** Lo que el modelo añadió tras la frase fija (normalmente «Podrías mirar: [S2]»). */
 export function splitNotFound(answer: string): string {
   const text = answer.trim();
   return text.startsWith(FIXED_SENTENCE) ? text.slice(FIXED_SENTENCE.length).trim() : text;
@@ -14,7 +14,7 @@ export function splitNotFound(answer: string): string {
 
 interface Props {
   answer: string;
-  sources: SourceInfo[];
+  fragments: FragmentInfo[];
   evidenceCount: number;
   lowConfidence: boolean;
   onOpenNote: (path: string, page: number | null) => void;
@@ -29,7 +29,7 @@ const BUTTON =
 /** «No lo encuentro en el vault»: un resultado legítimo, no un error. Tono sereno, sin rojo. */
 export function NotFoundCard({
   answer,
-  sources,
+  fragments,
   evidenceCount,
   lowConfidence,
   onOpenNote,
@@ -59,7 +59,7 @@ export function NotFoundCard({
           {suggestions ? (
             <div>
               <h4 className="mb-1 text-sm font-semibold">Notas cercanas</h4>
-              <AnswerView text={suggestions} sources={sources} onOpenNote={onOpenNote} />
+              <AnswerView text={suggestions} fragments={fragments} onOpenNote={onOpenNote} />
             </div>
           ) : null}
           <div className="flex flex-wrap gap-2 pt-1">

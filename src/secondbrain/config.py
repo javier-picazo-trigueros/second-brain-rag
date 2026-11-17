@@ -97,8 +97,8 @@ class Settings(BaseSettings):
     exercises_budget_tokens: int = Field(7000, ge=1000)  # estimados; ~1,5x en texto numérico
     exercises_max_tokens: int = Field(2000, ge=1)  # tope de la respuesta en este modo
     # Modo «apuntes»: se escribe por partes; cada una ve una ventana de fragmentos reales.
-    notes_window_tokens: int = Field(3500, ge=500)  # tokens estimados de fuentes por parte
-    notes_part_max_tokens: int = Field(1400, ge=100)  # tope de cada parte escrita
+    notes_window_tokens: int = Field(3000, ge=500)  # tokens estimados de fuentes por parte
+    notes_part_max_tokens: int = Field(2000, ge=100)  # tope de cada parte escrita
     notes_skeleton_chars: int = Field(1500, ge=0)  # del resumen del tema que acompaña a cada parte
     exercises_theory_notes: int = Field(2, ge=0)  # notas de teoría que acompañan a los ejercicios
 

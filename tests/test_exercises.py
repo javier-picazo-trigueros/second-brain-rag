@@ -7,7 +7,13 @@ from typing import Any
 import pytest
 
 from secondbrain.answer.context import build_context
-from secondbrain.answer.pipeline import AnswerPipeline, DoneEvent, SourcesEvent, TokenEvent
+from secondbrain.answer.pipeline import (
+    PARTIAL_NOTE,
+    AnswerPipeline,
+    DoneEvent,
+    SourcesEvent,
+    TokenEvent,
+)
 from secondbrain.answer.prompt import NOT_FOUND, build_messages
 from secondbrain.config import Settings
 from secondbrain.domain import Hit
@@ -143,6 +149,7 @@ def build(
     index: SubjectIndex,
     topic: int = 2,
     texts: dict[str, list[str]] | None = None,
+    question: str = "",
 ) -> tuple[SearchResult, ChunkStore, list[list[str]]]:
     store = ChunkStore(texts or {})
     theory_calls: list[list[str]] = []
@@ -154,12 +161,12 @@ def build(
     subject = index.by_name("Data Mining")
     assert subject is not None
     result = ExerciseBuilder(settings(tmp_path), store, manifest, CopyFamilies(manifest)).build(
-        subject, topic, index.topic_notes(subject, topic), theory
+        subject, topic, index.topic_notes(subject, topic), theory, question
     )
     return result, store, theory_calls
 
 
-def test_exercises_come_first_each_followed_by_its_solution_then_the_theory(
+def test_only_the_first_exercise_is_solved_with_its_solution_then_the_theory(
     tmp_path: Path, manifest: Manifest, index: SubjectIndex
 ) -> None:
     result, _, _ = build(tmp_path, manifest, index)
@@ -167,10 +174,63 @@ def test_exercises_come_first_each_followed_by_its_solution_then_the_theory(
     assert [n.path for n in result.notes] == [
         "3º/DM/DM - Unit 2 - Sample exercises 1.md",
         "3º/DM/DM - Unit 2 - Sample exercises 1 - solution.md",
-        "3º/DM/DM - Unit 2 - Sample exercises 2.md",
-        "3º/DM/DM - Unit 2 - Sample exercises 2 - solution.md",
         "3º/DM/DM - Unit 2 - Preparation notes.md",
     ]
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "resuelve el ejercicio 2 del tema 2 de data mining",
+        "ve al problema 2 del tema 2 de data mining y explícamelo",
+        "sigue con el ejercicio número 2 del tema 2 de data mining",
+    ],
+)
+def test_a_named_exercise_is_the_one_solved(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex, question: str
+) -> None:
+    result, _, _ = build(tmp_path, manifest, index, question=question)
+    assert [n.path for n in result.notes][:2] == [
+        "3º/DM/DM - Unit 2 - Sample exercises 2.md",
+        "3º/DM/DM - Unit 2 - Sample exercises 2 - solution.md",
+    ]
+    assert "ejercicio 2 (Sample exercises 2)" in result.facts
+    assert "ejercicio 1" in result.facts.split("lista los demás")[1]
+
+
+def test_an_exercise_number_that_does_not_exist_falls_back_to_the_first(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    result, _, _ = build(tmp_path, manifest, index, question="resuelve el ejercicio 9 del tema 2")
+    assert result.notes[0].path.endswith("Sample exercises 1.md")
+
+
+def test_the_facts_tell_the_model_to_finish_one_and_offer_the_rest(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    result, _, _ = build(tmp_path, manifest, index)
+    facts = result.facts
+    assert "COMPLETO" in facts and "ejercicio 1 (Sample exercises 1)" in facts
+    assert "¿Sigo con el ejercicio 2?" in facts
+    assert (
+        "resuelve el ejercicio 2 del tema 2 de Data Mining" in facts
+    )  # cada pregunta es independiente
+
+
+def test_a_single_exercise_has_no_follow_up_question(tmp_path: Path, index: SubjectIndex) -> None:
+    paths = ["3º/DM/DM - Unit 2 - Theory.md", "3º/DM/DM - Unit 2 - Taller PCA.md"]
+    m = Manifest(tmp_path / "s1.sqlite")
+    for p in paths:
+        m.upsert(p, "h", 3)
+        m.set_meta(p, (), None)
+    idx = SubjectIndex(paths, ALIASES)
+    subject = idx.by_name("Data Mining")
+    assert subject is not None
+    result = ExerciseBuilder(settings(tmp_path), ChunkStore({}), m, CopyFamilies(m)).build(
+        subject, 2, idx.topic_notes(subject, 2), lambda ps: []
+    )
+    m.close()
+    assert "¿Sigo con" not in result.facts
 
 
 def test_it_never_includes_notes_of_another_subject_or_topic(
@@ -353,7 +413,7 @@ def test_the_exercise_prompt_asks_for_the_statement_then_the_steps_with_the_theo
     result, _, _ = build(tmp_path, manifest, index)
     s = settings(tmp_path)
     system = build_messages("resuelve", build_context(result, s))[0].content
-    for phrase in ("enunciado", "solución", "paso a paso", "uno a uno", "no inventes"):
+    for phrase in ("enunciado", "solución", "paso a paso", "completo", "no recalcules", "cita"):
         assert phrase in system.lower()
     # el worst case sigue cabiendo en la ventana
     messages = build_messages("¿" + "p " * 3000 + "?", build_context(result, s))
@@ -393,16 +453,43 @@ def found(tmp_path: Path) -> SearchResult:
     return SearchResult([theory_hit("3º/DM/DM - Unit 2 - Preparation notes.md")], [], 0.8)
 
 
-def test_not_found_after_invented_content_cuts_the_answer_and_replaces_it(tmp_path: Path) -> None:
-    deltas = ["Para resolverlo, calcula la media [S1]. ", "Luego resta. ", NOT_FOUND, " Más texto."]
+def test_not_found_after_uncited_content_drops_everything(tmp_path: Path) -> None:
+    deltas = ["Para resolverlo, calcula la media. ", "Luego resta. ", NOT_FOUND, " Más texto."]
     events, _ = _pipeline(tmp_path, found(tmp_path), deltas)
     done = events[-1]
     assert isinstance(done, DoneEvent)
     assert done.answer == NOT_FOUND and done.not_found
     assert "respuesta_contradictoria" in done.warnings
-    assert "sin_citas" not in done.warnings
+    assert "respuesta_parcial" not in done.warnings
     streamed = "".join(e.text for e in events if isinstance(e, TokenEvent))
     assert "Más texto" not in streamed  # se cortó la generación al verla
+
+
+def test_not_found_after_content_keeps_only_the_sentences_with_verified_citations(
+    tmp_path: Path,
+) -> None:
+    deltas = [
+        "Dato cierto [S1]. Invento sin cita. Otro cierto [S1]. ",
+        "Cita falsa [S9]. ",
+        NOT_FOUND,
+        " Más texto.",
+    ]
+    events, _ = _pipeline(tmp_path, found(tmp_path), deltas)
+    done = events[-1]
+    assert isinstance(done, DoneEvent)
+    assert done.answer == f"Dato cierto [S1]. Otro cierto [S1].\n\n{PARTIAL_NOTE}"
+    assert "respuesta_parcial" in done.warnings
+    assert "respuesta_contradictoria" not in done.warnings
+    assert not done.not_found
+    assert [c.id for c in done.citations] == ["S1"] and done.invalid == ()
+
+
+def test_the_partial_answer_keeps_whole_list_lines_with_citations(tmp_path: Path) -> None:
+    deltas = ["- Con cita [S1]\n- Inventado sin cita\n- Otra con cita [S1]\n", NOT_FOUND]
+    events, _ = _pipeline(tmp_path, found(tmp_path), deltas)
+    done = events[-1]
+    assert isinstance(done, DoneEvent)
+    assert done.answer == f"- Con cita [S1]\n- Otra con cita [S1]\n\n{PARTIAL_NOTE}"
 
 
 def test_not_found_at_the_start_is_a_normal_answer_with_its_suggestion(tmp_path: Path) -> None:
@@ -446,3 +533,98 @@ def test_the_budget_leaves_room_for_the_long_answer_even_with_numeric_text(
     """El estimador de tokens infravalora el texto numérico (~1,5x): el margen lo absorbe."""
     s = settings(tmp_path)
     assert s.exercises_budget_tokens * 1.6 + s.exercises_max_tokens + 1200 <= s.llm_num_ctx
+
+
+# --- números y pasos: lo que no sale de la fuente se avisa ------------------------------
+
+SOLUTION_TEXTS = {
+    "3º/DM/DM - Unit 2 - Sample exercises 1.md": ["Enunciado: 301 pizzas, 7 variables."],
+    "3º/DM/DM - Unit 2 - Sample exercises 1 - solution.md": [
+        "Eigenvalues: 0.76384, 0.0202. Variance %: 0.951043, 0.025151. Suma 0.80316."
+    ],
+}
+
+
+def exercise_run(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex, deltas: Sequence[str]
+) -> DoneEvent:
+    result, _, _ = build(tmp_path, manifest, index, texts=SOLUTION_TEXTS)
+    events, _ = _pipeline(tmp_path, result, deltas)
+    done = events[-1]
+    assert isinstance(done, DoneEvent)
+    return done
+
+
+def test_a_number_that_is_not_in_the_sources_is_reported(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    done = exercise_run(
+        tmp_path, manifest, index, ["Paso 1: la suma de autovalores es 0,79209 [S2]."]
+    )
+    assert "numeros_no_verificados" in done.warnings
+    assert done.unverified_numbers == ("0,79209",)
+
+
+def test_numbers_copied_from_the_solution_are_never_reported(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    deltas = [
+        "Paso 1: autovalores 0.76384 y 0,0202 [S2].\n",
+        "Paso 2: varianza 0.951043 [S2], es decir 95,1043 % del total [S2].\n",
+        "Paso 3: 301 pizzas con 7 variables y suma 0.80316 [S1][S2].",
+    ]
+    done = exercise_run(tmp_path, manifest, index, deltas)
+    assert done.unverified_numbers == () and "numeros_no_verificados" not in done.warnings
+
+
+def test_small_counts_and_step_numbers_are_not_numbers_to_verify(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    done = exercise_run(
+        tmp_path, manifest, index, ["Paso 1: hay 2 ejercicios y 3 pasos [S2].\nPaso 2: ver [S2]."]
+    )
+    assert done.unverified_numbers == ()
+
+
+def test_the_number_check_only_applies_to_exercise_answers(tmp_path: Path) -> None:
+    events, _ = _pipeline(tmp_path, found(tmp_path), ["Vale 12345,678 [S1]."])
+    done = events[-1]
+    assert isinstance(done, DoneEvent)
+    assert done.unverified_numbers == () and "numeros_no_verificados" not in done.warnings
+
+
+def test_steps_without_a_citation_are_counted_and_flagged(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    deltas = [
+        "Paso 1: leer el enunciado [S1].\nPaso 2: calcular sin fuente.\n- detalle del paso 2\n"
+        "Paso 3: otro sin cita.\nPaso 4: resultado [S2]"
+    ]
+    done = exercise_run(tmp_path, manifest, index, deltas)
+    assert done.uncited_steps == 2 and "pasos_sin_cita" in done.warnings
+
+
+def test_an_exercise_answer_with_a_citation_in_every_step_raises_no_step_warning(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    deltas = ["Paso 1: leer [S1].\nPaso 2: copiar el resultado [S2].\n- Conclusión [S2]"]
+    done = exercise_run(tmp_path, manifest, index, deltas)
+    assert done.uncited_steps == 0 and "pasos_sin_cita" not in done.warnings
+
+
+def test_an_exercise_answer_without_any_citation_is_flagged_as_uncited(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    done = exercise_run(tmp_path, manifest, index, ["Paso 1: algo.\nPaso 2: otra cosa."])
+    assert "sin_citas" in done.warnings and done.uncited_steps == 2
+
+
+def test_every_fragment_of_the_exercise_context_is_citable_with_its_own_id(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    result, _, _ = build(tmp_path, manifest, index, texts=SOLUTION_TEXTS)
+    context = build_context(result, settings(tmp_path))
+    ids = [f.id for f in context.fragments]
+    assert ids == [f"S{i}" for i in range(1, len(ids) + 1)]
+    for fragment_id in ids:
+        assert f"[{fragment_id}]" in context.text  # cabecera «### [S#]» de cada fragmento

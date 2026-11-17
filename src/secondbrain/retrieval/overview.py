@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from pathlib import PurePosixPath
 from typing import Any, Protocol
 
@@ -27,6 +28,7 @@ from secondbrain.retrieval.topics import index_topics, is_exercise, is_guide, to
 from secondbrain.store.manifest import Manifest
 
 _COURSE = re.compile(r"^\d+º$")
+_AMBIGUITY_RATIO = 0.75  # una fuente «igual de relevante» puntúa al menos esto sobre la mejor
 _MIN_NUMBERED_TOPICS = (
     3  # a partir de aquí hay un temario numerado y solo él representa la asignatura
 )
@@ -233,7 +235,34 @@ class IntentRetriever:
         named = index.detect_all(query)
         if intent.kind == "search" and len(named) >= 2:
             return self._cross(query, k, [index.notes_of(s) for s in named])
-        return self._base.search(query, k, with_graph=with_graph)
+        result = self._base.search(query, k, with_graph=with_graph)
+        if intent.subject is None and not named:
+            return self._flag_ambiguity(index, result)
+        return result
+
+    def _flag_ambiguity(self, index: SubjectIndex, result: SearchResult) -> SearchResult:
+        """Si las mejores fuentes, igual de relevantes, son de asignaturas distintas, el modelo
+        debe decirlo al principio y responder con la más relevante (p. ej. «Euler» en grafos y en
+        el método numérico)."""
+        top = result.notes[:3]
+        if len(top) < 2:
+            return result
+        close = [n for n in top if n.score >= _AMBIGUITY_RATIO * top[0].score]
+        by_subject: dict[str, str] = {}
+        for note in close:
+            name = index.name_of(note.path)
+            if name is not None:
+                by_subject.setdefault(name, PurePosixPath(note.path).stem)
+        if len(by_subject) < 2:
+            return result
+        listed = " y ".join(f"«{name}» ({title})" for name, title in by_subject.items())
+        message = (
+            "AMBIGÜEDAD: las fuentes más relevantes tratan temas distintos de asignaturas "
+            f"distintas: {listed}. Empieza la respuesta con una primera frase que diga a qué "
+            "asignaturas se refieren las fuentes y responde con la más relevante, sin mezclarlas."
+        )
+        facts = f"{result.facts}\n{message}" if result.facts else message
+        return replace(result, facts=facts)
 
     def _study_result(self, index: SubjectIndex, subject: Subject, topic: int) -> SearchResult:
         notes = index.topic_notes(subject, topic)
@@ -265,7 +294,7 @@ class IntentRetriever:
                 query, self._s.exercises_theory_notes, with_graph=False, only_paths=list(paths)
             ).notes
 
-        return self._exercises.build(subject, topic, notes, theory)
+        return self._exercises.build(subject, topic, notes, theory, query)
 
     def _cross(self, query: str, k: int, groups: list[list[str]]) -> SearchResult:
         """Pregunta que cruza asignaturas: se busca en cada una y se intercalan los resultados,

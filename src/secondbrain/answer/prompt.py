@@ -58,15 +58,16 @@ TOPIC_PROMPT = (
 
 
 EXERCISES_PROMPT = (
-    "\n6. Esta petición es sobre los EJERCICIOS de un tema: las fuentes son sus enunciados, "
-    "sus soluciones (si existen) y fragmentos de teoría del tema. El DATO DEL ÍNDICE lista los "
-    "ejercicios que hay. Responde así: 1) di cuántos ejercicios hay y cuáles son; 2) resuélvelos "
-    "uno a uno, paso a paso: copia o resume el enunciado con su cita [S#], aplica la teoría del "
-    "tema para justificar cada paso (con su cita) y usa la solución de la fuente para el resultado "
-    "final; 3) si son varios y la petición es general, resuelve el primero y pregunta cuál quiere "
-    "después. Usa SOLO datos y pasos que estén en las fuentes: si falta un dato, dilo; no "
-    "inventes pasos genéricos. Una cita por afirmación, sin encadenar más de dos. No escribas "
-    "la frase «No lo encuentro en el vault» si has respondido con contenido."
+    "\n6. Esta petición es sobre un EJERCICIO de un tema. El DATO DEL ÍNDICE dice cuál resolver y "
+    "cuáles hay. Resuelve SOLO ese ejercicio, COMPLETO: resume su enunciado (con cita) y sigue "
+    "paso a paso: «Paso 1: …», «Paso 2: …». "
+    "Cada paso termina con su cita [S#]: un paso sin cita no vale. Copia de la SOLUCIÓN los "
+    "números y resultados tal cual, con su cita; NO recalcules, sumes ni redondees por tu cuenta. "
+    "Si un paso necesita un cálculo que no está en la solución, escribe «este valor no aparece en "
+    "la solución» en vez de calcularlo. No copies listas largas de números: remite a la fuente "
+    "con su cita. Usa la teoría del tema para explicar el porqué de cada paso. Al terminar, haz "
+    "lo que indica el DATO DEL ÍNDICE sobre los demás ejercicios. No inventes pasos ni escribas "
+    "«No lo encuentro en el vault» si has respondido."
 )
 
 STUDY_PROMPT = (
@@ -74,9 +75,11 @@ STUDY_PROMPT = (
     "FRAGMENTOS de esta parte y sigue su orden. Incluye TODAS las definiciones, propiedades y "
     "teoremas con su enunciado completo, y los ejemplos resueltos paso a paso; no los condenses en "
     "una frase. Escribe las fórmulas en LaTeX ($...$ en línea, $$...$$ en bloque). Usa "
-    "subtítulos (###) y listas. Empieza directamente por el contenido: el sistema ya pone el "
-    "título de la parte; no hagas introducción ni conclusión. Una cita [S#] por afirmación. No "
-    "inventes nada que no esté en los fragmentos ni escribas «No lo encuentro en el vault»."
+    "subtítulos (###) y listas. Todo código va en bloques ``` con su lenguaje (```c), nunca entre "
+    "$ ni \\[ \\]: el LaTeX es solo para fórmulas matemáticas. Empieza directamente por el "
+    "contenido: el sistema ya pone el título de la parte; no hagas introducción ni conclusión. "
+    "Una cita [S#] por afirmación. No inventes nada que no esté en los fragmentos ni escribas "
+    "«No lo encuentro en el vault»."
 )
 
 STUDY_EXERCISES_PROMPT = (

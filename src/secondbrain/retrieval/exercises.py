@@ -25,7 +25,7 @@ from secondbrain.store.manifest import Manifest
 TheorySearch = Callable[[Sequence[str]], list[NoteHit]]
 
 _SOLUTION_WORDS = re.compile(r"\b(?:solutions?|soluciones|solucion(?:es|ario)?)\b")
-_DIGITS = re.compile(r"\d+")
+_NAMED = re.compile(r"\b(?:ejercicio|problema)s?\s*(?:numero\s*)?(\d{1,2})\b")
 
 
 class ChunkSource(Protocol):
@@ -56,6 +56,14 @@ def _natural(key: str) -> list[object]:
     return [int(t) if t.isdigit() else t for t in re.split(r"(\d+)", key) if t]
 
 
+def _pick(exercises: Sequence[_Exercise], question: str) -> int:
+    """Ejercicio a resolver: el que nombra la pregunta («el ejercicio 2») o el primero."""
+    named = _NAMED.search(norm(question))
+    if named is not None and 1 <= int(named.group(1)) <= len(exercises):
+        return int(named.group(1)) - 1
+    return 0
+
+
 def no_exercises_text(subject: str, topic: int, titles: Sequence[str]) -> str:
     """Respuesta fija cuando el tema no tiene ejercicios (o no existe)."""
     head = f"No encuentro ejercicios del tema {topic} de {subject}."
@@ -84,7 +92,12 @@ class ExerciseBuilder:
         self._families = families or CopyFamilies(manifest)
 
     def build(
-        self, subject: Subject, topic: int, notes: Sequence[str], theory: TheorySearch
+        self,
+        subject: Subject,
+        topic: int,
+        notes: Sequence[str],
+        theory: TheorySearch,
+        question: str = "",
     ) -> SearchResult:
         """Evidencia de los ejercicios del tema, o la respuesta fija si no hay ninguno."""
         reps, copies = self._families.collapse(notes)
@@ -92,7 +105,8 @@ class ExerciseBuilder:
         if not exercises:
             return self._none(subject.name, topic, reps)
 
-        order = [path for ex in exercises for path in ex.paths]
+        chosen = _pick(exercises, question)
+        order = exercises[chosen].paths
         by_note: dict[str, list[dict[str, Any]]] = {}
         for chunk in self._store.chunks_of(order):
             by_note.setdefault(str(chunk["note_path"]), []).append(chunk)
@@ -116,7 +130,7 @@ class ExerciseBuilder:
         if theory_paths and self._s.exercises_theory_notes > 0:
             hits.extend(theory(theory_paths)[: self._s.exercises_theory_notes])
         return SearchResult(
-            hits, [], None, mode="exercises", facts=self._facts(subject, topic, exercises)
+            hits, [], None, mode="exercises", facts=self._facts(subject, topic, exercises, chosen)
         )
 
     def classify(self, reps: Sequence[str]) -> tuple[list[_Exercise], list[str]]:
@@ -144,16 +158,30 @@ class ExerciseBuilder:
         return exercises, theory
 
     @staticmethod
-    def _facts(subject: Subject, topic: int, exercises: Sequence[_Exercise]) -> str:
+    def _facts(subject: Subject, topic: int, exercises: Sequence[_Exercise], chosen: int) -> str:
         n = len(exercises)
         noun = "ejercicio" if n == 1 else "ejercicios"
         listed = "; ".join(
             f"{i}) {e.title} ({'con solución' if e.solutions else 'sin solución'})"
             for i, e in enumerate(exercises, start=1)
         )
+        head = f"DATO DEL ÍNDICE: el tema {topic} de {subject.name} tiene {n} {noun}: {listed}."
+        number = chosen + 1
+        solve = (
+            f" Resuelve SOLO el ejercicio {number} ({exercises[chosen].title}): resuélvelo "
+            "COMPLETO, paso a paso."
+        )
+        others = [i for i in range(n) if i != chosen]
+        if others:
+            following = next((i for i in others if i > chosen), others[0]) + 1
+            rest = ", ".join(f"ejercicio {i + 1}" for i in others)
+            solve += (
+                f" Cuando termines, lista los demás ({rest}) y pregunta: «¿Sigo con el ejercicio "
+                f"{following}?», indicando que se pide así: «resuelve el ejercicio {following} "
+                f"del tema {topic} de {subject.name}»."
+            )
         return (
-            f"DATO DEL ÍNDICE: el tema {topic} de {subject.name} tiene {n} {noun}: {listed}. "
-            "Las fuentes llevan, por cada ejercicio, su enunciado, su solución si existe y "
+            f"{head}{solve} Las fuentes llevan el enunciado y la solución de ese ejercicio y "
             "fragmentos de teoría del tema."
         )
 

@@ -22,9 +22,10 @@ from secondbrain.store.qdrant import VectorStore
 log = logging.getLogger(__name__)
 
 
-def _warm_up(retriever: HybridRetriever) -> None:
-    """Una búsqueda de prueba: carga bge-m3 en memoria, el modelo BM25 y la conexión a Qdrant."""
+def _warm_up(retriever: HybridRetriever, catalog: Catalog) -> None:
+    """Una búsqueda de prueba (carga bge-m3, el modelo BM25 y la conexión a Qdrant) y las etiquetas."""
     retriever.search("calentamiento", k=1, with_graph=False)
+    catalog.note_tags()
 
 
 def build_services(settings: Settings | None = None) -> AppServices:
@@ -37,6 +38,7 @@ def build_services(settings: Settings | None = None) -> AppServices:
     manifest = Manifest(s.manifest_path)
     retriever = HybridRetriever(s, embedder, store, manifest)
     answers = IntentRetriever(s, retriever, store, manifest)  # visión general o búsqueda
+    catalog = Catalog(s, manifest, store)
     indexer = Indexer(s, embedder, store, manifest)
     health = HealthChecker(s, httpx.Client(base_url=s.ollama_url), store.count)
     return AppServices(
@@ -47,8 +49,8 @@ def build_services(settings: Settings | None = None) -> AppServices:
         health=health.check,
         reindex=ReindexManager(lambda progress: indexer.sync(on_progress=progress)),
         points=store.count,
-        warmup=lambda: _warm_up(retriever),
-        catalog=Catalog(s, manifest, store),
+        warmup=lambda: _warm_up(retriever, catalog),
+        catalog=catalog,
     )
 
 

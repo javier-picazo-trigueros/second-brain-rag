@@ -429,8 +429,27 @@ Hecho (entregas A y B1):
 - Capturas y axe sobre la aplicación real (360/768/1280 px, claro y oscuro, 13 estados = 78): 0
   violaciones, 0 desbordes.
 
-Falta (B2): KaTeX local (en notas y en las respuestas del modelo), Ctrl+K y la revisión final; y los
-tres puntos que se añadieron después de B1: citas adyacentes, copias casi idénticas y modo «apuntes».
+### Citas adyacentes y versiones de una nota (añadidos tras B1)
+
+- **Citas adyacentes.** Los chips de notas distintas van separados por un espacio fino real, de modo
+  que «[2][1]» se lee y se copia «2 1», no «21». Tests de texto (`answer.test.ts`, `AnswerView.test`)
+  y una comprobación de maquetación en `scripts/screens.mjs` (≥ 3 px entre chips contiguos).
+- **Familias de copias** (`retrieval/families.py`). Las copias exactas (mismo cuerpo) y las versiones
+  (títulos que solo difieren en « (n)» o «copia»/«copy», misma asignatura canónica, contenido distinto)
+  forman una familia que se muestra como una sola nota, en búsqueda, visión general y fuentes. La
+  representante es la de título sin sufijo y, si no la hay, la de más fragmentos. Guardas, nacidas de
+  medir sobre el índice real (la primera versión fusionaba 20 `README.md` de prácticas distintas):
+  una versión solo se une al original si este es único en la asignatura, entre versiones sin original
+  solo se unen las de una misma carpeta, y `(2024)` no es un sufijo. Resultado en el vault: 128
+  grupos de copias exactas y 7 familias con versiones no idénticas (p. ej. `DM - Unit 5 - Classification
+  - Non Rule based algorithms` y su «(1)»).
+- **Golden antes/después** (28 preguntas; `evals/results/p12_*.json`): recall 0,93 → 0,93; precisión
+  0,84 → 0,83; ruido 0,32 → 0,36; citas inválidas 0 → 0. La bajada de `dm-svm` es en parte de la medida: el
+  evaluador busca por subcadena de título y «Unit 5 - Classification» contaba dos veces (original y
+  «(1)»); ahora cuenta una y el hueco lo ocupa otra nota que pasa el corte de coseno.
+
+Falta: B2 (KaTeX local en notas y respuestas, Ctrl+K, capturas y documentación) y, después, el modo
+«apuntes».
 
 ## Pendiente para la Fase 4
 

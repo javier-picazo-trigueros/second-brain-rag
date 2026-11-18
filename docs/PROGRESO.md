@@ -2,7 +2,46 @@
 
 Se actualiza en cada checkpoint.
 
-## Estado
+## Checkpoint actual · Entrega 1 de fiabilidad
+
+18 de noviembre de 2026. Rama local `feat/entrega-1-fiabilidad`, basada en
+`feat/fase-3c-apuntes-ejercicios`. Entrega verificada y pendiente de autorización para integrar y publicar.
+
+| Caso reproducido sobre fixtures | Antes | Resultado verificado |
+|---|---|---|
+| Recorrido vacío con diez notas indexadas | Las diez se trataban como borradas | Cero borradas, diez conservadas y fallo informado |
+| Fallo de BM25 o de un lote de upsert | La versión anterior desaparecía o se veía solo parte de la nueva | El lector recupera todos los fragmentos antiguos y el reintento publica los nuevos |
+| Consulta durante la publicación | Agrupar por nota admitía varios fragmentos sin distinguir versión | Selección de generación en ambas ramas de la búsqueda; el lector en curso termina antes de retirar sus puntos |
+| Fallo al retirar puntos antiguos | La retirada precedía a la publicación | La nueva versión ya está disponible; el siguiente recorrido reintenta la limpieza |
+| Cambio de etiquetas o enlaces con igual ruta | El catálogo conservaba los datos anteriores | Una revisión persistente invalida etiquetas, enlaces inversos y grupos en caché del catálogo |
+| Cita válida para otra parte de los apuntes | Se aceptaba y la relevancia se etiquetaba como alta | Se marca en esa parte y se comunica relevancia desconocida |
+
+La preparación de vectores y la subida por lotes usan identificadores distintos para cada generación.
+La publicación confirma en SQLite la generación, el hash y los metadatos de la nota en una transacción.
+Las lecturas de Qdrant conservan la transacción lectora durante la consulta o la paginación. El manifiesto
+usa el diario de reversión de SQLite para que el commit espere a los lectores anteriores.
+La primera sincronización tras actualizar reindexará el contenido para recoger los enlaces con carpeta.
+Las pruebas usaron fixtures, manifiestos temporales y colecciones de prueba.
+
+El proxy de Vite cubre las rutas de asignaturas y notas generadas. El renderizador comprueba el origen
+de las imágenes y la página restringe las imágenes al mismo origen. Las preguntas admiten 4.000 caracteres
+tanto en la API como en el prompt. Las llamadas directas que superan ese límite reciben un aviso al
+terminar. Los enlaces cualificados conservan la carpeta, incluso si se escribió una ruta abreviada del vault.
+
+**Comprobaciones ejecutadas**
+
+- Pytest completo con integración local y cobertura: 973 pruebas aprobadas, 1 omitida por permisos de
+  symlinks en Windows. Cobertura conjunta de `ingest/` y `retrieval/`: 99 %. El cliente Qdrant en memoria
+  avisa de que omite los índices de payload. La prueba de publicación también pasó contra Qdrant real.
+- Vitest: 417 pruebas aprobadas en 30 archivos. Edge, con la compilación de producción y una nota sintética:
+  2 marcadores visibles, 0 elementos con recurso remoto y 0 peticiones externas.
+- Ruff y formato: 97 archivos conformes. Mypy estricto: 98 archivos sin errores. TypeScript y ESLint:
+  código de salida 0. Compilación de producción correcta, con el aviso de tamaño del bundle principal de Vite.
+
+**Siguiente checkpoint.** Esperar aprobación para merge y push. La entrega 2 guardará el progreso
+por partes en `data/` y medirá la generación larga con el modelo de referencia.
+
+## Estado histórico por fases
 
 | Fase | Estado |
 |---|---|
@@ -589,7 +628,7 @@ Sobre el diseño de `referencia_fase1.md`:
 5. **BM25 offline:** `fastembed` descarga una sola vez `Qdrant/bm25`; su caché se fija en
    `data/fastembed_cache` (ignorada por git). Verificado con `HF_HUB_OFFLINE=1`.
 
-## Siguiente paso
+## Siguiente paso registrado en la fase 3b
 
 Checkpoint 2 de la 3b (Buscar y Nota): filtros y facetas en `/search`, resolución de `[[enlaces]]` por
 título, «Abrir en Obsidian» y fórmulas LaTeX con KaTeX empaquetado en local. Se presenta el plan y se

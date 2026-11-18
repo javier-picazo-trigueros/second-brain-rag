@@ -185,6 +185,7 @@ class Settings(BaseSettings):
             str(self.chunk_min_chars),
             self.bm25_language,
             f"chunker-v{CHUNKER_VERSION}",
+            "wikilinks-with-path",
         )
         return hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
 

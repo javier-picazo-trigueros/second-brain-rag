@@ -21,8 +21,8 @@ describe("parseWikilinks", () => {
     expect(link!.target).toBe("Nota");
   });
 
-  it("keeps only the last path segment, as the indexer does", () => {
-    expect(parseWikilinks("[[carpeta/sub/Nota]]")[0]!.target).toBe("Nota");
+  it("preserves the folder to disambiguate equal titles", () => {
+    expect(parseWikilinks("[[carpeta/sub/Nota]]")[0]!.target).toBe("carpeta/sub/Nota");
   });
 
   it("recognises embeds and files that are not notes", () => {

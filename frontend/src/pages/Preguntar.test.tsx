@@ -232,7 +232,7 @@ describe("Preguntar: avisos", () => {
     setup();
     await ask("¿Algo raro?");
     const notice = await screen.findByTestId("notice");
-    expect(notice).toHaveTextContent("Confianza baja");
+    expect(notice).toHaveTextContent("Relevancia de las fuentes baja");
     expect(notice).toHaveAttribute("data-tone", "neutral");
     expect(screen.queryByRole("alert")).toBeNull();
   });

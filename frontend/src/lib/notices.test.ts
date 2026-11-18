@@ -30,7 +30,7 @@ describe("describeNotices", () => {
       done({ warnings: ["confianza_baja"], confidence: "baja", similarity: 0.566 }),
     );
     expect(notice).toMatchObject({ code: "confianza_baja", tone: "neutral" });
-    expect(notice!.title).toBe("Confianza baja");
+    expect(notice!.title).toBe("Relevancia de las fuentes baja");
     expect(notice!.detail).toContain("0,57");
   });
 
@@ -88,7 +88,7 @@ describe("summarizeNotices", () => {
         similarity: 0.5,
       }),
     );
-    expect(summarizeNotices(notices)).toBe("1 cita no verificada · Confianza baja");
+    expect(summarizeNotices(notices)).toBe("1 cita no verificada · Relevancia de las fuentes baja");
   });
 });
 

@@ -346,7 +346,9 @@ def test_citations_are_collected_across_parts(
     done = events[-1]
     assert isinstance(done, DoneEvent)
     assert {c.id for c in done.citations} >= {"S1", "S2"}
-    assert done.invalid == ()
+    assert done.invalid  # las partes posteriores no recibieron S1 ni S2
+    assert done.confidence == "desconocida"
+    assert all(e.confidence == "desconocida" for e in events if isinstance(e, SourcesEvent))
 
 
 def test_the_done_event_says_it_is_study_notes_with_subject_and_topic(

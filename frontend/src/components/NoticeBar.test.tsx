@@ -52,7 +52,7 @@ describe("NoticeBar", () => {
     const notices = screen.getAllByTestId("notice");
     expect(notices.map((n) => n.textContent)).toEqual([
       expect.stringContaining("1 cita no verificada"),
-      expect.stringContaining("Confianza baja"),
+      expect.stringContaining("Relevancia de las fuentes baja"),
     ]);
   });
 

@@ -10,7 +10,9 @@ import pytest
 
 from secondbrain.config import Settings
 from secondbrain.domain import Chunk
+from secondbrain.ingest.indexer import Indexer
 from secondbrain.store.qdrant import VectorStore
+from tests.env import Env
 
 pytestmark = pytest.mark.integration
 
@@ -40,6 +42,7 @@ def store(tmp_path: Path) -> Iterator[VectorStore]:
     settings = Settings(  # type: ignore[call-arg]
         _env_file=None,
         vault_path=tmp_path,
+        manifest_path=tmp_path / "data" / "manifest.sqlite",
         collection=f"test_{uuid.uuid4().hex[:10]}",
         bm25_cache_dir=CACHE,
     )
@@ -58,6 +61,7 @@ def test_dimension_mismatch_is_reported(store: VectorStore, tmp_path: Path) -> N
     other = Settings(  # type: ignore[call-arg]
         _env_file=None,
         vault_path=tmp_path,
+        manifest_path=tmp_path / "data" / "manifest.sqlite",
         collection=store.collection_name,
         bm25_cache_dir=CACHE,
     )
@@ -171,6 +175,7 @@ def test_a_read_only_store_does_not_need_the_embedding_dimension(
         Settings(  # type: ignore[call-arg]
             _env_file=None,
             vault_path=tmp_path,
+            manifest_path=tmp_path / "data" / "manifest.sqlite",
             collection=store.collection_name,
             bm25_cache_dir=CACHE,
         ),
@@ -215,3 +220,40 @@ def test_note_links_gives_the_link_targets_of_every_note(store: VectorStore) -> 
         [_chunk("a.md", "uno", 0), _chunk("b.md", "dos")], [[1, 0, 0, 0], [0, 1, 0, 0]]
     )
     assert store.note_links() == {"a.md": ("otra",), "b.md": ("otra",)}
+
+
+def test_search_during_publication(
+    store: VectorStore, env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = "Ejemplo.md"
+    vector = [1.0, 0.0, 0.0, 0.0]
+    monkeypatch.setattr(env.embedder, "embed_documents", lambda texts: [vector] * len(texts))
+    idx = Indexer(
+        env.settings(chunk_max_chars=500, chunk_min_chars=100), env.embedder, store, env.manifest
+    )
+    env.write(path, "# Uno\n\n" + "material anterior " * 100)
+    idx.index_file(env.vault / path)
+
+    def search() -> list[str]:
+        return sorted(h.payload["text"] for h in store.search("material", vector, limit=40))
+
+    before = search()
+    assert len(before) > 1
+    upsert = store.upsert_chunks
+    retire = store.retire_versions
+    after_switch: list[str] = []
+
+    def stage(chunks: list[Chunk], dense: list[list[float]]) -> None:
+        upsert(chunks, dense)
+        assert search() == before
+
+    def clean(note_path: str, keep: str) -> None:
+        after_switch.extend(search())
+        retire(note_path, keep)
+
+    monkeypatch.setattr(store, "upsert_chunks", stage)
+    monkeypatch.setattr(store, "retire_versions", clean)
+    env.write(path, "# Dos\n\n" + "material nuevo " * 55)
+    idx.index_file(env.vault / path)
+    assert after_switch == search() and all("nuevo" in t for t in after_switch)
+    assert len(after_switch) == env.manifest.chunk_counts()[path] > 0

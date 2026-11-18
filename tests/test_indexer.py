@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
+from pathlib import Path
+
+import pytest
+
 from secondbrain.ingest.indexer import Indexer
 from tests.env import Env
 
@@ -151,7 +156,7 @@ def test_embedding_happens_before_the_old_chunks_are_deleted(env: Env) -> None:
     env.write(CARRERA, "# Condiciones de carrera\n\n" + "contenido nuevo del tema " * 20)
     idx.index_file(env.vault / CARRERA)
     kinds = [kind for kind, _ in env.events]
-    assert kinds == ["embed", "delete", "upsert"]
+    assert kinds == ["embed", "upsert", "retire"]
 
 
 def test_failure_in_one_note_does_not_stop_the_sync(env: Env) -> None:
@@ -305,3 +310,45 @@ def test_sync_records_the_time_of_the_last_sync(env: Env) -> None:
 def test_the_last_sync_time_is_not_set_by_other_operations(env: Env) -> None:
     env.indexer().index_file(env.vault / CARRERA)
     assert env.manifest.get_value("last_sync") is None
+
+
+def test_empty_walk_preserves_populated_index(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
+    idx = env.indexer()
+    idx.sync()
+    monkeypatch.setattr(idx, "iter_note_paths", lambda: iter(()))
+    report = idx.sync()
+    assert report.failed and report.deleted == 0
+    assert env.manifest.paths() == CONTENT_NOTES
+
+
+def test_walk_reports_an_inaccessible_subfolder(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
+    import os
+    from typing import Any
+
+    idx = env.indexer()
+    idx.sync()
+    scandir = os.scandir
+
+    def deny_folder(path: str) -> Any:
+        if Path(path).name == "IA":
+            raise PermissionError("no se puede leer IA")
+        return scandir(path)
+
+    monkeypatch.setattr(os, "scandir", deny_folder)
+    report = idx.sync()
+    assert report.deleted == 0 and "IA" in report.failed[0][1]
+    assert env.manifest.paths() == CONTENT_NOTES
+
+
+def test_interrupted_walk_preserves_index(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
+    idx = env.indexer()
+    idx.sync()
+
+    def interrupted() -> Iterator[Path]:
+        yield env.vault / CARRERA
+        raise PermissionError("carpeta inaccesible")
+
+    monkeypatch.setattr(idx, "iter_note_paths", interrupted)
+    report = idx.sync()
+    assert report.failed and report.deleted == 0
+    assert env.manifest.paths() == CONTENT_NOTES

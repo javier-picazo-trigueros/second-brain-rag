@@ -43,6 +43,14 @@ class FakeStore:
             self.events.append(("upsert", c.note_path))
             self.chunks.setdefault(c.note_path, []).append(c)
 
+    def retire_versions(self, note_path: str, keep: str) -> None:
+        self.events.append(("retire", note_path))
+        current = [c for c in self.chunks.get(note_path, []) if c.generation == keep]
+        if current:
+            self.chunks[note_path] = current
+        else:
+            self.chunks.pop(note_path, None)
+
     def delete_note(self, note_path: str) -> None:
         self.events.append(("delete", note_path))
         self.chunks.pop(note_path, None)
@@ -169,6 +177,8 @@ class ScriptedStore:
     def ensure_collection(self) -> None: ...
 
     def upsert_chunks(self, chunks: list[Chunk], dense: list[list[float]]) -> None: ...
+
+    def retire_versions(self, note_path: str, keep: str) -> None: ...
 
     def delete_note(self, note_path: str) -> None: ...
 

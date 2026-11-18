@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from typing import Any
 
 from fastembed import SparseTextEmbedding
@@ -9,6 +10,7 @@ from qdrant_client import QdrantClient, models
 from secondbrain.config import Settings
 from secondbrain.domain import Chunk, Hit
 from secondbrain.net import use_system_trust_store
+from secondbrain.store.manifest import Manifest
 
 DENSE = "dense"
 SPARSE = "bm25"
@@ -29,6 +31,7 @@ class VectorStore:
         )
         self._name = settings.collection
         self._dim = dim
+        self._manifest_path = settings.manifest_path
 
     @property
     def collection_name(self) -> str:
@@ -66,6 +69,7 @@ class VectorStore:
     @staticmethod
     def _payload(c: Chunk) -> dict[str, object]:
         return {
+            "generation": c.generation,
             "note_path": c.note_path,
             "note_title": c.note_title,
             "heading_path": " > ".join(c.heading_path),
@@ -97,6 +101,20 @@ class VectorStore:
         for i in range(0, len(points), _UPSERT_BATCH):
             self._client.upsert(self._name, points=points[i : i + _UPSERT_BATCH], wait=True)
 
+    def retire_versions(self, note_path: str, keep: str) -> None:
+        self._client.delete(
+            self._name,
+            points_selector=models.Filter(
+                must=[
+                    models.FieldCondition(key="note_path", match=models.MatchValue(value=note_path))
+                ],
+                must_not=[
+                    models.FieldCondition(key="generation", match=models.MatchValue(value=keep))
+                ],
+            ),
+            wait=True,
+        )
+
     def delete_note(self, note_path: str) -> None:
         self._client.delete(
             self._name,
@@ -112,13 +130,38 @@ class VectorStore:
             wait=True,
         )
 
+    @contextmanager
+    def _visible(self, only_paths: Sequence[str] | None = None) -> Iterator[models.Filter]:
+        with Manifest.read_generations(self._manifest_path) as versions:
+            yield self._paths_filter(versions, only_paths)
+
     @staticmethod
-    def _paths_filter(only_paths: Sequence[str] | None) -> models.Filter | None:
+    def _paths_filter(versions: dict[str, str], only_paths: Sequence[str] | None) -> models.Filter:
+        if only_paths is not None:
+            versions = {p: versions[p] for p in only_paths if p in versions}
+
+        # Los índices anteriores a la migración carecen de generación. Se admiten sus
+        # puntos solo hasta la primera publicación versionada de la misma ruta.
+        legacy = models.Filter(
+            must=[models.IsEmptyCondition(is_empty=models.PayloadField(key="generation"))],
+            must_not=[
+                models.FieldCondition(key="note_path", match=models.MatchAny(any=list(versions)))
+            ],
+        )
+        visible = models.Filter(
+            should=[
+                legacy,
+                models.FieldCondition(
+                    key="generation", match=models.MatchAny(any=list(versions.values()))
+                ),
+            ]
+        )
         if only_paths is None:
-            return None
+            return visible
         return models.Filter(
             must=[
-                models.FieldCondition(key="note_path", match=models.MatchAny(any=list(only_paths)))
+                visible,
+                models.FieldCondition(key="note_path", match=models.MatchAny(any=list(only_paths))),
             ]
         )
 
@@ -131,140 +174,153 @@ class VectorStore:
         only_paths: Sequence[str] | None = None,
     ) -> list[Hit]:
         s = next(iter(self._sparse.query_embed(query)))
-        within = self._paths_filter(only_paths)
-        res = self._client.query_points(
-            self._name,
-            prefetch=[
-                models.Prefetch(query=query_dense, using=DENSE, limit=prefetch, filter=within),
-                models.Prefetch(
-                    query=models.SparseVector(indices=s.indices.tolist(), values=s.values.tolist()),
-                    using=SPARSE,
-                    limit=prefetch,
-                    filter=within,
-                ),
-            ],
-            query=models.FusionQuery(fusion=models.Fusion.RRF),
-            limit=limit,
-            with_payload=True,
-        )
-        return [Hit(score=p.score, payload=dict(p.payload or {})) for p in res.points]
+        with self._visible(only_paths) as within:
+            res = self._client.query_points(
+                self._name,
+                prefetch=[
+                    models.Prefetch(query=query_dense, using=DENSE, limit=prefetch, filter=within),
+                    models.Prefetch(
+                        query=models.SparseVector(
+                            indices=s.indices.tolist(), values=s.values.tolist()
+                        ),
+                        using=SPARSE,
+                        limit=prefetch,
+                        filter=within,
+                    ),
+                ],
+                query=models.FusionQuery(fusion=models.Fusion.RRF),
+                limit=limit,
+                with_payload=True,
+            )
+            return [Hit(score=p.score, payload=dict(p.payload or {})) for p in res.points]
 
     def search_note(self, note_path: str, query_dense: list[float], limit: int = 1) -> list[Hit]:
         """Los chunks de una nota más cercanos a la consulta (solo ranking denso)."""
-        res = self._client.query_points(
-            self._name,
-            query=query_dense,
-            using=DENSE,
-            query_filter=models.Filter(
-                must=[
-                    models.FieldCondition(key="note_path", match=models.MatchValue(value=note_path))
-                ]
-            ),
-            limit=limit,
-            with_payload=True,
-        )
-        return [Hit(score=p.score, payload=dict(p.payload or {})) for p in res.points]
+        with self._visible([note_path]) as within:
+            res = self._client.query_points(
+                self._name,
+                query=query_dense,
+                using=DENSE,
+                query_filter=within,
+                limit=limit,
+                with_payload=True,
+            )
+            return [Hit(score=p.score, payload=dict(p.payload or {})) for p in res.points]
 
     def note_tags(self) -> dict[str, tuple[str, ...]]:
         """Etiquetas de cada nota (las del frontmatter, repetidas en sus chunks), sin vectores."""
         out: dict[str, tuple[str, ...]] = {}
-        offset = None
-        while True:
-            points, offset = self._client.scroll(
-                self._name,
-                limit=1000,
-                offset=offset,
-                with_payload=["note_path", "tags"],
-                with_vectors=False,
-            )
-            for point in points:
-                payload = point.payload or {}
-                out.setdefault(
-                    str(payload["note_path"]), tuple(str(t) for t in payload.get("tags") or [])
+        with self._visible() as within:
+            offset = None
+            while True:
+                points, offset = self._client.scroll(
+                    self._name,
+                    scroll_filter=within,
+                    limit=1000,
+                    offset=offset,
+                    with_payload=["note_path", "tags"],
+                    with_vectors=False,
                 )
-            if offset is None:
-                return out
+                for point in points:
+                    payload = point.payload or {}
+                    out.setdefault(
+                        str(payload["note_path"]), tuple(str(t) for t in payload.get("tags") or [])
+                    )
+                if offset is None:
+                    return out
 
     def note_links(self) -> dict[str, tuple[str, ...]]:
         """Destinos de los `[[enlaces]]` de cada nota (los del cuerpo y del frontmatter)."""
         out: dict[str, tuple[str, ...]] = {}
-        offset = None
-        while True:
-            points, offset = self._client.scroll(
-                self._name,
-                limit=1000,
-                offset=offset,
-                with_payload=["note_path", "links"],
-                with_vectors=False,
-            )
-            for point in points:
-                payload = point.payload or {}
-                links = tuple(str(t) for t in payload.get("links") or [])
-                out.setdefault(str(payload["note_path"]), links)
-            if offset is None:
-                return out
+        with self._visible() as within:
+            offset = None
+            while True:
+                points, offset = self._client.scroll(
+                    self._name,
+                    scroll_filter=within,
+                    limit=1000,
+                    offset=offset,
+                    with_payload=["note_path", "links"],
+                    with_vectors=False,
+                )
+                for point in points:
+                    payload = point.payload or {}
+                    links = tuple(str(t) for t in payload.get("links") or [])
+                    out.setdefault(str(payload["note_path"]), links)
+                if offset is None:
+                    return out
 
     def outline(self, paths: Sequence[str]) -> list[dict[str, Any]]:
         """Resumen, posición y encabezado de todos los chunks de esas notas (sin vectores)."""
         out: list[dict[str, Any]] = []
-        offset = None
-        while True:
-            points, offset = self._client.scroll(
-                self._name,
-                scroll_filter=self._paths_filter(paths),
-                limit=1000,
-                offset=offset,
-                with_payload=["note_path", "position", "heading_path", "resumen"],
-                with_vectors=False,
-            )
-            out.extend(dict(p.payload or {}) for p in points)
-            if offset is None:
-                return out
+        with self._visible(paths) as within:
+            offset = None
+            while True:
+                points, offset = self._client.scroll(
+                    self._name,
+                    scroll_filter=within,
+                    limit=1000,
+                    offset=offset,
+                    with_payload=["note_path", "position", "heading_path", "resumen"],
+                    with_vectors=False,
+                )
+                out.extend(dict(p.payload or {}) for p in points)
+                if offset is None:
+                    return out
 
     def chunks_of(self, paths: Sequence[str]) -> list[dict[str, Any]]:
         """Todos los chunks de esas notas con su texto, por nota y en orden de posición."""
         out: list[dict[str, Any]] = []
-        offset = None
-        while True:
-            points, offset = self._client.scroll(
-                self._name,
-                scroll_filter=self._paths_filter(paths),
-                limit=256,
-                offset=offset,
-                with_payload=True,
-                with_vectors=False,
+        with self._visible(paths) as within:
+            offset = None
+            while True:
+                points, offset = self._client.scroll(
+                    self._name,
+                    scroll_filter=within,
+                    limit=256,
+                    offset=offset,
+                    with_payload=True,
+                    with_vectors=False,
+                )
+                out.extend(dict(p.payload or {}) for p in points)
+                if offset is None:
+                    break
+            order = {p: i for i, p in enumerate(paths)}
+            return sorted(
+                out, key=lambda c: (order.get(str(c["note_path"]), len(order)), int(c["position"]))
             )
-            out.extend(dict(p.payload or {}) for p in points)
-            if offset is None:
-                break
-        order = {p: i for i, p in enumerate(paths)}
-        return sorted(
-            out, key=lambda c: (order.get(str(c["note_path"]), len(order)), int(c["position"]))
-        )
 
     def dense_notes(
         self, query_dense: list[float], limit: int = 100, only_paths: Sequence[str] | None = None
     ) -> dict[str, float]:
         """Mejor coseno de cada nota entre los `limit` chunks más cercanos (solo ranking denso)."""
-        res = self._client.query_points(
-            self._name,
-            query=query_dense,
-            using=DENSE,
-            query_filter=self._paths_filter(only_paths),
-            limit=limit,
-            with_payload=["note_path"],
-        )
-        best: dict[str, float] = {}
-        for point in res.points:
-            best.setdefault(str((point.payload or {})["note_path"]), point.score)
-        return best
+        with self._visible(only_paths) as within:
+            res = self._client.query_points(
+                self._name,
+                query=query_dense,
+                using=DENSE,
+                query_filter=within,
+                limit=limit,
+                with_payload=["note_path"],
+            )
+            best: dict[str, float] = {}
+            for point in res.points:
+                best.setdefault(str((point.payload or {})["note_path"]), point.score)
+            return best
 
     def dense_top(self, query_dense: list[float]) -> float | None:
         """Coseno del chunk más cercano a la consulta (solo ranking denso), o None si no hay."""
-        res = self._client.query_points(
-            self._name, query=query_dense, using=DENSE, limit=1, with_payload=False
-        )
-        return res.points[0].score if res.points else None
+        with self._visible() as within:
+            res = self._client.query_points(
+                self._name,
+                query=query_dense,
+                using=DENSE,
+                query_filter=within,
+                limit=1,
+                with_payload=False,
+            )
+            return res.points[0].score if res.points else None
 
     def count(self) -> int:
-        return self._client.count(self._name, exact=True).count
+        with self._visible() as within:
+            return self._client.count(self._name, count_filter=within, exact=True).count

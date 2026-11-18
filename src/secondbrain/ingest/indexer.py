@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import logging
 import os
+import uuid
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
@@ -47,7 +48,10 @@ class Indexer:
         return abs_path.relative_to(self._s.vault_path).as_posix()
 
     def iter_note_paths(self) -> Iterator[Path]:
-        for root, dirs, files in os.walk(self._s.vault_path):
+        def failed(exc: OSError) -> None:
+            raise exc
+
+        for root, dirs, files in os.walk(self._s.vault_path, onerror=failed):
             # Poda en sitio: no se entra en node_modules, .obsidian, _conceptos...
             dirs[:] = sorted(d for d in dirs if d not in self._s.exclude_dirs)
             for f in sorted(files):
@@ -56,6 +60,18 @@ class Indexer:
                     yield path
 
     def index_file(self, abs_path: Path) -> Status:
+        with self._manifest.writing():
+            status = self._publish(abs_path)
+        path = self._rel(abs_path)
+        if self._manifest.pending_cleanup(path):
+            with self._manifest.writing():
+                generation = self._manifest.pending_cleanup(path)
+                if generation:
+                    self._store.retire_versions(path, generation)
+                    self._manifest.cleaned(path)
+        return status
+
+    def _publish(self, abs_path: Path) -> Status:
         note = parse_note(abs_path, self._s.vault_path)
         # El hash incluye la huella de configuración: cambiar modelo o chunking reindexa todo.
         stamp = f"{note.content_hash}:{self._fingerprint}"
@@ -70,10 +86,14 @@ class Indexer:
         )
         # Se embebe antes de borrar: si falla, los chunks anteriores siguen intactos.
         vectors = self._embedder.embed_documents([c.embed_text for c in chunks]) if chunks else []
-        self._store.delete_note(note.path)
+        generation = uuid.uuid4()
         if chunks:
+            chunks = [
+                replace(c, id=str(uuid.uuid5(generation, c.id)), generation=str(generation))
+                for c in chunks
+            ]
             self._store.upsert_chunks(chunks, vectors)
-        self._manifest.upsert(note.path, stamp, len(chunks))
+        self._manifest.upsert(note.path, stamp, len(chunks), str(generation))
         self._manifest.set_meta(note.path, note.concepts, note.body_hash)
         return "indexed" if chunks else "empty"
 
@@ -81,13 +101,23 @@ class Indexer:
         return self._manifest.get(rel_path) is not None
 
     def remove(self, rel_path: str) -> None:
-        self._store.delete_note(rel_path)
-        self._manifest.delete(rel_path)
+        with self._manifest.writing():
+            self._store.delete_note(rel_path)
+            self._manifest.delete(rel_path)
 
     def sync(self, on_progress: Callable[[int, int, str], None] | None = None) -> SyncReport:
         report = SyncReport()
         seen: set[str] = set()
-        paths = list(self.iter_note_paths())
+        try:
+            paths = list(self.iter_note_paths())
+        except OSError as exc:
+            report.failed.append((".", str(exc)))
+            return report
+        if not paths and self._manifest.paths():
+            report.failed.append(
+                (".", "Recorrido vacío con notas indexadas; se conserva el índice.")
+            )
+            return report
         for position, abs_path in enumerate(paths, start=1):
             rel = abs_path.relative_to(self._s.vault_path).as_posix()
             seen.add(rel)
@@ -106,6 +136,8 @@ class Indexer:
                     report.unchanged += 1
             if on_progress is not None:
                 on_progress(position, len(paths), rel)
+        if report.failed:
+            return report
         for gone in self._manifest.paths() - seen:
             self.remove(gone)
             report.deleted += 1

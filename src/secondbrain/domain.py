@@ -32,6 +32,8 @@ class Chunk:
     resumen: str | None
     page: int | None  # página del PDF original, si la nota la marca con "## Página N"
 
+    generation: str | None = None
+
     @property
     def embed_text(self) -> str:
         """Texto que se embebe: contexto (título > encabezados) + contenido."""

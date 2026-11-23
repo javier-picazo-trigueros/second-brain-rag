@@ -2,7 +2,53 @@
 
 Se actualiza en cada checkpoint.
 
-## Checkpoint actual · «Antes de integrar» (puntos 1-7 de la revisión)
+## Checkpoint actual · Entrega 2, bloque A (punto 8): continuación de partes y temas con marca corta
+
+24 de noviembre de 2026. Rama `feat/entrega-2-continuacion` (sobre `main`), pendiente de tu OK.
+
+**Continuación automática.** Una parte de apuntes que llega al tope de salida (`done_reason=length`) se
+continúa con una nueva llamada que lleva las mismas fuentes y el final de lo escrito (800 caracteres), con
+la orden de seguir sin repetir. Detalles:
+
+- Hasta `BRAIN_NOTES_MAX_CONTINUATIONS` continuaciones por parte (2 por defecto; 0 las desactiva).
+- Sin duplicar: se retiene el arranque de la continuación (400 caracteres) para quitar lo que repite del
+  final ya escrito (solape de al menos 15 caracteres) y se empalma con un espacio o un salto de línea si el
+  corte fue tras el final de una frase. Una cita cortada a medias por el tope no queda colgando.
+- Dos cortes seguidos: se continúa dos veces. Si tras el límite sigue cortada, o una continuación no
+  avanza (menos de 40 caracteres nuevos), la parte queda pendiente: se conserva lo escrito, no se insiste y
+  sale el aviso `parte_sin_terminar` («Apuntes con una parte sin terminar», en la interfaz). El aviso
+  anterior `respuesta_truncada` ya no sale en apuntes si la continuación lo resolvió.
+- Citas de cada continuación verificadas con las mismas fuentes de la parte; tokens sumados.
+
+**Temas con marca corta.** `topic_key`, `clean_title` y `topic_notes` reconocen `CAR_T2`, `T2`, `T02` y
+`Tema2`/`Unit 2` (estas dos ya funcionaban), con negativos: `T20`, `T22`, `T2a`, `Part2`, `Net5`. Una sola
+cifra tras la «T»: los temas de dos cifras con esa marca (T10…) no se reconocen (límite conocido; con
+«Tema 10» o «Unit 10» sí).
+
+**Medida con Qwen2.5 7B** (`evals/benchmarks/measure_notes.py`, una pasada por pregunta; la GPU estuvo
+compartida con otro proceso en la primera medida de Discretas, así que sus tiempos no son comparables):
+
+| Pregunta | | Partes | Llamadas | Continuaciones | Cortes (sin resolver) | Citas (no verificadas) | Tiempo |
+|---|---|--:|--:|--:|--:|--:|--:|
+| tema 2 de CAR | antes | 0 (tema no reconocido) | 0 | 0 | 0 (0) | 0 | 0,5 s |
+| | después | 22 | 22 | 0 | 0 (0) | 162 (0) | 2.637 s |
+| tema 5 de Discretas | antes | 13 | 13 | 0 | 0 (0) | 125 (0) | 7.268 s (GPU compartida) |
+| | después | 13 | 12 | 0 | 0 (0) | 120 (0) | 1.947 s |
+| tema 2 de Data Mining | antes | 9 | 9 | 0 | 0 (0) | 101 (0) | 871 s |
+| | después | 9 | 10 | 1 | 1 (0) | 101 (0) | 1.388 s |
+
+Lectura honesta: los cortes son raros con el tope de 2.000 tokens (1 en 44 partes, como ya se vio en la
+3c), así que la continuación se ejerció una vez con el modelo real (DM, resuelta) y el resto con modelo
+simulado. CAR pasó de «no encuentro» a 22 partes de apuntes con 162 citas válidas. En la pasada «después»
+de Discretas el modelo escribió contenido y luego «No lo encuentro» en una parte (`respuesta_contradictoria`,
+esa parte se descartó; no salió en la pasada «antes»): es variación del modelo, no de este cambio. Los
+tiempos de «después» (GPU compartida a ratos) no deben leerse como coste de la continuación. No revisé a
+mano el texto de la continuación real de DM (el script no guarda las respuestas).
+
+Verificación: pruebas del backend 1.010 sin integración (más las de integración y Vitest, ver abajo), ruff
+y `mypy --strict` limpios.
+
+## Checkpoint anterior · «Antes de integrar» (puntos 1-7 de la revisión)
 
 23 de noviembre de 2026. **Integrado y publicado (punto 7):** la fase 3c y la Entrega 1 están fusionadas en
 `main` (merges `--no-ff`) y publicadas junto con `feat/entrega-1-fiabilidad`, sin force push. Sobre `main`:

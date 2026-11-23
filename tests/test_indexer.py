@@ -352,3 +352,47 @@ def test_interrupted_walk_preserves_index(env: Env, monkeypatch: pytest.MonkeyPa
     report = idx.sync()
     assert report.failed and report.deleted == 0
     assert env.manifest.paths() == CONTENT_NOTES
+
+
+# --- contención del cerrojo y borrados ---------------------------------------------------------
+
+
+@pytest.mark.parametrize("slow_step", ["embed", "upsert"])
+def test_reads_do_not_wait_while_a_note_is_being_published(env: Env, slow_step: str) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    started, release = Event(), Event()
+
+    def block(*_args: object) -> None:
+        started.set()
+        assert release.wait(10)
+
+    if slow_step == "embed":
+        original_embed = env.embedder.embed_documents
+
+        def slow_embed(texts: list[str]) -> list[list[float]]:
+            block()
+            return original_embed(texts)
+
+        env.embedder.embed_documents = slow_embed  # type: ignore[method-assign]
+    else:
+        original_upsert = env.store.upsert_chunks
+
+        def slow_upsert(chunks: list, vectors: list) -> None:  # type: ignore[type-arg]
+            block()
+            original_upsert(chunks, vectors)
+
+        env.store.upsert_chunks = slow_upsert  # type: ignore[method-assign]
+    idx = env.indexer()
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        writer = pool.submit(idx.index_file, env.vault / CARRERA)
+        assert started.wait(10)
+        # Es lo que llama cada búsqueda a través del catálogo: no debe esperar a la publicación.
+        reader = pool.submit(env.manifest.get_value, "revision")
+        try:
+            reader.result(timeout=2)
+        finally:
+            release.set()
+        assert writer.result(timeout=10) == "indexed"
+

@@ -60,8 +60,7 @@ class Indexer:
                     yield path
 
     def index_file(self, abs_path: Path) -> Status:
-        with self._manifest.writing():
-            status = self._publish(abs_path)
+        status = self._publish(abs_path)
         path = self._rel(abs_path)
         if self._manifest.pending_cleanup(path):
             with self._manifest.writing():
@@ -72,12 +71,16 @@ class Indexer:
         return status
 
     def _publish(self, abs_path: Path) -> Status:
+        # Parseo, embeddings y subida a Qdrant van fuera del cerrojo del manifest: los puntos
+        # nuevos son invisibles (ninguna generación del manifest los nombra) hasta el commit,
+        # y las búsquedas no esperan a la publicación.
         note = parse_note(abs_path, self._s.vault_path)
         # El hash incluye la huella de configuración: cambiar modelo o chunking reindexa todo.
         stamp = f"{note.content_hash}:{self._fingerprint}"
         if self._manifest.get(note.path) == stamp:
             # Conceptos y copias se refrescan siempre: es barato y evita reindexar al añadirlos.
-            self._manifest.set_meta(note.path, note.concepts, note.body_hash)
+            with self._manifest.writing():
+                self._manifest.set_meta(note.path, note.concepts, note.body_hash)
             return "unchanged"
         chunks = (
             []
@@ -93,8 +96,9 @@ class Indexer:
                 for c in chunks
             ]
             self._store.upsert_chunks(chunks, vectors)
-        self._manifest.upsert(note.path, stamp, len(chunks), str(generation))
-        self._manifest.set_meta(note.path, note.concepts, note.body_hash)
+        with self._manifest.writing():
+            self._manifest.upsert(note.path, stamp, len(chunks), str(generation))
+            self._manifest.set_meta(note.path, note.concepts, note.body_hash)
         return "indexed" if chunks else "empty"
 
     def is_indexed(self, rel_path: str) -> bool:

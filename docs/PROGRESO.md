@@ -41,6 +41,16 @@ terminar. Los enlaces cualificados conservan la carpeta, incluso si se escribió
 **Siguiente checkpoint.** Esperar aprobación para merge y push. La entrega 2 guardará el progreso
 por partes en `data/` y medirá la generación larga con el modelo de referencia.
 
+## Siguiente paso
+
+Antes de integrar esta rama hay trabajo previo, resumido y priorizado en
+[`docs/revision-2026-11-19.md`](revision-2026-11-19.md): la revisión de solo lectura de esta entrega
+encontró un bloqueo de la búsqueda durante la publicación de notas (alta), el borrado omitido ante fallos
+por nota y la falta de índice de payload para `generation` (medias), y confirmó el inventario de privacidad.
+Ese documento incluye también la valoración de los informes de modelos, el orden propuesto para las
+Entregas 2-4 y la lista completa de pendientes (Fase 4 y fase 3c). Este paso queda a la espera de tu
+decisión sobre los puntos 1-7 de esa lista.
+
 ## Estado histórico por fases
 
 | Fase | Estado |
@@ -415,7 +425,7 @@ nuevo no arrancaba, así que las primeras respuestas de la interfaz salían con 
 
 - Una cita válida sigue sin garantizar que la nota respalde la frase (comprobación de respaldo por frase:
   Fase 4).
-- Copias casi idénticas con nombres distintos (`Nota`, `Nota (1)`) no se funden si su contenido difiere.
+- Copias casi idénticas con nombres distintos (`Nota`, `Nota (1)`): resuelto después en la 3b con las familias de copias.
 - `3º/SISTEMAS` mezcla sistemas operativos con integración y cloud: el mapa de alias las une por pedido
   del usuario; una visión general de «sistemas operativos» incluye también esos temas.
 - Ver «Pendiente para la Fase 4» (tema inventado en la visión general y formato de párrafos).
@@ -439,7 +449,7 @@ nuevo no arrancaba, así que las primeras respuestas de la interfaz salían con 
   accesible que no contenía el texto visible (WCAG 2.5.3), página sin `h1` y panel de nota que
   desbordaba a 768 px.
 - **Límites**: las fórmulas de las notas se muestran en texto (sin KaTeX); las copias casi idénticas con
-  nombre distinto se muestran como fuentes separadas.
+  nombre distinto se mostraban como fuentes separadas (resuelto después con las familias de copias).
 
 ## Fase 3b, checkpoint 2 (rama `feat/fase-3b-buscar-nota`, en curso)
 
@@ -579,7 +589,7 @@ Lo que se sabe y se ha dejado a propósito para la Fase de evals, con su medida 
 3. Diversificación por asignatura (prioridad 1) y comprobación de respaldo por frase (valid ≠ respaldada).
 4. Orden de recuperación en preguntas concretas (p. ej. «proceso vs hilo»: recall 0,33): combinar el
    RRF con el coseno de la nota, y afinar α, cuota de notas grandes y umbral relativo.
-5. Copias casi idénticas con nombre distinto (`Nota`, `Nota (1)`) que hoy salen como fuentes separadas.
+5. ~~Copias casi idénticas con nombre distinto~~: resuelto en la 3b con las familias de copias.
 6. Revisar los umbrales de relevancia (0,55 / 0,12) si cambia el vault.
 
 ## Decisiones aprobadas (Fase 3a)

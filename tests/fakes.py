@@ -275,6 +275,33 @@ class ScriptedLLM:
             yield self.finished
 
 
+class SequenceLLM:
+    """Una respuesta por llamada: `(deltas, cortada)`. `cortada` simula `done_reason=length`.
+
+    Las llamadas que sobran repiten `default`. Guarda los mensajes de cada llamada.
+    """
+
+    def __init__(
+        self,
+        script: Sequence[tuple[Sequence[str], bool]],
+        default: tuple[Sequence[str], bool] = (("Parte completa [S1].",), False),
+    ) -> None:
+        self.script = list(script)
+        self.default = default
+        self.calls = 0
+        self.all_messages: list[list[Message]] = []
+
+    def stream_chat(
+        self, messages: Sequence[Message], max_tokens: int | None = None
+    ) -> Iterator[Delta | Finished]:
+        self.calls += 1
+        self.all_messages.append(list(messages))
+        deltas, cut = self.script.pop(0) if self.script else self.default
+        for text in deltas:
+            yield Delta(text)
+        yield replace(FINISHED, truncated=cut)
+
+
 class Tick:
     """Reloj que avanza 0,1 s cada vez que se lee: tiempos deterministas."""
 

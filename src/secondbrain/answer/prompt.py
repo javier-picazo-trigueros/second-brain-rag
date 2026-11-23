@@ -138,6 +138,26 @@ def build_study_messages(
     ]
 
 
+CONTINUE_TAIL_CHARS = 800
+
+
+def build_continuation_messages(
+    plan: StudyPlan, part: StudyPart, number: int, total: int, written: str
+) -> list[Message]:
+    """Continuación de una parte cortada: las mismas fuentes y el final de lo ya escrito."""
+    system, user = build_study_messages(plan, part, number, total)
+    tail = written.rstrip()[-CONTINUE_TAIL_CHARS:]
+    ask = (
+        "Tu respuesta anterior a esta parte se cortó por el límite de longitud. Este es el FINAL "
+        "de "
+        f"lo que ya escribiste:\n<<<\n{tail}\n>>>\n\n"
+        "Continúa exactamente donde se cortó, con las mismas fuentes: no repitas nada de lo ya "
+        "escrito, no empieces de nuevo ni añadas introducción o resumen, y termina la parte de "
+        "forma completa. " + REMINDER
+    )
+    return [system, Message("user", f"{user.content}\n\n{ask}")]
+
+
 def build_messages(question: str, context: BuiltContext) -> list[Message]:
     asked = question.strip()
     if len(asked) > QUESTION_MAX_CHARS:

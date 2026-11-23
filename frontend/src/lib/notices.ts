@@ -20,6 +20,7 @@ const ORDER = [
   "sin_citas",
   "solo_pistas",
   "respuesta_truncada",
+  "parte_sin_terminar",
   "pregunta_recortada",
   "confianza_baja",
   "contexto_recortado",
@@ -116,6 +117,15 @@ function build(code: string, done: DoneEvent): Notice | null {
         tone: "caution",
         title: "Respuesta cortada",
         detail: "Se alcanzó el límite de longitud. Prueba con una pregunta más concreta.",
+      };
+    case "parte_sin_terminar":
+      return {
+        code,
+        tone: "caution",
+        title: "Apuntes con una parte sin terminar",
+        detail:
+          "Alguna parte llegó al límite de longitud y no se pudo continuar. Lo escrito se conserva; " +
+          "puedes volver a pedir ese apartado con una pregunta más concreta.",
       };
     case "contexto_recortado":
       return {

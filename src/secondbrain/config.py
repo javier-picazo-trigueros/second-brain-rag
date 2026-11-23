@@ -99,6 +99,8 @@ class Settings(BaseSettings):
     # Modo «apuntes»: se escribe por partes; cada una ve una ventana de fragmentos reales.
     notes_window_tokens: int = Field(3000, ge=500)  # tokens estimados de fuentes por parte
     notes_part_max_tokens: int = Field(2000, ge=100)  # tope de cada parte escrita
+    # Veces que se continúa una parte cortada por el tope de salida (0 = no continuar).
+    notes_max_continuations: int = Field(2, ge=0, le=5)
     notes_skeleton_chars: int = Field(1500, ge=0)  # del resumen del tema que acompaña a cada parte
     exercises_theory_notes: int = Field(2, ge=0)  # notas de teoría que acompañan a los ejercicios
 

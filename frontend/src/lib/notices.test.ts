@@ -46,6 +46,7 @@ describe("describeNotices", () => {
     ["sin_citas", "Respuesta sin citas"],
     ["solo_pistas", "Solo cita notas relacionadas"],
     ["respuesta_truncada", "Respuesta cortada"],
+    ["parte_sin_terminar", "Apuntes con una parte sin terminar"],
   ])("describes %s", (code, title) => {
     const [notice] = describeNotices(done({ warnings: [code] }));
     expect(notice).toMatchObject({ code, title, tone: "caution" });
@@ -54,6 +55,11 @@ describe("describeNotices", () => {
   it("tells the user what to do when the answer was cut", () => {
     const [notice] = describeNotices(done({ warnings: ["respuesta_truncada"] }));
     expect(notice!.detail).toMatch(/pregunta más concreta/);
+  });
+
+  it("tells the user to ask again for an unfinished part of the notes", () => {
+    const [notice] = describeNotices(done({ warnings: ["parte_sin_terminar"] }));
+    expect(notice!.detail).toMatch(/volver a pedir/);
   });
 
   it("keeps the trimmed-context notice out of the summary (it is almost always present)", () => {

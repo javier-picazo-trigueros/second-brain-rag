@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { AnswerView } from "../components/AnswerView";
@@ -6,6 +6,7 @@ import { AskForm } from "../components/AskForm";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { NoticeBar } from "../components/NoticeBar";
 import { NotFoundCard } from "../components/NotFoundCard";
+import { SaveNote } from "../components/SaveNote";
 import { SourceCards } from "../components/SourceCards";
 import type { AskState } from "../hooks/askState";
 import { useConversation } from "../hooks/conversation";
@@ -20,11 +21,40 @@ const EXAMPLES = [
 
 const HIDDEN_WHEN_NOT_FOUND = ["confianza_baja", "sin_citas", "solo_pistas"];
 
+/** Modo apuntes: «Parte 3 de 7» con su título y una barra; se puede parar y se conserva lo escrito. */
+function StudyProgress({ progress }: { progress: { part: number; total: number; title: string } }) {
+  return (
+    <div className="space-y-1.5">
+      <p className="text-sm">
+        <span className="font-medium">{`Parte ${progress.part} de ${progress.total}`}</span>
+        <span className="ml-2 text-muted">{progress.title}</span>
+      </p>
+      <div
+        role="progressbar"
+        aria-label="Progreso de los apuntes"
+        aria-valuemin={0}
+        aria-valuemax={progress.total}
+        aria-valuenow={progress.part}
+        className="h-1.5 overflow-hidden rounded-full bg-surface-2"
+      >
+        <div
+          className="h-full rounded-full bg-accent transition-[width] duration-300"
+          style={{ width: `${(progress.part / progress.total) * 100}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 function Turn({ turn, index, focusInput }: { turn: AskState; index: number; focusInput: () => void }) {
   const { open } = useNotePanel();
   const navigate = useNavigate();
   const evidence = turn.sources.filter((s) => s.kind === "evidence").length;
   const done = turn.done;
+  const evidencePaths = useMemo(
+    () => turn.sources.filter((s) => s.kind === "evidence").map((s) => s.path),
+    [turn.sources],
+  );
   const notFound = done?.not_found === true;
 
   return (
@@ -43,6 +73,7 @@ function Turn({ turn, index, focusInput }: { turn: AskState; index: number; focu
             </span>
             {turn.status === "waiting" ? "Buscando en tus apuntes…" : "Redactando la respuesta…"}
           </p>
+          {turn.progress ? <StudyProgress progress={turn.progress} /> : null}
           {turn.text === "" ? (
             <div aria-hidden="true" className="space-y-2.5">
               <div className="skeleton h-3 w-4/5" />
@@ -72,6 +103,14 @@ function Turn({ turn, index, focusInput }: { turn: AskState; index: number; focu
       ) : null}
 
       {turn.status === "stopped" ? <p className="text-sm text-muted">Respuesta detenida</p> : null}
+      {done?.mode === "notes" && turn.status === "done" ? (
+        <SaveNote
+          markdown={turn.text}
+          subject={done.subject ?? null}
+          topic={done.topic ?? null}
+          sources={evidencePaths}
+        />
+      ) : null}
       {turn.status === "error" && turn.error ? <ErrorBanner message={turn.error} /> : null}
 
       {done ? <NoticeBar done={done} sources={turn.sources} hide={notFound ? HIDDEN_WHEN_NOT_FOUND : []} /> : null}

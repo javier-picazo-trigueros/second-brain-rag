@@ -177,6 +177,21 @@ export interface DoneEvent {
   timings: Timings;
   prompt_tokens: number | null;
   completion_tokens: number | null;
+  /** «notes»: apuntes completos, que se pueden guardar como nota. */
+  mode?: string;
+  subject?: string | null;
+  topic?: number | null;
+  /** Modo ejercicios: números de la respuesta que no salen de las fuentes, y pasos sin cita. */
+  unverified_numbers?: string[];
+  uncited_steps?: number;
+}
+
+/** Modo apuntes: se está escribiendo la parte `part` de `total` (desde 1). */
+export interface ProgressEvent {
+  type: "progress";
+  part: number;
+  total: number;
+  title: string;
 }
 
 export interface ErrorEvent {
@@ -184,7 +199,7 @@ export interface ErrorEvent {
   message: string;
 }
 
-export type AskEvent = SourcesEvent | TokenEvent | DoneEvent | ErrorEvent;
+export type AskEvent = SourcesEvent | ProgressEvent | TokenEvent | DoneEvent | ErrorEvent;
 
 // --- cliente HTTP ---------------------------------------------------------------------------
 
@@ -282,6 +297,7 @@ export async function* askStream(
     }
     switch (message.event) {
       case "sources":
+      case "progress":
       case "token":
       case "done":
       case "error":
@@ -291,4 +307,37 @@ export async function* askStream(
         break; // eventos futuros que esta versión no conoce
     }
   }
+}
+
+// --- apuntes generados ------------------------------------------------------------------------
+
+export interface GeneratedPreview {
+  path: string;
+  content: string;
+}
+
+export interface GeneratedSaved {
+  path: string;
+  obsidian_url: string;
+}
+
+export interface PreviewRequest {
+  title: string;
+  markdown: string;
+  asignatura: string | null;
+  tema: number | null;
+  sources: string[];
+}
+
+/** Qué se guardaría y dónde; no escribe nada. */
+export function previewGenerated(body: PreviewRequest, options: RequestOptions = {}): Promise<GeneratedPreview> {
+  return apiPost<GeneratedPreview>("/generated/preview", body, options);
+}
+
+/** Crea la nota en `_generadas/` (la API nunca sobrescribe). */
+export function saveGenerated(
+  body: { path: string; content: string },
+  options: RequestOptions = {},
+): Promise<GeneratedSaved> {
+  return apiPost<GeneratedSaved>("/generated/save", body, options);
 }

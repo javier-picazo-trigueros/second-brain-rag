@@ -91,3 +91,50 @@ describe("summarizeNotices", () => {
     expect(summarizeNotices(notices)).toBe("1 cita no verificada · Confianza baja");
   });
 });
+
+describe("respuesta_contradictoria", () => {
+  it("explains that what the model wrote was discarded", () => {
+    const [notice] = describeNotices(done({ warnings: ["respuesta_contradictoria"] }));
+    expect(notice).toMatchObject({ code: "respuesta_contradictoria", tone: "caution" });
+    expect(notice!.title).toBe("Respuesta descartada");
+    expect(notice!.detail).toContain("no lo encuentra");
+  });
+
+  it("goes first, before the other warnings", () => {
+    const codes = describeNotices(done({ warnings: ["confianza_baja", "respuesta_contradictoria"] })).map(
+      (n) => n.code,
+    );
+    expect(codes[0]).toBe("respuesta_contradictoria");
+  });
+});
+
+describe("exercise answers: numbers, steps and partial answers", () => {
+  it("lists the numbers that are not in the sources and says to check them", () => {
+    const [notice] = describeNotices(
+      done({ warnings: ["numeros_no_verificados"], unverified_numbers: ["0,79209", "12,5"] }),
+    );
+    expect(notice).toMatchObject({ code: "numeros_no_verificados", tone: "caution" });
+    expect(notice!.title).toBe("2 números sin verificar");
+    expect(notice!.detail).toContain("0,79209");
+    expect(notice!.detail).toContain("12,5");
+  });
+
+  it("uses the singular for one number", () => {
+    const [notice] = describeNotices(done({ warnings: ["numeros_no_verificados"], unverified_numbers: ["7,5"] }));
+    expect(notice!.title).toBe("1 número sin verificar");
+  });
+
+  it("counts the steps without a citation", () => {
+    const [notice] = describeNotices(done({ warnings: ["pasos_sin_cita"], uncited_steps: 3 }));
+    expect(notice).toMatchObject({ code: "pasos_sin_cita", tone: "caution" });
+    expect(notice!.title).toBe("3 pasos sin cita");
+    const [one] = describeNotices(done({ warnings: ["pasos_sin_cita"], uncited_steps: 1 }));
+    expect(one!.title).toBe("1 paso sin cita");
+  });
+
+  it("explains a partial answer", () => {
+    const [notice] = describeNotices(done({ warnings: ["respuesta_parcial"] }));
+    expect(notice).toMatchObject({ code: "respuesta_parcial", tone: "caution", title: "Respuesta parcial" });
+    expect(notice!.detail).toContain("frases con cita");
+  });
+});

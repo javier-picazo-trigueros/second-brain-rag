@@ -344,3 +344,44 @@ describe("Preguntar: accesibilidad", () => {
     expect(await axe(container)).toHaveNoViolations();
   });
 });
+
+
+describe("Preguntar: apuntes", () => {
+  it("shows which part is being written, and keeps the text if stopped", async () => {
+    const stream = controlled();
+    setup();
+    await ask("hazme apuntes del tema 5 de discreta");
+    stream.push(sourcesEvent());
+    stream.push({ type: "progress", part: 2, total: 7, title: "Grafos · págs. 4-28" });
+    stream.push({ type: "token", text: "# Apuntes\n\n" });
+    expect(await screen.findByText("Parte 2 de 7")).toBeInTheDocument();
+    expect(screen.getByText("Grafos · págs. 4-28")).toBeInTheDocument();
+    const bar = screen.getByRole("progressbar", { name: "Progreso de los apuntes" });
+    expect(bar).toHaveAttribute("aria-valuenow", "2");
+    expect(bar).toHaveAttribute("aria-valuemax", "7");
+    await userEvent.click(screen.getByRole("button", { name: "Parar" }));
+    expect(await screen.findByText("Respuesta detenida")).toBeInTheDocument();
+    expect(screen.getByText("Apuntes")).toBeInTheDocument(); // lo escrito se conserva
+    expect(screen.queryByRole("button", { name: "Guardar como nota" })).toBeNull(); // incompletos
+    stream.close();
+  });
+
+  it("offers to save the notes as a note once they are complete", async () => {
+    script([
+      sourcesEvent(),
+      { type: "token", text: "# Apuntes del tema 5 de Discreta\n\nTexto" },
+      doneEvent({ answer: "# Apuntes del tema 5 de Discreta\n\nTexto", mode: "notes", subject: "Discreta", topic: 5 }),
+    ]);
+    setup();
+    await ask("hazme apuntes del tema 5 de discreta");
+    expect(await screen.findByRole("button", { name: "Guardar como nota" })).toBeInTheDocument();
+  });
+
+  it("does not offer it for an ordinary answer", async () => {
+    script([sourcesEvent(), { type: "token", text: "Hola" }, doneEvent({ answer: "Hola" })]);
+    setup();
+    await ask("¿qué es un semáforo?");
+    await screen.findByText("Hola");
+    expect(screen.queryByRole("button", { name: "Guardar como nota" })).toBeNull();
+  });
+});

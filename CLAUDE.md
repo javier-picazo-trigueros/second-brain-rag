@@ -33,7 +33,7 @@ Diseño de la Fase 1 aprobado en `docs/referencia_fase1.md`; estado y decisiones
 - Si un comando falla con "archivo en uso" o "access denied", suele ser OneDrive: esperar unos
   segundos y reintentar una vez; si persiste, avisar al usuario.
 - GPU de 8 GB: en consulta el embedder (`bge-m3`) corre en CPU (`num_gpu=0`); LLM `qwen2.5:7b` con
-  `num_ctx=8192`. Ollama con `OLLAMA_FLASH_ATTENTION=1` y `OLLAMA_KV_CACHE_TYPE=q8_0`.
+  `num_ctx=16384`. Ollama con `OLLAMA_FLASH_ATTENTION=1` y `OLLAMA_KV_CACHE_TYPE=q8_0`.
 
 ## Comandos
 ```powershell

@@ -79,7 +79,7 @@ def test_request_payload(tmp_path: Path) -> None:
     list(_llm(tmp_path, handler).stream_chat(MESSAGES))
     assert seen["path"] == "/api/chat"
     assert (seen["model"], seen["stream"], seen["keep_alive"]) == ("qwen2.5:7b", True, "10m")
-    assert seen["options"] == {"num_ctx": 8192, "num_predict": 1024, "temperature": 0.2}
+    assert seen["options"] == {"num_ctx": 16384, "num_predict": 1024, "temperature": 0.2}
     assert seen["messages"] == [
         {"role": "system", "content": "Eres un asistente."},
         {"role": "user", "content": "¿Qué es un semáforo?"},
@@ -147,3 +147,15 @@ def test_a_stream_that_ends_without_done_is_an_error(tmp_path: Path) -> None:
 
     with pytest.raises(LLMError, match="interrumpida"):
         list(_llm(tmp_path, handler).stream_chat(MESSAGES))
+
+
+def test_a_per_request_token_limit_overrides_the_default(tmp_path: Path) -> None:
+    seen: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.update(json.loads(request.content))
+        return _ok(request)
+
+    list(_llm(tmp_path, handler).stream_chat(MESSAGES, max_tokens=2000))
+    assert seen["options"]["num_predict"] == 2000
+    assert seen["options"]["num_ctx"] == 16384  # el resto de opciones no cambia

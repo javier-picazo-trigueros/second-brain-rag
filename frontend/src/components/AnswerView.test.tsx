@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "vitest-axe";
 import { describe, expect, it, vi } from "vitest";
@@ -103,5 +103,44 @@ describe("AnswerView", () => {
       />,
     );
     expect(await axe(container)).toHaveNoViolations();
+  });
+});
+
+describe("AnswerView: títulos con corchetes junto a fórmulas", () => {
+  const bracketed: FragmentInfo[] = [
+    {
+      id: "S1",
+      label: "Tema 5 Ejemplo de grafos [MD]",
+      path: "3º/Discretas/Tema 5 Ejemplo de grafos [MD].md",
+      title: "Tema 5 Ejemplo de grafos [MD]",
+      kind: "evidence",
+      page: 28,
+      heading: null,
+    },
+  ];
+
+  it("keeps the citation chip when the title has [MD] and the answer has a formula", async () => {
+    const text = String.raw`La fórmula de Euler es \(V - E + F = 2\) [S1] y en bloque: \[V - E + F = 2\] [S1].`;
+    const { container } = render(<AnswerView text={text} fragments={bracketed} onOpenNote={() => {}} />);
+    await waitFor(() => expect(container.querySelector(".katex-display")).not.toBeNull());
+    expect(container.querySelectorAll(".cite")).toHaveLength(2);
+    expect(container.textContent).not.toContain("cite:");
+    expect(container.textContent).not.toContain("](");
+    expect(container.textContent).not.toMatch(/MDMD/);
+  });
+
+  it("keeps the chip with $...$ formulas too, in the same sentence", async () => {
+    const { container } = render(
+      <AnswerView text="Vale $V-E+F=2$ [S1]." fragments={bracketed} onOpenNote={() => {}} />,
+    );
+    await waitFor(() => expect(container.querySelector(".katex")).not.toBeNull());
+    expect(container.querySelectorAll(".cite")).toHaveLength(1);
+    expect(container.textContent).not.toContain("cite:");
+  });
+
+  it("works the same without formulas (the title never reaches the text)", () => {
+    const { container } = render(<AnswerView text="Dato [S1]." fragments={bracketed} onOpenNote={() => {}} />);
+    expect(container.querySelectorAll(".cite")).toHaveLength(1);
+    expect(container.textContent).toBe("Dato 1.");
   });
 });

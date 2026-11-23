@@ -188,3 +188,21 @@ def test_top1_and_recall_do_not_change_when_a_copy_follows_its_original() -> Non
     family = _fam(("x/Semáforos.md", "x/Semáforos (1).md"))
     s = score_retrieval(q, ["x/Semáforos.md", "x/Semáforos (1).md"], family)
     assert s.top1_hit and s.recall == 0.5 and s.noise == 0  # la otra expectativa no aparece
+
+
+def test_exercises_is_a_valid_kind(tmp_path: Path) -> None:
+    file = tmp_path / "g.yaml"
+    file.write_text(
+        "questions:\n  - id: e1\n    kind: exercises\n    question: q\n    expect: [a]\n",
+        encoding="utf-8",
+    )
+    assert [q.kind for q in load_golden(file)] == ["exercises"]
+
+
+def test_notes_is_a_valid_kind(tmp_path: Path) -> None:
+    file = tmp_path / "g2.yaml"
+    file.write_text(
+        "questions:\n  - id: n1\n    kind: notes\n    question: q\n    expect: [a]\n",
+        encoding="utf-8",
+    )
+    assert [q.kind for q in load_golden(file)] == ["notes"]

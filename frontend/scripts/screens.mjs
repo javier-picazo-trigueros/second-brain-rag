@@ -66,6 +66,27 @@ $$\sigma^2 = \frac{1}{n}\sum_{i=1}^{n}(x_i - \bar{x})^2$$
 
 Y la identidad de Euler, con otros delimitadores: \(e^{i\pi}+1=0\).`;
 
+const APUNTES = String.raw`# Apuntes del tema 1 de Estructuras de Datos
+
+## Complejidad · págs. 3-5
+
+### Definición
+
+La **complejidad** de un algoritmo mide los recursos que usa en función del tamaño $n$ de la entrada [S1].
+
+- Mejor caso, caso medio y peor caso [S2].
+- Notación asintótica: $T(n) \in O(n \log n)$ [S1].
+
+## Tipos de ejercicio
+
+Calcular la cota $O(\cdot)$ de un bucle anidado: se multiplican los recorridos [S3].`;
+
+const CODIGO = String.raw`Ejemplo con la familia exec [S1]:
+
+\[ \text{char* arguments[] = { "ls", "-l", "/usr/include", 0 }; execv("/bin/ls", arguments);} \]
+
+Y una fórmula de verdad: \(T(n) = O(n \log n)\) [S2].`;
+
 const ASKS = {
   respuesta: sse([
     sources(),
@@ -83,9 +104,20 @@ const ASKS = {
     done({ answer: "No lo encuentro en el vault.\n\nPodrías mirar: [S3]", not_found: true, warnings: ["confianza_baja"], confidence: "baja", similarity: 0.52, citations: [FRAGMENTS[2]] }),
   ]),
   formulas: sse([
-    sources(),
+    sources({ fragments: FRAGMENTS.map((f, i) => (i === 0 ? { ...f, label: "Tema 5 Ejemplo de grafos [MD]", title: "Tema 5 Ejemplo de grafos [MD]" } : f)) }),
     { type: "token", text: FORMULAS },
     done({ answer: FORMULAS, citations: [FRAGMENTS[0]] }),
+  ]),
+  apuntes: sse([
+    sources(),
+    { type: "progress", part: 1, total: 2, title: "Complejidad · págs. 3-5" },
+    { type: "token", text: APUNTES },
+    done({ answer: APUNTES, citations: FRAGMENTS.slice(0, 3), mode: "notes", subject: "Estructuras de Datos", topic: 1, completion_tokens: 1800 }),
+  ]),
+  codigo: sse([
+    sources(),
+    { type: "token", text: CODIGO },
+    done({ answer: CODIGO, citations: FRAGMENTS.slice(0, 2) }),
   ]),
   error: sse([{ type: "error", message: "Ollama no responde en http://localhost:11434: arráncalo con `ollama serve`." }]),
 };
@@ -139,6 +171,25 @@ const scenarios = [
       await page.locator(".katex-display").waitFor();
       const loaded = await page.evaluate(async () => { await document.fonts.ready; return document.fonts.check("1em KaTeX_Main") && document.fonts.check("1em KaTeX_Math"); });
       if (!loaded || (await page.locator(".katex").count()) < 3) throw new Error("KaTeX no se ha renderizado o sus fuentes no cargaron");
+      const text = await page.locator("[data-testid=answer]").innerText();
+      if (/cite:|\]\(|MDMD/.test(text)) throw new Error("La cita con corchetes salió como texto crudo: " + text);
+  } },
+  { name: "apuntes-resultado", run: async (page) => {
+      await ask(page, "hazme unos apuntes del tema 1 de estructuras de datos");
+      await page.getByRole("button", { name: "Guardar como nota" }).waitFor();
+  } },
+  { name: "apuntes-guardar", run: async (page) => {
+      await ask(page, "hazme unos apuntes del tema 1 de estructuras de datos");
+      await page.getByRole("button", { name: "Guardar como nota" }).click();
+      await page.getByRole("dialog", { name: "Guardar como nota" }).waitFor();
+      await page.getByRole("button", { name: "Guardar", exact: true }).waitFor();
+  } },
+  { name: "respuesta-codigo", run: async (page) => {
+      await ask(page, "¿Cómo se ejecuta un programa desde C?");
+      await page.locator(".katex").first().waitFor();
+      const code = await page.locator("[data-testid=answer] pre code").first().innerText();
+      if (!code.includes('{ "ls", "-l", "/usr/include", 0 }')) throw new Error("El código C perdió sus llaves: " + code);
+      if ((await page.locator("[data-testid=answer] .katex").count()) !== 1) throw new Error("Debe haber una sola fórmula, no el código");
   } },
   { name: "confianza-baja", run: async (page) => ask(page, "¿Qué es un montículo?") },
   { name: "no-lo-encuentro", run: async (page) => ask(page, "¿Cómo funciona el borrow checker de Rust?") },
@@ -155,7 +206,7 @@ const scenarios = [
       if (await menu.isVisible()) await menu.click();
       await page.getByRole("link", { name: "Estado" }).click(); await page.getByRole("heading", { name: "Ollama" }).waitFor(); } },
 ];
-const askFor = { respuesta: "respuesta", "respuesta-formulas": "formulas", "respuesta-nota": "respuesta", "confianza-baja": "confianza", "no-lo-encuentro": "nolo", error: "error" };
+const askFor = { respuesta: "respuesta", "respuesta-codigo": "codigo", "apuntes-resultado": "apuntes", "apuntes-guardar": "apuntes", "respuesta-formulas": "formulas", "respuesta-nota": "respuesta", "confianza-baja": "confianza", "no-lo-encuentro": "nolo", error: "error" };
 
 const browser = await chromium.launch({ executablePath: EDGE, headless: true });
 const summary = [];
@@ -166,6 +217,8 @@ for (const scheme of ["light", "dark"]) {
       const page = await context.newPage();
       await page.route("**/ask", (route) =>
         route.fulfill({ status: 200, contentType: "text/event-stream", body: ASKS[askFor[scenario.name] ?? "respuesta"] }));
+      await page.route("**/generated/preview", (route) =>
+        route.fulfill({ json: { path: "_generadas/Apuntes del tema 1 de Estructuras de Datos.md", content: "---\ntitulo: Apuntes del tema 1\nasignatura: Estructuras de Datos\ntema: 1\nfecha: 2026-11-17\ngenerada: true\nfuentes:\n  - '[[Tema 1]]'\n---\n\n## Complejidad\n\nLa complejidad mide los recursos...\n" } }));
       if (!scenario.real) await page.route("**/notes/**", (route) => route.fulfill({ json: NOTE }));
       await page.goto(BASE + (scenario.url ?? ""));
       if (!scenario.url) await page.getByRole("textbox", { name: "Tu pregunta" }).waitFor();

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { ApiError, apiGet, apiPost, askStream, type AskEvent } from "./api";
+import { ApiError, apiGet, apiPost, askStream, previewGenerated, saveGenerated, type AskEvent } from "./api";
 
 const encoder = new TextEncoder();
 
@@ -122,5 +122,27 @@ describe("askStream", () => {
     const fetchImpl = vi.fn().mockResolvedValue(sseResponse("event: token\ndata: {roto\n\n"));
     const events = await collect(askStream("x", { fetchImpl }));
     expect(events[0]).toMatchObject({ type: "error" });
+  });
+});
+
+
+describe("study notes", () => {
+  it("yields the progress events of the stream", async () => {
+    const text =
+      'event: progress\ndata: {"part":1,"total":3,"title":"A"}\n\n' +
+      'event: token\ndata: {"text":"x"}\n\n';
+    const events = await collect(askStream("apuntes", { fetchImpl: vi.fn().mockResolvedValue(sseResponse(text)) }));
+    expect(events[0]).toEqual({ type: "progress", part: 1, total: 3, title: "A" });
+  });
+
+  it("asks for the preview and the save as JSON posts", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockImplementation(async () => jsonResponse({ path: "_generadas/A.md", content: "c" }));
+    const body = { title: "A", markdown: "m", asignatura: "S", tema: 2, sources: ["a.md"] };
+    expect(await previewGenerated(body, { fetchImpl })).toEqual({ path: "_generadas/A.md", content: "c" });
+    expect(fetchImpl).toHaveBeenCalledWith("/generated/preview", expect.objectContaining({ method: "POST" }));
+    await saveGenerated({ path: "_generadas/A.md", content: "c" }, { fetchImpl });
+    expect(fetchImpl).toHaveBeenLastCalledWith("/generated/save", expect.objectContaining({ method: "POST" }));
   });
 });

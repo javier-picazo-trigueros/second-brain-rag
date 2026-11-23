@@ -4,6 +4,7 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from pathlib import PurePosixPath
+from typing import TYPE_CHECKING
 
 from secondbrain.config import Settings
 from secondbrain.domain import Hit
@@ -12,7 +13,11 @@ from secondbrain.retrieval.families import CopyFamilies
 from secondbrain.retrieval.graph import ConceptGraph
 from secondbrain.store.manifest import Manifest
 
+if TYPE_CHECKING:
+    from secondbrain.retrieval.study import StudyPlan
+
 _SNIPPET_CHARS = 300
+_CANDIDATES = 3  # mejores del ranking que se vigilan aunque el corte de coseno las quite
 _COSINE_LOOKUPS = 20  # notas del ranking cuyo coseno se pide aparte si falta en el denso
 
 
@@ -52,6 +57,11 @@ class SearchResult:
     top_similarity: float | None = None
     mode: str = "search"  # "overview": resumen de una asignatura o tema, no fragmentos
     facts: str = ""  # datos exactos del índice que se pasan al modelo (p. ej. nº de temas)
+    canned: str = ""  # respuesta fija, sin modelo (p. ej. «no hay ejercicios de ese tema»)
+    study: StudyPlan | None = None  # modo «apuntes»: qué se escribe en cada parte
+    # Las mejores del ranking que el corte de coseno descartó: sirven para avisar de ambigüedad.
+    candidates: tuple[NoteHit, ...] = ()
+    ambiguity: str = ""  # frase que el sistema antepone si la pregunta es ambigua entre asignaturas
 
 
 class HybridRetriever:
@@ -92,12 +102,15 @@ class HybridRetriever:
         if not hits:
             return SearchResult([], [], similarity)
         canonical, copies = self._families.index()
-        ranked = self._relevant(self._rank(hits, canonical, copies), cosines, dense)
+        full = self._rank(hits, canonical, copies)
+        ranked = self._relevant(full, cosines, dense)
+        kept = {n.path for n in ranked}
+        candidates = tuple(n for n in full[:_CANDIDATES] if n.path not in kept)
         if not ranked:
-            return SearchResult([], [], similarity)
+            return SearchResult([], [], similarity, candidates=candidates)
         selected = self._select(ranked, k)
         related = self._related(selected, dense, canonical) if with_graph else []
-        return SearchResult(selected, related, similarity)
+        return SearchResult(selected, related, similarity, candidates=candidates)
 
     # --- ranking ------------------------------------------------------------------------------
 

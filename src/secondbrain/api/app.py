@@ -10,7 +10,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Protocol
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
@@ -23,6 +23,7 @@ from secondbrain.answer.pipeline import (
     DoneEvent,
     ErrorEvent,
     Event,
+    ProgressEvent,
     SourcesEvent,
     TokenEvent,
     confidence_label,
@@ -36,6 +37,10 @@ from secondbrain.api.schemas import (
     ConceptOut,
     FacetsOut,
     FacetValueOut,
+    GeneratedPreviewOut,
+    GeneratedPreviewRequest,
+    GeneratedSaveOut,
+    GeneratedSaveRequest,
     HealthOut,
     NeighborOut,
     NeighborsOut,
@@ -49,8 +54,9 @@ from secondbrain.api.schemas import (
     SubjectOut,
 )
 from secondbrain.config import Settings
+from secondbrain.generated import GeneratedError, build_note, preview, save
 from secondbrain.ingest.parser import parse_note
-from secondbrain.obsidian import obsidian_url
+from secondbrain.obsidian import obsidian_link
 from secondbrain.retrieval.catalog import Catalog
 from secondbrain.retrieval.faceted import FacetedSearch, Filters
 from secondbrain.retrieval.graph import ConceptGraph
@@ -140,6 +146,7 @@ def _related(rel: RelatedNote) -> RelatedOut:
 def _sse(event: Event) -> str:
     name = {
         SourcesEvent: "sources",
+        ProgressEvent: "progress",
         TokenEvent: "token",
         DoneEvent: "done",
         ErrorEvent: "error",
@@ -160,13 +167,12 @@ _NOT_THE_APP = (
     "notes",
     "graph",
     "reindex",
+    "generated",
     "docs",
     "redoc",
     "openapi.json",
     "assets",
 )
-# Un fichero estático que falta es un 404; el resto de rutas (también `/nota/…/x.md`) son de la app.
-
 # Un fichero estático que falta es un 404; lo demás (también /nota/x.md) es de la app.
 _STATIC_EXTENSIONS = frozenset(
     {"js", "mjs", "css", "map", "png", "jpg", "jpeg", "gif", "svg", "ico", "webp", "avif",
@@ -359,7 +365,7 @@ def create_app(services: AppServices, static_dir: Path | None = None) -> FastAPI
                 if services.catalog
                 else []
             ),
-            obsidian_url=obsidian_url(settings.obsidian_vault_name, clean),
+            obsidian_url=obsidian_link(settings, clean),
         )
 
     @app.get("/graph/neighbors/{path:path}", response_model=NeighborsOut, tags=["notas"])
@@ -374,6 +380,53 @@ def create_app(services: AppServices, static_dir: Path | None = None) -> FastAPI
             ],
             neighbors=neighbours(clean, limit),
         )
+
+    def local_origin_only(request: Request) -> None:
+        """Escribir en el vault solo se admite desde la propia interfaz: una página de otro sitio
+        que apunte a esta API recibe un 403 (el navegador siempre envía `Origin` en un POST)."""
+        origin = request.headers.get("origin")
+        if origin is None:
+            return
+        host = request.headers.get("host", "")
+        allowed = {f"http://{host}", f"https://{host}", *settings.api_cors_origins}
+        if origin not in allowed:
+            raise HTTPException(403, "Origen no permitido para escribir en el vault.")
+
+    @app.post(
+        "/generated/preview",
+        response_model=GeneratedPreviewOut,
+        tags=["apuntes"],
+        dependencies=[Depends(local_origin_only)],
+    )
+    def generated_preview(body: GeneratedPreviewRequest) -> GeneratedPreviewOut:
+        """Qué se guardaría y dónde. No escribe nada: la interfaz lo enseña y pide confirmación."""
+        known = [p for p in dict.fromkeys(body.sources) if manifest.get(p) is not None]
+        content = build_note(
+            title=body.title,
+            markdown=body.markdown,
+            asignatura=body.asignatura,
+            tema=body.tema,
+            sources=known,
+        )
+        try:
+            proposal = preview(settings, body.title, content)
+        except GeneratedError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return GeneratedPreviewOut(path=proposal.path, content=proposal.content)
+
+    @app.post(
+        "/generated/save",
+        response_model=GeneratedSaveOut,
+        tags=["apuntes"],
+        dependencies=[Depends(local_origin_only)],
+    )
+    def generated_save(body: GeneratedSaveRequest) -> GeneratedSaveOut:
+        """Crea el fichero en `_generadas/` (la única escritura en el vault). Nunca sobrescribe."""
+        try:
+            final = save(settings, body.path, body.content)
+        except GeneratedError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return GeneratedSaveOut(path=final, obsidian_url=obsidian_link(settings, final))
 
     @app.post("/reindex", response_model=ReindexStatusOut, status_code=202, tags=["índice"])
     def reindex() -> ReindexStatusOut:

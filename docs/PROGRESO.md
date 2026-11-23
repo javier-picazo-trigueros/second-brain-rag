@@ -470,6 +470,62 @@ Hecho (entregas A y B1):
   backslashes al escribir el fichero desde el shell; ahora tiene un test.
 
 
+## Fase 3c: modos ejercicios y apuntes (rama `feat/fase-3c-apuntes-ejercicios`)
+
+- **Bug de citas con corchetes.** Un título con «[MD]» salía como texto crudo si la respuesta llevaba
+  fórmulas: el escape `\[MD\]` del enlace de cita se leía como delimitador de bloque. La conversión de
+  `\( \)`/`\[ \]` ahora respeta los enlaces de cita y solo se aplica a respuestas del modelo, no a notas
+  (donde `\[` es un corchete escapado, como en Obsidian). Test de regresión con título con corchetes y
+  fórmula en la misma respuesta, también en el navegador real.
+- **Modo ejercicios.** Intención «ejercicios/problemas del tema N de X» (robusta a faltas y formas
+  verbales), recuperación acotada a la asignatura y al tema (enunciado + solución, luego teoría), con un
+  dato del índice que lista los ejercicios, contexto y tope de salida propios, y respuesta fija sin modelo
+  cuando no hay ejercicios o el tema no existe. En Data Mining, tema 2: `PCA exercises 1` y
+  `PCA exercises 2`, cada uno con su «solution» (y copias en IA II que las familias colapsan).
+- **Regla del pipeline.** Si el modelo escribe contenido y luego «No lo encuentro en el vault», se corta
+  la generación, se descarta lo escrito y se avisa («Respuesta descartada»).
+- **Modo apuntes.** Plan por ventanas de fragmentos reales en orden de temario y de página, esqueleto con
+  el resumen del tema, una llamada por parte con progreso, parte final de tipos de ejercicio con las notas
+  de ejercicios. Medido con el modelo real: SO tema 3, 4 partes, 165 s (~48 s por parte).
+  Discreta tema 5: 10 partes de teoría + ejercicios (≈ 9 min estimados; los parámetros
+  `notes_window_tokens` y `notes_part_max_tokens` los acortan a costa de detalle).
+- **Contexto de 16.384** para todo (decidido): el estimador de tokens infravalora el texto numérico ~1,5x,
+  por eso el modo ejercicios usa un presupuesto de 7.000 estimados.
+- **Guardar como nota** (`generated.py`): vista previa sin escribir, confirmación, fichero nuevo en
+  `_generadas/` (exclusivo, sin sobrescribir, ruta confinada, enlaces `[[…]]` o Markdown si el título
+  lleva `[ ] # ^ |`), comprobación de origen en la API y `_generadas/` fuera del índice.
+
+### Fase 3c: correcciones tras la primera prueba del checkpoint
+
+- **Modo ejercicios.** Se resuelve UN ejercicio completo (el que nombra la pregunta, «el ejercicio 2», o
+  el primero) y se terminan listando los demás con «¿Sigo con el ejercicio N?» y cómo pedirlo (cada
+  pregunta es independiente). Ya no se mezclan varios ejercicios en un contexto: el modelo se quedaba sin
+  tokens y olvidaba citar. Las tablas de más de 8 filas se acortan en el contexto (el modelo las copiaba
+  enteras). El prompt exige una cita por paso, copiar los resultados de la solución y no recalcular.
+- **Puerta de citas.** En el golden volvió a salir una respuesta de ejercicios sin ninguna cita (el modelo
+  de 7B se olvida a veces). Detectarlo no bastaba: en este modo la respuesta se genera completa, se
+  comprueba que cada «Paso N» cita su fuente y, si falta alguna (o todas), se pide una vez más avisando
+  de qué falló; el usuario ve solo la mejor de las dos. A cambio, en este modo no hay streaming (la
+  respuesta aparece entera a los 30-55 s) y un reintento duplica el tiempo.
+- **Verificación en código, no en el modelo.** Los números de una respuesta de ejercicios que no están en
+  las fuentes (ni como ×100 o ÷100 de uno que sí está) se listan en un aviso («N números sin verificar»),
+  y los pasos sin cita se cuentan («N pasos sin cita»). La suma 0,79209 que se inventó el modelo habría
+  salido marcada. Limitación: un modelo de 7B sigue cometiendo estos fallos de vez en cuando; ahora se ven.
+- **Apuntes.** El código C salía dentro de `\[ \text{…} \]` porque el prompt pedía LaTeX: KaTeX lo pintaba
+  como matemáticas (texto duplicado HTML+MathML y llaves como agrupadores). Ahora el prompt exige bloques
+  ``` con lenguaje y el renderizado devuelve a código todo lo que parece código dentro de delimitadores de
+  fórmula (`remarkMathAsCode`). Los bloques de código con scroll son enfocables con teclado (axe). Cada
+  parte puede escribir hasta 2.000 tokens y la ventana baja a 3.000 estimados, para que ninguna se corte.
+- **«Abrir en Obsidian»** usa `obsidian://open?path=<ruta absoluta>`, que no depende del nombre con el que
+  Obsidian tenga registrado el vault; `BRAIN_OBSIDIAN_VAULT` queda como alternativa.
+- **Regla «No lo encuentro» tras contenido, variante suave.** Se conservan solo las líneas y frases con
+  citas verificadas anteriores a esa frase, se añade «No he encontrado en tus apuntes el resto de lo que
+  preguntas.» y la respuesta se marca como parcial. Sin ninguna frase citada se descarta entera.
+- **Ambigüedad entre asignaturas** («dame la fórmula de Euler»): si entre las mejores del ranking (también
+  las que el corte de coseno descarta) hay notas igual de relevantes de asignaturas distintas, el sistema
+  antepone una frase fija que lo dice y responde con la más relevante. La antepone el código porque el
+  modelo de 7B ignoraba la instrucción.
+
 ## Pendiente para la Fase 4
 
 Lo que se sabe y se ha dejado a propósito para la Fase de evals, con su medida en el golden set:

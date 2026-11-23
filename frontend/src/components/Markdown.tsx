@@ -42,6 +42,8 @@ export function textOf(node: ReactNode): string {
 type Components = NonNullable<ComponentProps<typeof ReactMarkdown>["components"]>;
 
 export const noteComponents: Components = {
+  // Un bloque de código con scroll horizontal debe poder enfocarse con el teclado (axe).
+  pre: ({ children }) => <pre tabIndex={0}>{children}</pre>,
   a: ({ href, children }) => {
     if (href?.startsWith("wikilink:")) return <WikiLink href={href}>{children}</WikiLink>;
     if (href?.startsWith("wikiembed:")) return <WikiEmbed>{children}</WikiEmbed>;
@@ -66,6 +68,8 @@ interface MarkdownProps {
   wikilinks?: boolean;
   /** Nivel del encabezado más alto del texto (p. ej. 2 bajo un `h1`); sin él, se respetan los niveles. */
   headingBase?: number;
+  /** Acepta `\( \)` y `\[ \]` como fórmulas: solo para las respuestas del modelo, no para notas. */
+  latexDelimiters?: boolean;
 }
 
 type MathModule = typeof import("../lib/math");
@@ -91,13 +95,14 @@ export function Markdown({
   highlight = false,
   wikilinks = false,
   headingBase,
+  latexDelimiters = false,
 }: MarkdownProps) {
   const math = useMath(children);
   return (
     <ReactMarkdown
       remarkPlugins={[
         remarkGfm,
-        ...(math ? [math.remarkMathPlugin] : []),
+        ...(math ? math.remarkMathPlugins : []),
         ...(wikilinks ? [remarkWikilinks] : []),
       ]}
       rehypePlugins={[
@@ -110,7 +115,7 @@ export function Markdown({
       urlTransform={urlTransform}
       components={components}
     >
-      {math ? math.normalizeDelimiters(children) : children}
+      {math ? math.normalizeDelimiters(children, latexDelimiters) : children}
     </ReactMarkdown>
   );
 }

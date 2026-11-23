@@ -113,3 +113,28 @@ describe("askReducer", () => {
     expect(state).toMatchObject({ status: "error", error: "No se puede conectar con la API" });
   });
 });
+
+
+describe("progress of study notes", () => {
+  it("keeps the current part while streaming and clears it when done", () => {
+    let state = askReducer(initialAskState, { type: "start", question: "apuntes" });
+    state = askReducer(state, sources);
+    state = askReducer(state, { type: "progress", part: 2, total: 5, title: "Grafos · págs. 4-28" });
+    expect(state.progress).toEqual({ part: 2, total: 5, title: "Grafos · págs. 4-28" });
+    expect(state.status).toBe("streaming");
+    state = askReducer(state, { type: "token", text: "texto" });
+    expect(state.progress).toEqual({ part: 2, total: 5, title: "Grafos · págs. 4-28" });
+    state = askReducer(state, done);
+    expect(state.progress).toBeNull();
+  });
+
+  it("keeps what was written when stopped, with the part it reached", () => {
+    let state = askReducer(initialAskState, { type: "start", question: "apuntes" });
+    state = askReducer(state, { type: "progress", part: 3, total: 7, title: "X" });
+    state = askReducer(state, { type: "token", text: "# Apuntes\n\nParte 1" });
+    state = askReducer(state, { type: "stop" });
+    expect(state.status).toBe("stopped");
+    expect(state.text).toBe("# Apuntes\n\nParte 1");
+    expect(state.progress).toEqual({ part: 3, total: 7, title: "X" });
+  });
+});

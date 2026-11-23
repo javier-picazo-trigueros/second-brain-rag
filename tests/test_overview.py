@@ -25,6 +25,9 @@ class OutlineStore:
         self.asked.append(list(paths))
         return [p for p in self.payloads if p["note_path"] in paths]
 
+    def chunks_of(self, paths: Sequence[str]) -> list[dict[str, Any]]:
+        return []  # el modo ejercicios no se ejerce aquí
+
 
 def chunk(
     path: str, position: int, heading: str, resumen: str | None = "Resumen de la nota."

@@ -221,6 +221,27 @@ class VectorStore:
             if offset is None:
                 return out
 
+    def chunks_of(self, paths: Sequence[str]) -> list[dict[str, Any]]:
+        """Todos los chunks de esas notas con su texto, por nota y en orden de posición."""
+        out: list[dict[str, Any]] = []
+        offset = None
+        while True:
+            points, offset = self._client.scroll(
+                self._name,
+                scroll_filter=self._paths_filter(paths),
+                limit=256,
+                offset=offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+            out.extend(dict(p.payload or {}) for p in points)
+            if offset is None:
+                break
+        order = {p: i for i, p in enumerate(paths)}
+        return sorted(
+            out, key=lambda c: (order.get(str(c["note_path"]), len(order)), int(c["position"]))
+        )
+
     def dense_notes(
         self, query_dense: list[float], limit: int = 100, only_paths: Sequence[str] | None = None
     ) -> dict[str, float]:

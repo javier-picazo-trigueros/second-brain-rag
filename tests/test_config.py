@@ -262,7 +262,7 @@ def test_settings_resolve_the_same_paths_from_another_working_directory(tmp_path
 
 def test_llm_defaults(tmp_path: Path) -> None:
     s = _settings(tmp_path)
-    assert (s.llm_model, s.llm_num_ctx, s.llm_max_tokens) == ("qwen2.5:7b", 8192, 1024)
+    assert (s.llm_model, s.llm_num_ctx, s.llm_max_tokens) == ("qwen2.5:7b", 16384, 1024)
     assert (s.llm_temperature, s.llm_keep_alive) == (0.2, "10m")
 
 

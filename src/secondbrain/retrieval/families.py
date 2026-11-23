@@ -110,6 +110,23 @@ class CopyFamilies:
                 canonical[path] = rep
         return canonical, others
 
+    def collapse(self, wanted: Iterable[str]) -> tuple[list[str], dict[str, tuple[str, ...]]]:
+        """Una nota por familia entre las pedidas (la representante se elige solo entre ellas, no
+        de otra carpeta) y, por representante, las demás ubicaciones de la familia."""
+        notes = list(wanted)
+        asked_set = set(notes)
+        canonical: dict[str, str] = {}
+        others: dict[str, tuple[str, ...]] = {}
+        for group in self.groups():
+            asked = [p for p in group if p in asked_set]
+            if not asked:
+                continue
+            rep = self.representative(asked)
+            others[rep] = tuple(p for p in group if p != rep)
+            for path in asked:
+                canonical[path] = rep
+        return list(dict.fromkeys(canonical.get(p, p) for p in notes)), others
+
     # --- construcción -------------------------------------------------------------------------
 
     def _build(self, paths: set[str], exact: list[tuple[str, ...]]) -> list[tuple[str, ...]]:

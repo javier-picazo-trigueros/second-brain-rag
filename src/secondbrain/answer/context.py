@@ -128,10 +128,15 @@ def build_context(result: SearchResult, settings: Settings) -> BuiltContext:
     overview = result.mode in (
         "overview",
         "overview_topic",
+        "exercises",
+        "exercises_none",
     )  # sin pistas del grafo: todo el presupuesto es evidencia
-    main_budget = settings.context_budget_tokens - (
-        0 if overview else settings.related_budget_tokens
+    total = (
+        settings.exercises_budget_tokens
+        if result.mode == "exercises"
+        else settings.context_budget_tokens
     )
+    main_budget = total - (0 if overview else settings.related_budget_tokens)
     if result.facts:
         main_budget -= estimate_tokens(result.facts) + 2  # el dato también ocupa contexto
 

@@ -4,6 +4,7 @@ import re
 
 from secondbrain.answer.context import BuiltContext
 from secondbrain.answer.llm import Message
+from secondbrain.retrieval.study import StudyPart, StudyPlan
 from secondbrain.retrieval.subjects import norm
 
 NOT_FOUND = "No lo encuentro en el vault."
@@ -56,6 +57,42 @@ TOPIC_PROMPT = (
 )
 
 
+EXERCISES_PROMPT = (
+    "\n6. Esta petición es sobre un EJERCICIO de un tema. El DATO DEL ÍNDICE dice cuál resolver y "
+    "cuáles hay. Resuelve SOLO ese ejercicio, COMPLETO: resume su enunciado (con cita) y sigue "
+    "paso a paso: «Paso 1: …», «Paso 2: …». "
+    "Cada paso termina con su cita [S#]: un paso sin cita no vale. Copia de la SOLUCIÓN los "
+    "números y resultados tal cual, con su cita; NO recalcules, sumes ni redondees por tu cuenta. "
+    "No hagas cálculos propios: si necesitas un dato que no está en la solución, dilo con una "
+    "frase corta, sin calcularlo ni inventarlo. Usa SOLO los pasos de la solución, en su orden: "
+    "no añadas pasos previos (limpieza, normalización...). Una tabla o lista de más de 6 filas "
+    "no se copia: di qué contiene y cita la fuente; copia solo lo que "
+    "pide el enunciado. No repitas un paso. Usa la teoría del tema para explicar el porqué de "
+    "cada paso. Al terminar, haz "
+    "lo que indica el DATO DEL ÍNDICE sobre los demás ejercicios. No inventes pasos ni escribas "
+    "«No lo encuentro en el vault» si has respondido."
+)
+
+STUDY_PROMPT = (
+    "\n6. Estás escribiendo UNA PARTE de unos apuntes de estudio, no un resumen. Usa solo los "
+    "FRAGMENTOS de esta parte y sigue su orden. Incluye TODAS las definiciones, propiedades y "
+    "teoremas con su enunciado completo, y los ejemplos resueltos paso a paso; no los condenses en "
+    "una frase. Escribe las fórmulas en LaTeX ($...$ en línea, $$...$$ en bloque). Usa "
+    "subtítulos (###) y listas. Todo código va en bloques ``` con su lenguaje (```c), nunca entre "
+    "$ ni \\[ \\]: el LaTeX es solo para fórmulas matemáticas. Empieza directamente por el "
+    "contenido: el sistema ya pone el título de la parte; no hagas introducción ni conclusión. "
+    "Una cita [S#] por afirmación. No inventes nada que no esté en los fragmentos ni escribas "
+    "«No lo encuentro en el vault»."
+)
+
+STUDY_EXERCISES_PROMPT = (
+    "\n6. Esta es la última parte de unos apuntes: «Tipos de ejercicio». Los FRAGMENTOS son "
+    "enunciados de ejercicios y sus soluciones. Describe qué tipos de ejercicio hay, el método "
+    "para resolver cada tipo en pasos cortos y un enunciado de ejemplo (con su cita). Fórmulas "
+    "en LaTeX. No resuelvas todos los ejercicios ni inventes datos. No escribas «No lo "
+    "encuentro en el vault»."
+)
+
 _NUMBERS = {"un par de": 2, "un": 1, "dos": 2, "tres": 3, "cuatro": 4}
 _PARAGRAPHS = re.compile(r"\b(un par de|un|dos|tres|cuatro|[1-4])\s+parrafos?\b")
 
@@ -77,12 +114,40 @@ def format_request(question: str) -> str:
     )
 
 
+def build_study_messages(
+    plan: StudyPlan, part: StudyPart, number: int, total: int
+) -> list[Message]:
+    """Mensaje de UNA parte de los apuntes: esquema del tema + sus fragmentos + qué se pide."""
+    blocks: list[str] = []
+    for f in part.fragments:
+        lines = [f"### [{f.id}]", f"Nota: {f.label}"]
+        if f.page is not None:
+            lines.append(f"Página: {f.page}")
+        if f.heading:
+            lines.append(f"Encabezado: {f.heading}")
+        blocks.append("\n".join(lines) + f"\n{f.text}")
+    skeleton = f"ESQUEMA DEL TEMA (resumen):\n{plan.skeleton}\n\n" if plan.skeleton else ""
+    sources = "FUENTES (esta parte):\n\n" + "\n\n".join(blocks)
+    ask = (
+        f"PARTE {number} de {total}: {part.title} (apuntes del tema {plan.topic} de {plan.subject})"
+    )
+    extra = STUDY_EXERCISES_PROMPT if part.kind == "exercises" else STUDY_PROMPT
+    return [
+        Message("system", SYSTEM_PROMPT + extra),
+        Message("user", f"{skeleton}{sources}\n\n{ask}\n\n{REMINDER}"),
+    ]
+
+
 def build_messages(question: str, context: BuiltContext) -> list[Message]:
     asked = question.strip()
     if len(asked) > QUESTION_MAX_CHARS:
         asked = asked[:QUESTION_MAX_CHARS].rstrip() + " […]"
     sources = context.text or "FUENTES: (no se ha recuperado ninguna nota)"
-    extra = {"overview": OVERVIEW_PROMPT, "overview_topic": TOPIC_PROMPT}.get(context.mode, "")
+    extra = {
+        "overview": OVERVIEW_PROMPT,
+        "overview_topic": TOPIC_PROMPT,
+        "exercises": EXERCISES_PROMPT,
+    }.get(context.mode, "")
     system = SYSTEM_PROMPT + extra
     requested = format_request(asked)
     tail = f"{requested}\n\n{REMINDER}" if requested else REMINDER

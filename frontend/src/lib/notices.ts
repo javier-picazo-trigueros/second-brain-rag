@@ -12,6 +12,10 @@ export interface Notice {
 }
 
 const ORDER = [
+  "respuesta_contradictoria",
+  "respuesta_parcial",
+  "numeros_no_verificados",
+  "pasos_sin_cita",
   "citas_no_verificadas",
   "sin_citas",
   "solo_pistas",
@@ -49,6 +53,44 @@ function build(code: string, done: DoneEvent): Notice | null {
         detail:
           "El modelo nombró notas que no estaban entre las fuentes consultadas. " +
           "En el texto aparecen marcadas con «?».",
+      };
+    }
+    case "respuesta_contradictoria":
+      return {
+        code,
+        tone: "caution",
+        title: "Respuesta descartada",
+        detail:
+          "El modelo escribió contenido y después dijo que no lo encuentra en tus apuntes; " +
+          "se ha descartado lo escrito porque no es de fiar.",
+      };
+    case "respuesta_parcial":
+      return {
+        code,
+        tone: "caution",
+        title: "Respuesta parcial",
+        detail:
+          "El modelo no encontró parte de lo que preguntas. Solo se conservan las frases con cita " +
+          "verificada; el resto se ha descartado.",
+      };
+    case "numeros_no_verificados": {
+      const numbers = done.unverified_numbers ?? [];
+      return {
+        code,
+        tone: "caution",
+        title: `${numbers.length} ${numbers.length === 1 ? "número sin verificar" : "números sin verificar"}`,
+        detail:
+          `No aparecen en las fuentes: ${numbers.join(", ")}. El modelo debe copiar los resultados ` +
+          "de la solución, no recalcularlos: compruébalos antes de fiarte.",
+      };
+    }
+    case "pasos_sin_cita": {
+      const steps = done.uncited_steps ?? 0;
+      return {
+        code,
+        tone: "caution",
+        title: `${steps} ${steps === 1 ? "paso sin cita" : "pasos sin cita"}`,
+        detail: "Algún paso no indica de qué nota sale, así que no se puede comprobar.",
       };
     }
     case "sin_citas":

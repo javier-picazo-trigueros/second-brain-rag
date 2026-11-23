@@ -5,15 +5,19 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from pathlib import PurePosixPath
 from typing import Any, Protocol
 
 from secondbrain.config import Settings
 from secondbrain.domain import Hit
+from secondbrain.retrieval.exercises import ChunkSource, ExerciseBuilder, available_topics
 from secondbrain.retrieval.families import CopyFamilies
 from secondbrain.retrieval.hybrid import NoteHit, SearchResult
 from secondbrain.retrieval.intent import detect_intent
+from secondbrain.retrieval.study import StudyPlanner
 from secondbrain.retrieval.subjects import (
+    Subject,
     SubjectIndex,
     SubjectSpec,
     load_aliases,
@@ -24,6 +28,7 @@ from secondbrain.retrieval.topics import index_topics, is_exercise, is_guide, to
 from secondbrain.store.manifest import Manifest
 
 _COURSE = re.compile(r"^\d+º$")
+_AMBIGUITY_RATIO = 0.75  # una fuente «igual de relevante» puntúa al menos esto sobre la mejor
 _MIN_NUMBERED_TOPICS = (
     3  # a partir de aquí hay un temario numerado y solo él representa la asignatura
 )
@@ -114,19 +119,7 @@ class OverviewBuilder:
         return SearchResult(hits, [], None, mode=mode, facts=facts)
 
     def _collapse(self, notes: Sequence[str]) -> tuple[list[str], dict[str, tuple[str, ...]]]:
-        wanted = set(notes)
-        canonical: dict[str, str] = {}
-        others: dict[str, tuple[str, ...]] = {}
-        for group in self._families.groups():
-            asked = [p for p in group if p in wanted]
-            if not asked:
-                continue
-            rep = self._families.representative(asked)  # solo entre las pedidas, no de otra carpeta
-            others[rep] = tuple(p for p in group if p != rep)
-            for path in asked:
-                canonical[path] = rep
-        reps = dict.fromkeys(canonical.get(p, p) for p in notes)
-        return list(reps), others
+        return self._families.collapse(notes)
 
     def _choose(self, reps: list[str], counts: Mapping[str, int]) -> list[str]:
         """Qué notas representan la asignatura (en orden natural).
@@ -194,7 +187,7 @@ class IntentRetriever:
         self,
         settings: Settings,
         base: Searcher,
-        store: OutlineSource,
+        store: ChunkSource,
         manifest: Manifest,
         aliases: Mapping[str, SubjectSpec] | None = None,
         families: CopyFamilies | None = None,
@@ -203,6 +196,8 @@ class IntentRetriever:
         self._base = base
         self._manifest = manifest
         self._builder = OverviewBuilder(settings, store, manifest, families)
+        self._exercises = ExerciseBuilder(settings, store, manifest, families)
+        self._study = StudyPlanner(settings, store, manifest, families)
         self._aliases = load_aliases(settings.aliases_path) if aliases is None else aliases
         self._index_key: int | None = None
         self._index: SubjectIndex | None = None
@@ -218,6 +213,10 @@ class IntentRetriever:
     def search(self, query: str, k: int = 5, *, with_graph: bool = True) -> SearchResult:
         index = self._subjects()
         intent = detect_intent(query, index)
+        if intent.subject is not None and intent.kind == "notes" and intent.topic is not None:
+            return self._study_result(index, intent.subject, intent.topic)
+        if intent.subject is not None and intent.kind == "exercises" and intent.topic is not None:
+            return self._exercise_result(query, index, intent.subject, intent.topic)
         if intent.subject is not None and intent.kind != "search":
             if intent.topic is not None:
                 notes = index.topic_notes(intent.subject, intent.topic)
@@ -236,7 +235,70 @@ class IntentRetriever:
         named = index.detect_all(query)
         if intent.kind == "search" and len(named) >= 2:
             return self._cross(query, k, [index.notes_of(s) for s in named])
-        return self._base.search(query, k, with_graph=with_graph)
+        result = self._base.search(query, k, with_graph=with_graph)
+        if intent.subject is None and not named:
+            return self._flag_ambiguity(index, result)
+        return result
+
+    def _flag_ambiguity(self, index: SubjectIndex, result: SearchResult) -> SearchResult:
+        """Si las mejores fuentes, igual de relevantes, son de asignaturas distintas, el modelo
+        debe decirlo al principio y responder con la más relevante (p. ej. «Euler» en grafos y en
+        el método numérico)."""
+        top = sorted([*result.notes[:3], *result.candidates], key=lambda n: -n.score)
+        if len(top) < 2:
+            return result
+        close = [n for n in top if n.score >= _AMBIGUITY_RATIO * top[0].score]
+        by_subject: dict[str, str] = {}
+        for note in close:
+            name = index.name_of(note.path)
+            if name is not None:
+                by_subject.setdefault(name, PurePosixPath(note.path).stem)
+        if len(by_subject) < 2:
+            return result
+        listed = " y ".join(f"«{name}» ({title})" for name, title in by_subject.items())
+        answered = index.name_of(result.notes[0].path) if result.notes else None
+        used = (
+            f" Respondo con las fuentes de «{answered}», que son las más relevantes;"
+            if answered
+            else ""
+        )
+        message = (
+            "Ojo: tu pregunta puede referirse a temas distintos de asignaturas distintas: "
+            f"{listed}.{used} si buscabas otra, concreta la pregunta."
+        )
+        return replace(result, ambiguity=message)
+
+    def _study_result(self, index: SubjectIndex, subject: Subject, topic: int) -> SearchResult:
+        notes = index.topic_notes(subject, topic)
+        plan = self._study.plan(subject, topic, notes) if notes else None
+        if plan is not None:
+            return SearchResult([], [], None, mode="notes", study=plan)
+        text = f"No encuentro apuntes del tema {topic} de {subject.name}."
+        if not notes:
+            have = available_topics(index.notes_of(subject))
+            text += f" {subject.name} no tiene notas del tema {topic}."
+            if have:
+                text += f" Los temas que sí tiene son: {', '.join(str(n) for n in have)}."
+        else:
+            text += f" El tema {topic} solo tiene ejercicios o guías, no notas de teoría."
+        return SearchResult([], [], None, mode="notes_none", canned=text)
+
+    def _exercise_result(
+        self, query: str, index: SubjectIndex, subject: Subject, topic: int
+    ) -> SearchResult:
+        notes = index.topic_notes(subject, topic)
+        if not notes:
+            return self._exercises.missing_topic(
+                subject.name, topic, available_topics(index.notes_of(subject))
+            )
+
+        def theory(paths: Sequence[str]) -> list[NoteHit]:
+            # La teoría se busca solo entre las notas de teoría de este tema y esta asignatura.
+            return self._base.search(
+                query, self._s.exercises_theory_notes, with_graph=False, only_paths=list(paths)
+            ).notes
+
+        return self._exercises.build(subject, topic, notes, theory, query)
 
     def _cross(self, query: str, k: int, groups: list[list[str]]) -> SearchResult:
         """Pregunta que cruza asignaturas: se busca en cada una y se intercalan los resultados,

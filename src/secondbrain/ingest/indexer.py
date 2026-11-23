@@ -17,6 +17,8 @@ from secondbrain.store.manifest import Manifest
 
 log = logging.getLogger(__name__)
 Status = Literal["indexed", "unchanged", "empty"]
+# 1: los enlaces `[[carpeta/Nota]]` conservan la carpeta en el payload.
+LINKS_VERSION = 1
 
 
 @dataclass(slots=True)
@@ -79,6 +81,7 @@ class Indexer:
         stamp = f"{note.content_hash}:{self._fingerprint}"
         if self._manifest.get(note.path) == stamp:
             # Conceptos y copias se refrescan siempre: es barato y evita reindexar al añadirlos.
+            self._refresh_links(note.path, note.links)
             with self._manifest.writing():
                 self._manifest.set_meta(note.path, note.concepts, note.body_hash)
             return "unchanged"
@@ -97,9 +100,19 @@ class Indexer:
             ]
             self._store.upsert_chunks(chunks, vectors)
         with self._manifest.writing():
-            self._manifest.upsert(note.path, stamp, len(chunks), str(generation))
+            self._manifest.upsert(
+                note.path, stamp, len(chunks), str(generation), links_version=LINKS_VERSION
+            )
             self._manifest.set_meta(note.path, note.concepts, note.body_hash)
         return "indexed" if chunks else "empty"
+
+    def _refresh_links(self, path: str, links: tuple[str, ...]) -> None:
+        """Índices anteriores: corrige solo el payload de enlaces con carpeta, sin re-embeber."""
+        if self._manifest.links_version(path) >= LINKS_VERSION:
+            return
+        if any("/" in target for target in links):
+            self._store.update_links(path, links)
+        self._manifest.set_links_version(path, LINKS_VERSION)
 
     def is_indexed(self, rel_path: str) -> bool:
         return self._manifest.get(rel_path) is not None

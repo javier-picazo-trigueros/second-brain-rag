@@ -122,6 +122,19 @@ class VectorStore:
             wait=True,
         )
 
+    def update_links(self, note_path: str, links: Sequence[str]) -> None:
+        """Reescribe solo el payload `links` de todos los puntos de la nota (sin vectores)."""
+        self._client.set_payload(
+            self._name,
+            payload={"links": list(links)},
+            points=models.Filter(
+                must=[
+                    models.FieldCondition(key="note_path", match=models.MatchValue(value=note_path))
+                ]
+            ),
+            wait=True,
+        )
+
     def delete_note(self, note_path: str) -> None:
         self._client.delete(
             self._name,

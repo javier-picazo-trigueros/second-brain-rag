@@ -261,10 +261,20 @@ def test_search_during_publication(
 
 def test_existing_collection_gets_the_generation_index(store: VectorStore) -> None:
     """Una colección creada antes del versionado no tiene el índice de `generation`."""
-    client = store._client  # noqa: SLF001
+    client = store._client
     client.delete_payload_index(store.collection_name, "generation")
     before = client.get_collection(store.collection_name).payload_schema
     assert "generation" not in before
     store.ensure_collection()
     after = client.get_collection(store.collection_name).payload_schema
     assert "generation" in after and after["generation"].data_type == "keyword"
+
+
+def test_update_links_rewrites_the_payload_of_one_note_only(store: VectorStore) -> None:
+    store.upsert_chunks(
+        [_chunk("a.md", "uno", 0), _chunk("a.md", "dos", 1), _chunk("b.md", "tres")],
+        [[1, 0, 0, 0], [1, 1, 0, 0], [0, 1, 0, 0]],
+    )
+    store.update_links("a.md", ["carpeta/otra", "x"])
+    assert store.note_links() == {"a.md": ("carpeta/otra", "x"), "b.md": ("otra",)}
+    assert store.count() == 3

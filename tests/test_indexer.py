@@ -383,7 +383,7 @@ def test_reads_do_not_wait_while_a_note_is_being_published(env: Env, slow_step: 
             block()
             original_upsert(chunks, vectors)
 
-        env.store.upsert_chunks = slow_upsert  # type: ignore[method-assign]
+        env.store.upsert_chunks = slow_upsert  # type: ignore[method-assign,assignment]
     idx = env.indexer()
     with ThreadPoolExecutor(max_workers=2) as pool:
         writer = pool.submit(idx.index_file, env.vault / CARRERA)
@@ -410,3 +410,79 @@ def test_a_failed_note_does_not_skip_the_deletions(env: Env) -> None:
     assert report.deleted == 1
     assert CARRERA not in env.manifest.paths()
     assert env.manifest.get_value("last_sync") == first_sync  # el recorrido no fue limpio
+
+
+# --- enlaces con carpeta: se corrigen en el payload sin volver a embeber -------------------------
+
+ENLACES = "1º/IA/Enlaces y embeds.md"
+
+
+def _as_indexed_before_folder_links(env: Env) -> None:
+    """Estado de un índice anterior: enlaces sin carpeta en Qdrant y sin versión de enlaces."""
+    from dataclasses import replace
+
+    env.store.chunks[ENLACES] = [
+        replace(c, links=tuple(t.rsplit("/", 1)[-1] for t in c.links))
+        for c in env.store.chunks[ENLACES]
+    ]
+    for path in env.manifest.paths():
+        env.manifest.set_links_version(path, 0)
+
+
+def test_folder_links_are_refreshed_without_reembedding(env: Env) -> None:
+    idx = env.indexer()
+    idx.sync()
+    _as_indexed_before_folder_links(env)
+    assert "1º/IA/Sin frontmatter" not in env.store.note_links()[ENLACES]
+    embedded = len(env.embedder.embedded)
+    report = idx.sync()
+    assert report.indexed == 0 and not report.failed
+    assert len(env.embedder.embedded) == embedded
+    assert "1º/IA/Sin frontmatter" in env.store.note_links()[ENLACES]
+
+
+def test_only_notes_with_folder_links_are_touched_and_only_once(env: Env) -> None:
+    idx = env.indexer()
+    idx.sync()
+    _as_indexed_before_folder_links(env)
+    env.events.clear()
+    idx.sync()
+    assert [e for e in env.events if e[0] == "links"] == [("links", ENLACES)]
+    env.events.clear()
+    idx.sync()
+    assert [e for e in env.events if e[0] == "links"] == []
+
+
+def test_failed_links_refresh_is_retried_on_the_next_sync(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    idx = env.indexer()
+    idx.sync()
+    _as_indexed_before_folder_links(env)
+    update = env.store.update_links
+    monkeypatch.setattr(env.store, "update_links", lambda *a: (_ for _ in ()).throw(OSError("x")))
+    assert [p for p, _ in idx.sync().failed] == [ENLACES]
+    monkeypatch.setattr(env.store, "update_links", update)
+    assert not idx.sync().failed
+    assert "1º/IA/Sin frontmatter" in env.store.note_links()[ENLACES]
+
+
+def test_an_index_built_before_folder_links_is_not_reindexed(env: Env) -> None:
+    """Quitar `wikilinks-with-path` de la huella evita re-embeber todo el vault."""
+    import hashlib
+
+    from secondbrain.ingest.chunker import CHUNKER_VERSION
+
+    s = env.settings()
+    old = hashlib.sha256(
+        "|".join(
+            [
+                s.embed_model,
+                str(s.chunk_max_chars),
+                str(s.chunk_min_chars),
+                s.bm25_language,
+                f"chunker-v{CHUNKER_VERSION}",
+            ]
+        ).encode()
+    ).hexdigest()[:16]
+    assert s.index_fingerprint == old

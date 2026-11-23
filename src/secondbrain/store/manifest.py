@@ -28,6 +28,10 @@ class Manifest:
             if "generation" not in columns:
                 self._db.execute("ALTER TABLE notes ADD COLUMN generation TEXT")
                 self._db.execute("ALTER TABLE notes ADD COLUMN cleanup INTEGER NOT NULL DEFAULT 0")
+            if "links_version" not in columns:
+                self._db.execute(
+                    "ALTER TABLE notes ADD COLUMN links_version INTEGER NOT NULL DEFAULT 0"
+                )
             if "body_hash" not in columns:
                 self._db.execute("ALTER TABLE notes ADD COLUMN body_hash TEXT")
             self._db.execute(
@@ -95,15 +99,43 @@ class Manifest:
             row = self._db.execute("SELECT hash FROM notes WHERE path=?", (path,)).fetchone()
         return None if row is None else str(row[0])
 
+    def links_version(self, path: str) -> int:
+        """Versión del formato de enlaces guardado en el payload de la nota (0 = anterior)."""
+        with self._lock:
+            row = self._db.execute(
+                "SELECT links_version FROM notes WHERE path=?", (path,)
+            ).fetchone()
+        return 0 if row is None else int(row[0])
+
+    def set_links_version(self, path: str, version: int) -> None:
+        with self._lock:
+            self._db.execute("UPDATE notes SET links_version=? WHERE path=?", (version, path))
+            self._advance_revision()  # los enlaces inversos del catálogo salen del payload
+            self._commit()
+
     def upsert(
-        self, path: str, content_hash: str, n_chunks: int, generation: str | None = None
+        self,
+        path: str,
+        content_hash: str,
+        n_chunks: int,
+        generation: str | None = None,
+        links_version: int = 0,
     ) -> None:
         with self._lock:
             self._db.execute(
-                "INSERT INTO notes(path,hash,n_chunks,generation,cleanup) VALUES(?,?,?,?,?) "
+                "INSERT INTO notes(path,hash,n_chunks,generation,cleanup,links_version) "
+                "VALUES(?,?,?,?,?,?) "
                 "ON CONFLICT(path) DO UPDATE SET hash=excluded.hash,n_chunks=excluded.n_chunks,"
-                "generation=excluded.generation,cleanup=excluded.cleanup",
-                (path, content_hash, n_chunks, generation, int(generation is not None)),
+                "generation=excluded.generation,cleanup=excluded.cleanup,"
+                "links_version=excluded.links_version",
+                (
+                    path,
+                    content_hash,
+                    n_chunks,
+                    generation,
+                    int(generation is not None),
+                    links_version,
+                ),
             )
             self._advance_revision()
             self._commit()

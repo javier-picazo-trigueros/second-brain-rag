@@ -45,8 +45,11 @@ esa parte se descartó; no salió en la pasada «antes»): es variación del mod
 tiempos de «después» (GPU compartida a ratos) no deben leerse como coste de la continuación. No revisé a
 mano el texto de la continuación real de DM (el script no guarda las respuestas).
 
-Verificación: pruebas del backend 1.010 sin integración (más las de integración y Vitest, ver abajo), ruff
-y `mypy --strict` limpios.
+Verificación: 1.045 pruebas del backend aprobadas (con las 35 de integración) y 1 omitida (symlinks),
+cobertura total 97 %; Vitest 419, `tsc` y ESLint en 0; ruff, `mypy --strict` y auditoría de privacidad
+limpios. En una pasada con cobertura apareció un «1 error» de pytest que no se reprodujo en dos pasadas
+posteriores (no se identificó la causa). Los tests de este bloque se reescribieron antes de publicar con
+nombres ficticios (filtro local sobre la rama, `main` intacta).
 
 ## Checkpoint anterior · «Antes de integrar» (puntos 1-7 de la revisión)
 

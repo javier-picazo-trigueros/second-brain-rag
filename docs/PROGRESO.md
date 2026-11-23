@@ -2,9 +2,14 @@
 
 Se actualiza en cada checkpoint.
 
-## Checkpoint actual · «Antes de integrar» (puntos 1-6 de la revisión)
+## Checkpoint actual · «Antes de integrar» (puntos 1-7 de la revisión)
 
-23 de noviembre de 2026. Misma rama (`feat/entrega-1-fiabilidad`), pendiente de tu OK para el merge (punto 7).
+23 de noviembre de 2026. **Integrado y publicado (punto 7):** la fase 3c y la Entrega 1 están fusionadas en
+`main` (merges `--no-ff`) y publicadas junto con `feat/entrega-1-fiabilidad`, sin force push. Sobre `main`:
+1.018 pruebas aprobadas y 1 omitida, ruff y `mypy --strict` limpios, auditoría con 0 hallazgos. Las ramas
+locales `feat/fase-3c-apuntes-ejercicios` y `fix/cita-con-corchetes` no existen en origin (se reescribieron
+antes de publicar) y no se suben; `refs/original/` se borró tras verificar. Siguiente: puntos 8-13 de
+[`docs/revision-2026-11-19.md`](revision-2026-11-19.md).
 
 | Punto | Resultado verificado |
 |---|---|
@@ -84,8 +89,7 @@ encontró un bloqueo de la búsqueda durante la publicación de notas (alta), el
 por nota y la falta de índice de payload para `generation` (medias), y confirmó el inventario de privacidad.
 Ese documento incluye también la valoración de los informes de modelos, el orden propuesto para las
 Entregas 2-4 y la lista completa de pendientes (Fase 4 y fase 3c). Los puntos 1-6 están hechos (ver el
-checkpoint de arriba); falta el 7 (merge de la fase 3c y de la Entrega 1 a `main` y push), que espera tu OK,
-y después los puntos 8-13.
+checkpoint de arriba); el 7 (merge a `main` y push) también; quedan los puntos 8-13.
 
 ## Estado histórico por fases
 

@@ -140,10 +140,9 @@ class Indexer:
                     report.unchanged += 1
             if on_progress is not None:
                 on_progress(position, len(paths), rel)
-        if report.failed:
-            return report
         for gone in self._manifest.paths() - seen:
             self.remove(gone)
             report.deleted += 1
-        self._manifest.set_value("last_sync", self._now().isoformat())
+        if not report.failed:
+            self._manifest.set_value("last_sync", self._now().isoformat())
         return report

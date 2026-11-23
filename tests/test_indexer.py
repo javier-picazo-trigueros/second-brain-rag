@@ -396,3 +396,17 @@ def test_reads_do_not_wait_while_a_note_is_being_published(env: Env, slow_step: 
             release.set()
         assert writer.result(timeout=10) == "indexed"
 
+
+def test_a_failed_note_does_not_skip_the_deletions(env: Env) -> None:
+    idx = env.indexer()
+    idx.sync()
+    first_sync = env.manifest.get_value("last_sync")
+    gone = env.vault / CARRERA
+    gone.unlink()
+    env.write(IPTABLES, "# Otro\n\n" + "contenido distinto. " * 30)
+    env.embedder.fail_on = "contenido distinto"
+    report = idx.sync()
+    assert [path for path, _ in report.failed] == [IPTABLES]
+    assert report.deleted == 1
+    assert CARRERA not in env.manifest.paths()
+    assert env.manifest.get_value("last_sync") == first_sync  # el recorrido no fue limpio

@@ -8,8 +8,10 @@ Uso (desde la raíz, con Ollama y Qdrant arrancados):
 Cada pregunta se ejecuta una vez. Se envuelve el LLM para registrar cada llamada (`Finished`), de
 modo que sirve igual con y sin continuación automática: las llamadas de más que partes son
 continuaciones y una parte cuya última llamada termina cortada es un corte sin resolver.
-Los resultados contienen texto de tus notas: `evals/results/` está ignorado por git; no los
-muevas a un sitio versionado.
+El JSON guarda también la respuesta completa (`answer`) y el texto que escribió el modelo en cada
+llamada (`calls[].text`), para revisar a mano cómo empalma una continuación. `--part-max-tokens`
+baja el tope de salida por parte y provoca cortes reales. Los resultados contienen texto de tus
+notas: `evals/results/` está ignorado por git; no los muevas a un sitio versionado.
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ from typing import Any
 from secondbrain.answer.llm import Delta, Finished, Message
 from secondbrain.answer.pipeline import DoneEvent, ErrorEvent, ProgressEvent, TokenEvent
 from secondbrain.api.main import build_services
+from secondbrain.config import load_settings
 
 
 class RecordingLLM:
@@ -38,20 +41,29 @@ class RecordingLLM:
         self, messages: Sequence[Message], max_tokens: int | None = None
     ) -> Iterator[Delta | Finished]:
         started = time.perf_counter()
+        pieces: list[str] = []
         for item in self._inner.stream_chat(messages, max_tokens):
-            if isinstance(item, Finished):
+            if isinstance(item, Delta):
+                pieces.append(item.text)
+            elif isinstance(item, Finished):
                 self.calls.append(
                     {
                         "truncated": item.truncated,
                         "tokens": item.completion_tokens,
                         "seconds": round(time.perf_counter() - started, 1),
+                        "text": "".join(pieces),  # lo que escribió el modelo en esta llamada
                     }
                 )
             yield item
 
 
-def measure(question: str) -> dict[str, Any]:
-    services = build_services()
+def measure(question: str, part_max_tokens: int | None = None) -> dict[str, Any]:
+    settings = load_settings()
+    if (
+        part_max_tokens is not None
+    ):  # un tope bajo provoca cortes reales para probar la continuación
+        settings = settings.model_copy(update={"notes_part_max_tokens": part_max_tokens})
+    services = build_services(settings)
     pipeline = services.pipeline
     recorder = RecordingLLM(pipeline._llm)  # medición
     pipeline._llm = recorder  # type: ignore[attr-defined]
@@ -87,6 +99,8 @@ def measure(question: str) -> dict[str, Any]:
         "warnings": list(done.warnings) if done else [],
         "answer_chars": len(done.answer) if done else 0,
         "error": error,
+        "answer": done.answer if done else "",
+        "calls": recorder.calls,
     }
 
 
@@ -94,8 +108,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("questions", nargs="+")
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument(
+        "--part-max-tokens", type=int, default=None, help="tope de salida por parte"
+    )
     args = parser.parse_args()
-    results = [measure(q) for q in args.questions]
+    results = [measure(q, args.part_max_tokens) for q in args.questions]
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
     for r in results:

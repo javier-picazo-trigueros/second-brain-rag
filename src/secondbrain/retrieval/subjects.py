@@ -90,7 +90,10 @@ class Subject:
 
 
 def _topic_pattern(n: int) -> re.Pattern[str]:
-    return re.compile(rf"(?<![0-9a-z])(?:tema|unidad|unit|capitulo)\s*0?{n}(?!\d)")
+    # «tema 2», «unit 2» y la marca corta «T2» / «CAR_T2» (que no sea T20 ni T2a).
+    return re.compile(
+        rf"(?<![0-9a-z])(?:(?:tema|unidad|unit|capitulo)\s*0?{n}(?!\d)|t0?{n}(?![0-9a-z]))"
+    )
 
 
 class SubjectIndex:

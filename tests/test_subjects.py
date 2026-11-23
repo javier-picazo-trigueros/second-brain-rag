@@ -218,7 +218,7 @@ folders = ["CAR"]
 def split(tmp_path: Path) -> SubjectIndex:
     f = tmp_path / "split.toml"
     f.write_text(SPLIT, encoding="utf-8")
-    return SubjectIndex([*PATHS, "4º/CAR/CAR_T1.md"], load_aliases(f))
+    return SubjectIndex([*PATHS, "4º/CAR/ABC_T1.md"], load_aliases(f))
 
 
 def test_an_include_moves_notes_out_of_the_other_subjects_folder(split: SubjectIndex) -> None:
@@ -433,3 +433,18 @@ def test_concrete_informal_questions_stay_normal_searches(
     informal: SubjectIndex, question: str
 ) -> None:
     assert detect_intent(question, informal).kind == "search"
+
+
+def test_short_topic_marks_select_the_notes_of_that_topic_only() -> None:
+    paths = [
+        "4º/Computacion de alto rendimiento/ABC_T1_Teoria.md",
+        "4º/Computacion de alto rendimiento/ABC_T2_Teoria.md",
+        "4º/Computacion de alto rendimiento/ABC_T2_Sintesis.md",
+        "4º/Computacion de alto rendimiento/ABC_T20_Teoria.md",
+        "4º/Computacion de alto rendimiento/ABC_T22_Teoria.md",
+        "4º/Computacion de alto rendimiento/ABC_P2_Practica.md",
+    ]
+    index = SubjectIndex(paths)
+    subject = index.detect("computacion de alto rendimiento")
+    assert subject is not None
+    assert sorted(index.topic_notes(subject, 2)) == sorted(paths[1:3])

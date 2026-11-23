@@ -15,6 +15,12 @@ from pathlib import PurePosixPath
 _MARKER = re.compile(
     r"(?<![a-z0-9])(?:tema|unit|unidad|topic|leccion|lesson)[\s_-]*0?(\d{1,2})(?:\.(\d{1,2}))?(?!\d)"
 )
+# Marca corta: «T2», «CAR_T2», «T02». Una sola cifra y sin letras ni cifras pegadas detrás, para que
+# «T20», «T22» o «T2a» no cuenten como el tema 2.
+_SHORT_MARKER = re.compile(r"(?<![a-z0-9])t0?([1-9])(?:\.(\d{1,2}))?(?![a-z0-9])")
+_SHORT_LEADING = re.compile(
+    r"^.*?(?<![a-z0-9])t0?[1-9](?:\.\d{1,2})?(?![a-z0-9])[\s_.:\-–]*", re.IGNORECASE
+)
 _LEADING = re.compile(
     r"^.*?(?:tema|unit|unidad|topic|lecci[oó]n|lesson)[\s_-]*0?\d{1,2}(?:\.\d{1,2})?[\s_.:\-\u2013]*",
     re.IGNORECASE,
@@ -54,7 +60,8 @@ def topic_key(path: str) -> tuple[int, str] | None:
     """(número, «3.1») del tema que indica el nombre de la nota o, si no, su carpeta."""
     p = PurePosixPath(path)
     for name in (p.stem, p.parent.name):
-        match = _MARKER.search(_plain(name))
+        plain = _plain(name)
+        match = _MARKER.search(plain) or _SHORT_MARKER.search(plain)
         if match:
             sub = (
                 f"{match.group(1)}.{match.group(2)}" if match.group(2) else str(int(match.group(1)))
@@ -66,7 +73,10 @@ def topic_key(path: str) -> tuple[int, str] | None:
 def clean_title(stem: str) -> str:
     """El nombre del tema sin «Unit 2 -», sin «(1)» de copia y sin versión."""
     text = _COPY.sub("", stem)
-    text = _LEADING.sub("", text, count=1) if _LEADING.search(text) else text
+    if _LEADING.search(text):
+        text = _LEADING.sub("", text, count=1)
+    elif _SHORT_LEADING.search(text):
+        text = _SHORT_LEADING.sub("", text, count=1)
     return _VERSION.sub("", text).strip(" -_.")
 
 

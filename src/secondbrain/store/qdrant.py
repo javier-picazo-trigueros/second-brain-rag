@@ -15,7 +15,7 @@ from secondbrain.store.manifest import Manifest
 DENSE = "dense"
 SPARSE = "bm25"
 _UPSERT_BATCH = 64
-_KEYWORD_INDEXES = ("note_path", "tags", "asignatura", "curso")
+_KEYWORD_INDEXES = ("note_path", "generation", "tags", "asignatura", "curso")
 
 
 class VectorStore:
@@ -43,13 +43,16 @@ class VectorStore:
                 "No se conoce la dimensión de los embeddings: este VectorStore es de solo lectura."
             )
         if self._client.collection_exists(self._name):
-            vectors = self._client.get_collection(self._name).config.params.vectors
+            info = self._client.get_collection(self._name)
+            vectors = info.config.params.vectors
             size = vectors[DENSE].size if isinstance(vectors, dict) else None
             if size != self._dim:
                 raise RuntimeError(
                     f"La colección usa dim={size} pero el embedder da {self._dim}. "
                     "Cambiaste de modelo: borra la colección y el manifest y reindexa."
                 )
+            # Colecciones anteriores al versionado: crear los índices que falten.
+            self._create_missing_indexes(set(info.payload_schema))
             return
         self._client.create_collection(
             self._name,
@@ -58,10 +61,14 @@ class VectorStore:
             },
             sparse_vectors_config={SPARSE: models.SparseVectorParams(modifier=models.Modifier.IDF)},
         )
+        self._create_missing_indexes(set())
+
+    def _create_missing_indexes(self, existing: set[str]) -> None:
         for field in _KEYWORD_INDEXES:
-            self._client.create_payload_index(
-                self._name, field_name=field, field_schema=models.PayloadSchemaType.KEYWORD
-            )
+            if field not in existing:
+                self._client.create_payload_index(
+                    self._name, field_name=field, field_schema=models.PayloadSchemaType.KEYWORD
+                )
 
     def delete_collection(self) -> None:
         self._client.delete_collection(self._name)

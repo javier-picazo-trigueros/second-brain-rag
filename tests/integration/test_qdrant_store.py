@@ -257,3 +257,14 @@ def test_search_during_publication(
     idx.index_file(env.vault / path)
     assert after_switch == search() and all("nuevo" in t for t in after_switch)
     assert len(after_switch) == env.manifest.chunk_counts()[path] > 0
+
+
+def test_existing_collection_gets_the_generation_index(store: VectorStore) -> None:
+    """Una colección creada antes del versionado no tiene el índice de `generation`."""
+    client = store._client  # noqa: SLF001
+    client.delete_payload_index(store.collection_name, "generation")
+    before = client.get_collection(store.collection_name).payload_schema
+    assert "generation" not in before
+    store.ensure_collection()
+    after = client.get_collection(store.collection_name).payload_schema
+    assert "generation" in after and after["generation"].data_type == "keyword"

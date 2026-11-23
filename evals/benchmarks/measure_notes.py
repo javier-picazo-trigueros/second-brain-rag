@@ -5,10 +5,10 @@ Uso (desde la raíz, con Ollama y Qdrant arrancados):
     python evals/benchmarks/measure_notes.py --out evals/results/notes_before.json \
         "apuntes del tema 2 de <asignatura>" "apuntes del tema 5 de <otra>"
 
-Cada pregunta se ejecuta una vez. Se envuelve el LLM para registrar cada llamada (`Finished`), de modo
-que sirve igual con y sin continuación automática: las llamadas de más que partes son continuaciones y
-una parte cuya última llamada termina cortada es un corte sin resolver. Los resultados contienen
-texto de tus notas: `evals/results/` está ignorado por git, no los muevas a un sitio versionado.
+Cada pregunta se ejecuta una vez. Se envuelve el LLM para registrar cada llamada (`Finished`), de
+modo que sirve igual con y sin continuación automática: las llamadas de más que partes son
+continuaciones y una parte cuya última llamada termina cortada es un corte sin resolver.
+Los resultados contienen texto de tus notas: `evals/results/` está ignorado por git, no los muevas a un sitio versionado.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ import argparse
 import json
 import time
 from collections.abc import Iterator, Sequence
+from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
@@ -51,8 +52,8 @@ class RecordingLLM:
 def measure(question: str) -> dict[str, Any]:
     services = build_services()
     pipeline = services.pipeline
-    recorder = RecordingLLM(pipeline._llm)  # noqa: SLF001 - medición
-    pipeline._llm = recorder  # type: ignore[attr-defined]  # noqa: SLF001
+    recorder = RecordingLLM(pipeline._llm)  # medición
+    pipeline._llm = recorder  # type: ignore[attr-defined]
     start = time.perf_counter()
     marks: list[int] = []
     parts_total = 0
@@ -69,7 +70,7 @@ def measure(question: str) -> dict[str, Any]:
         elif isinstance(event, TokenEvent):
             pass
     marks.append(len(recorder.calls))
-    per_part = [recorder.calls[a:b] for a, b in zip(marks, marks[1:], strict=False)]
+    per_part = [recorder.calls[a:b] for a, b in pairwise(marks)]
     return {
         "question": question,
         "seconds": round(time.perf_counter() - start, 1),

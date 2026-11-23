@@ -8,7 +8,8 @@ Uso (desde la raíz, con Ollama y Qdrant arrancados):
 Cada pregunta se ejecuta una vez. Se envuelve el LLM para registrar cada llamada (`Finished`), de
 modo que sirve igual con y sin continuación automática: las llamadas de más que partes son
 continuaciones y una parte cuya última llamada termina cortada es un corte sin resolver.
-Los resultados contienen texto de tus notas: `evals/results/` está ignorado por git, no los muevas a un sitio versionado.
+Los resultados contienen texto de tus notas: `evals/results/` está ignorado por git; no los
+muevas a un sitio versionado.
 """
 
 from __future__ import annotations

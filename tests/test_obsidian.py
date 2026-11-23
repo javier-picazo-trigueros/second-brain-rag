@@ -17,7 +17,7 @@ def test_it_builds_an_open_link_with_the_vault_and_the_path_without_extension() 
 @pytest.mark.parametrize(
     "path",
     [
-        "3º/Discretas/Tema 5 Teoría de grafos [MD].md",
+        "3º/Discretas/Tema 5 Ejemplo de grafos [MD].md",
         "a&b/#hash/100% +más?.md",
         "carpeta con espacios/ñandú (1).md",
         "x/y/z.v2.md",

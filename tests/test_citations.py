@@ -11,8 +11,10 @@ def frag(fid: str, title: str, path: str, page: int | None, kind: str = "evidenc
 
 
 FRAGMENTS = [
-    frag("S1", "Tema 5 Teoría de grafos [MD]", "3º/Discretas/Tema 5 Teoría de grafos [MD].md", 161),
-    frag("S2", "Tema 5 Teoría de grafos [MD]", "3º/Discretas/Tema 5 Teoría de grafos [MD].md", 7),
+    frag(
+        "S1", "Tema 5 Ejemplo de grafos [MD]", "3º/Discretas/Tema 5 Ejemplo de grafos [MD].md", 161
+    ),
+    frag("S2", "Tema 5 Ejemplo de grafos [MD]", "3º/Discretas/Tema 5 Ejemplo de grafos [MD].md", 7),
     frag("S3", "Semáforos", "2º/SO/Semáforos.md", None),
     frag("S4", "Redes", "3º/Redes/Redes.md", None, kind="hint"),
 ]
@@ -55,9 +57,9 @@ def test_brackets_that_are_not_citations_are_untouched(text: str) -> None:
 
 
 def test_a_title_in_double_brackets_is_an_unverified_citation() -> None:
-    cleaned, ids, invalid = run("Dato [[Tema 5 Teoría de grafos [MD]]] y más.")
-    assert cleaned == "Dato [cita no verificada: Tema 5 Teoría de grafos [MD]] y más."
-    assert ids == [] and invalid == ["Tema 5 Teoría de grafos [MD]"]
+    cleaned, ids, invalid = run("Dato [[Tema 5 Ejemplo de grafos [MD]]] y más.")
+    assert cleaned == "Dato [cita no verificada: Tema 5 Ejemplo de grafos [MD]] y más."
+    assert ids == [] and invalid == ["Tema 5 Ejemplo de grafos [MD]"]
 
 
 def test_citations_are_unique_and_in_order_of_appearance() -> None:
@@ -68,7 +70,7 @@ def test_citation_carries_the_fragment_data() -> None:
     _, report = validate_citations("Dato [S2].", FRAGMENTS)
     (citation,) = report.citations
     assert (citation.path, citation.page, citation.kind) == (
-        "3º/Discretas/Tema 5 Teoría de grafos [MD].md",
+        "3º/Discretas/Tema 5 Ejemplo de grafos [MD].md",
         7,
         "evidence",
     )

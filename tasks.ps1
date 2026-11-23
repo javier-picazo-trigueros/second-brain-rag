@@ -1,13 +1,13 @@
 ﻿#requires -Version 5.1
 <#
 .SYNOPSIS
-  Tareas del proyecto. Uso: .\tasks.ps1 <install|test|lint|typecheck|up|index|watch|serve|dev|web-install|web-test|web-lint|web-typecheck|web-build|web-dev>
+  Tareas del proyecto. Uso: .\tasks.ps1 <install|test|lint|typecheck|audit|up|index|watch|serve|dev|web-install|web-test|web-lint|web-typecheck|web-build|web-dev>
 .NOTES
   El venv vive fuera del repo (OneDrive). Se puede cambiar con $env:BRAIN_VENV.
 #>
 param(
     [Parameter(Mandatory = $true, Position = 0)]
-    [ValidateSet("install", "test", "lint", "typecheck", "up", "index", "watch", "serve", "dev",
+    [ValidateSet("install", "test", "lint", "typecheck", "audit", "up", "index", "watch", "serve", "dev",
         "web-install", "web-test", "web-lint", "web-typecheck", "web-build", "web-dev")]
     [string]$Task,
     [Parameter(ValueFromRemainingArguments = $true)]
@@ -65,6 +65,8 @@ switch ($Task) {
         # se actualiza usando el pip del Python que creó el venv.
         Invoke-Checked "python" @("-m", "pip", "--python", $Py, "install", "--upgrade", "pip")
         Invoke-Checked $Py @("-m", "pip", "install", "-e", ".[dev]")
+        # Hook pre-push versionado: ejecuta la auditoría de privacidad antes de cada push.
+        Invoke-Checked "git" @("config", "--local", "core.hooksPath", ".githooks")
     }
     "test" {
         Assert-Venv
@@ -78,6 +80,12 @@ switch ($Task) {
     "typecheck" {
         Assert-Venv
         Invoke-Checked $Py @("-m", "mypy")
+    }
+    "audit" {
+        # Rutas y títulos del vault, datos personales, autoría y menciones a una IA. Falla (código 1)
+        # si encuentra algo; sin manifest omite solo las comprobaciones del vault.
+        Assert-Venv
+        Invoke-Checked $Py (@("-m", "secondbrain.privacy_audit") + $Rest)
     }
     "up" {
         Invoke-Checked "docker" @("compose", "up", "-d", "qdrant")

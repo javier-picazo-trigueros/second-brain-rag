@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
+from pathlib import Path
+
+import pytest
+
 from secondbrain.ingest.indexer import Indexer
 from tests.env import Env
 
@@ -151,7 +156,7 @@ def test_embedding_happens_before_the_old_chunks_are_deleted(env: Env) -> None:
     env.write(CARRERA, "# Condiciones de carrera\n\n" + "contenido nuevo del tema " * 20)
     idx.index_file(env.vault / CARRERA)
     kinds = [kind for kind, _ in env.events]
-    assert kinds == ["embed", "delete", "upsert"]
+    assert kinds == ["embed", "upsert", "retire"]
 
 
 def test_failure_in_one_note_does_not_stop_the_sync(env: Env) -> None:
@@ -305,3 +310,179 @@ def test_sync_records_the_time_of_the_last_sync(env: Env) -> None:
 def test_the_last_sync_time_is_not_set_by_other_operations(env: Env) -> None:
     env.indexer().index_file(env.vault / CARRERA)
     assert env.manifest.get_value("last_sync") is None
+
+
+def test_empty_walk_preserves_populated_index(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
+    idx = env.indexer()
+    idx.sync()
+    monkeypatch.setattr(idx, "iter_note_paths", lambda: iter(()))
+    report = idx.sync()
+    assert report.failed and report.deleted == 0
+    assert env.manifest.paths() == CONTENT_NOTES
+
+
+def test_walk_reports_an_inaccessible_subfolder(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
+    import os
+    from typing import Any
+
+    idx = env.indexer()
+    idx.sync()
+    scandir = os.scandir
+
+    def deny_folder(path: str) -> Any:
+        if Path(path).name == "IA":
+            raise PermissionError("no se puede leer IA")
+        return scandir(path)
+
+    monkeypatch.setattr(os, "scandir", deny_folder)
+    report = idx.sync()
+    assert report.deleted == 0 and "IA" in report.failed[0][1]
+    assert env.manifest.paths() == CONTENT_NOTES
+
+
+def test_interrupted_walk_preserves_index(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
+    idx = env.indexer()
+    idx.sync()
+
+    def interrupted() -> Iterator[Path]:
+        yield env.vault / CARRERA
+        raise PermissionError("carpeta inaccesible")
+
+    monkeypatch.setattr(idx, "iter_note_paths", interrupted)
+    report = idx.sync()
+    assert report.failed and report.deleted == 0
+    assert env.manifest.paths() == CONTENT_NOTES
+
+
+# --- contención del cerrojo y borrados ---------------------------------------------------------
+
+
+@pytest.mark.parametrize("slow_step", ["embed", "upsert"])
+def test_reads_do_not_wait_while_a_note_is_being_published(env: Env, slow_step: str) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    started, release = Event(), Event()
+
+    def block(*_args: object) -> None:
+        started.set()
+        assert release.wait(10)
+
+    if slow_step == "embed":
+        original_embed = env.embedder.embed_documents
+
+        def slow_embed(texts: list[str]) -> list[list[float]]:
+            block()
+            return original_embed(texts)
+
+        env.embedder.embed_documents = slow_embed  # type: ignore[method-assign]
+    else:
+        original_upsert = env.store.upsert_chunks
+
+        def slow_upsert(chunks: list, vectors: list) -> None:  # type: ignore[type-arg]
+            block()
+            original_upsert(chunks, vectors)
+
+        env.store.upsert_chunks = slow_upsert  # type: ignore[method-assign,assignment]
+    idx = env.indexer()
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        writer = pool.submit(idx.index_file, env.vault / CARRERA)
+        assert started.wait(10)
+        # Es lo que llama cada búsqueda a través del catálogo: no debe esperar a la publicación.
+        reader = pool.submit(env.manifest.get_value, "revision")
+        try:
+            reader.result(timeout=2)
+        finally:
+            release.set()
+        assert writer.result(timeout=10) == "indexed"
+
+
+def test_a_failed_note_does_not_skip_the_deletions(env: Env) -> None:
+    idx = env.indexer()
+    idx.sync()
+    first_sync = env.manifest.get_value("last_sync")
+    gone = env.vault / CARRERA
+    gone.unlink()
+    env.write(IPTABLES, "# Otro\n\n" + "contenido distinto. " * 30)
+    env.embedder.fail_on = "contenido distinto"
+    report = idx.sync()
+    assert [path for path, _ in report.failed] == [IPTABLES]
+    assert report.deleted == 1
+    assert CARRERA not in env.manifest.paths()
+    assert env.manifest.get_value("last_sync") == first_sync  # el recorrido no fue limpio
+
+
+# --- enlaces con carpeta: se corrigen en el payload sin volver a embeber -------------------------
+
+ENLACES = "1º/IA/Enlaces y embeds.md"
+
+
+def _as_indexed_before_folder_links(env: Env) -> None:
+    """Estado de un índice anterior: enlaces sin carpeta en Qdrant y sin versión de enlaces."""
+    from dataclasses import replace
+
+    env.store.chunks[ENLACES] = [
+        replace(c, links=tuple(t.rsplit("/", 1)[-1] for t in c.links))
+        for c in env.store.chunks[ENLACES]
+    ]
+    for path in env.manifest.paths():
+        env.manifest.set_links_version(path, 0)
+
+
+def test_folder_links_are_refreshed_without_reembedding(env: Env) -> None:
+    idx = env.indexer()
+    idx.sync()
+    _as_indexed_before_folder_links(env)
+    assert "1º/IA/Sin frontmatter" not in env.store.note_links()[ENLACES]
+    embedded = len(env.embedder.embedded)
+    report = idx.sync()
+    assert report.indexed == 0 and not report.failed
+    assert len(env.embedder.embedded) == embedded
+    assert "1º/IA/Sin frontmatter" in env.store.note_links()[ENLACES]
+
+
+def test_only_notes_with_folder_links_are_touched_and_only_once(env: Env) -> None:
+    idx = env.indexer()
+    idx.sync()
+    _as_indexed_before_folder_links(env)
+    env.events.clear()
+    idx.sync()
+    assert [e for e in env.events if e[0] == "links"] == [("links", ENLACES)]
+    env.events.clear()
+    idx.sync()
+    assert [e for e in env.events if e[0] == "links"] == []
+
+
+def test_failed_links_refresh_is_retried_on_the_next_sync(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    idx = env.indexer()
+    idx.sync()
+    _as_indexed_before_folder_links(env)
+    update = env.store.update_links
+    monkeypatch.setattr(env.store, "update_links", lambda *a: (_ for _ in ()).throw(OSError("x")))
+    assert [p for p, _ in idx.sync().failed] == [ENLACES]
+    monkeypatch.setattr(env.store, "update_links", update)
+    assert not idx.sync().failed
+    assert "1º/IA/Sin frontmatter" in env.store.note_links()[ENLACES]
+
+
+def test_an_index_built_before_folder_links_is_not_reindexed(env: Env) -> None:
+    """Quitar `wikilinks-with-path` de la huella evita re-embeber todo el vault."""
+    import hashlib
+
+    from secondbrain.ingest.chunker import CHUNKER_VERSION
+
+    s = env.settings()
+    old = hashlib.sha256(
+        "|".join(
+            [
+                s.embed_model,
+                str(s.chunk_max_chars),
+                str(s.chunk_min_chars),
+                s.bm25_language,
+                f"chunker-v{CHUNKER_VERSION}",
+            ]
+        ).encode()
+    ).hexdigest()[:16]
+    assert s.index_fingerprint == old

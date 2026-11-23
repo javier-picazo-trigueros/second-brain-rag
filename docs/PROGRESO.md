@@ -2,7 +2,92 @@
 
 Se actualiza en cada checkpoint.
 
-## Estado
+## Checkpoint actual · «Antes de integrar» (puntos 1-6 de la revisión)
+
+23 de noviembre de 2026. Misma rama (`feat/entrega-1-fiabilidad`), pendiente de tu OK para el merge (punto 7).
+
+| Punto | Resultado verificado |
+|---|---|
+| 1. Cerrojo | Parseo, embeddings y subida a Qdrant ya no están bajo el cerrojo del manifest: los puntos nuevos son invisibles hasta el commit, y solo la escritura del manifest (breve) lo toma. Test: una lectura (`get_value`) termina mientras otra hebra está parada en el embedding o en la subida. La retirada de puntos viejos sigue después del commit, en un bloque breve y con la generación vigente del manifest (un borrado por filtro, milisegundos). |
+| 2. `sync` | Un fallo de una nota ya no impide los borrados; solo los impide un fallo del recorrido. `last_sync` solo se guarda si no hubo fallos. |
+| 3. Índice `generation` | `ensure_collection` crea los índices que falten también en colecciones existentes. En tu Qdrant (23.236 puntos, filtro de 1.000 generaciones, búsqueda con prefetch denso y BM25): **60 ms → 14 ms** de mediana; el índice se creó en 1,8 s. |
+| 4. Reindexación | `"wikilinks-with-path"` sale de la huella (vuelve a la huella anterior): no se re-embebe nada. Las notas con `[[carpeta/Nota]]` se corrigen en el payload de enlaces (`set_payload` por nota, sin vectores) y la versión de enlaces queda en el manifest. `brain index` sobre tu vault: **41,7 s**, `indexadas=0 sin_cambios=1000`, 23.236 puntos intactos; una segunda pasada no vuelve a tocar nada. |
+| 5. Integración | 35 pruebas de integración pasan con Qdrant y Ollama reales (las 33 de antes y 2 nuevas: índice de `generation` y `update_links`). Suite completa: 1.018 aprobadas, 1 omitida (symlinks en Windows), cobertura total 97 %. Vitest 417, `tsc` y ESLint en 0; ruff y `mypy --strict` limpios. |
+| 6. Privacidad | Ver abajo. |
+
+**Privacidad (punto 6).**
+
+- **Auditoría automática** (`secondbrain/privacy_audit.py`, `.\tasks.ps1 audit`, `tests/test_privacy_audit.py`):
+  rutas completas y títulos distintivos del manifest (≥ 14 caracteres y con espacio, guion o cifra, sin los
+  títulos del vault de ejemplo), datos personales (rutas de usuario salvo ejemplos como `yo` o `user`,
+  correos salvo `noreply`/`example.*`, credenciales), autoría de cada commit sin publicar y menciones a una IA
+  o trailers de coautoría **en los mensajes** (`CLAUDE.md` no cuenta; «IA II» tampoco). Revisa los commits
+  que no están en ningún remoto y el árbol que se publica. Sin manifest omite solo las comprobaciones del
+  vault. Devuelve 1 si hay hallazgos. El hook `.githooks/pre-push` la ejecuta antes de cada push
+  (`.\tasks.ps1 install` activa `core.hooksPath`; ya está activado en este clon). Probado: limpio → 0; una
+  ruta real en un commit → bloquea el push.
+- **Commits sin publicar:** filtro local (`git filter-branch`) sobre `origin/main..HEAD` que sustituye los
+  títulos reales de 4 ficheros (`test_exercises.py`, `test_generated.py`, `AnswerView.test.tsx`,
+  `screens.mjs`). `origin/main` no se tocó. Las ramas locales `feat/fase-3c-apuntes-ejercicios` y
+  `fix/cita-con-corchetes` se reescribieron con el mismo filtro (los hashes cambiaron); las copias previas
+  siguen en `refs/original/` hasta que se borren.
+- **Lo ya publicado:** un commit nuevo (`test: sustituir rutas y títulos reales…`) pone nombres ficticios en
+  los tests de citas, Obsidian, asignaturas y temas y en la tarjeta de fuentes. Las carpetas de asignatura
+  se mantienen (los tests dependen de ellas). **El historial de `origin/main` y de las ramas publicadas
+  conserva las rutas antiguas**: no se reescribe (sin force push).
+- Resultado: `.\tasks.ps1 audit` → 0 hallazgos.
+
+## Entrega 1 de fiabilidad (checkpoint anterior)
+
+18 de noviembre de 2026. Rama local `feat/entrega-1-fiabilidad`, basada en
+`feat/fase-3c-apuntes-ejercicios`. Entrega verificada y pendiente de autorización para integrar y publicar.
+
+| Caso reproducido sobre fixtures | Antes | Resultado verificado |
+|---|---|---|
+| Recorrido vacío con diez notas indexadas | Las diez se trataban como borradas | Cero borradas, diez conservadas y fallo informado |
+| Fallo de BM25 o de un lote de upsert | La versión anterior desaparecía o se veía solo parte de la nueva | El lector recupera todos los fragmentos antiguos y el reintento publica los nuevos |
+| Consulta durante la publicación | Agrupar por nota admitía varios fragmentos sin distinguir versión | Selección de generación en ambas ramas de la búsqueda; el lector en curso termina antes de retirar sus puntos |
+| Fallo al retirar puntos antiguos | La retirada precedía a la publicación | La nueva versión ya está disponible; el siguiente recorrido reintenta la limpieza |
+| Cambio de etiquetas o enlaces con igual ruta | El catálogo conservaba los datos anteriores | Una revisión persistente invalida etiquetas, enlaces inversos y grupos en caché del catálogo |
+| Cita válida para otra parte de los apuntes | Se aceptaba y la relevancia se etiquetaba como alta | Se marca en esa parte y se comunica relevancia desconocida |
+
+La preparación de vectores y la subida por lotes usan identificadores distintos para cada generación.
+La publicación confirma en SQLite la generación, el hash y los metadatos de la nota en una transacción.
+Las lecturas de Qdrant conservan la transacción lectora durante la consulta o la paginación. El manifiesto
+usa el diario de reversión de SQLite para que el commit espere a los lectores anteriores.
+La primera sincronización tras actualizar reindexará el contenido para recoger los enlaces con carpeta.
+Las pruebas usaron fixtures, manifiestos temporales y colecciones de prueba.
+
+El proxy de Vite cubre las rutas de asignaturas y notas generadas. El renderizador comprueba el origen
+de las imágenes y la página restringe las imágenes al mismo origen. Las preguntas admiten 4.000 caracteres
+tanto en la API como en el prompt. Las llamadas directas que superan ese límite reciben un aviso al
+terminar. Los enlaces cualificados conservan la carpeta, incluso si se escribió una ruta abreviada del vault.
+
+**Comprobaciones ejecutadas**
+
+- Pytest completo con integración local y cobertura: 973 pruebas aprobadas, 1 omitida por permisos de
+  symlinks en Windows. Cobertura conjunta de `ingest/` y `retrieval/`: 99 %. El cliente Qdrant en memoria
+  avisa de que omite los índices de payload. La prueba de publicación también pasó contra Qdrant real.
+- Vitest: 417 pruebas aprobadas en 30 archivos. Edge, con la compilación de producción y una nota sintética:
+  2 marcadores visibles, 0 elementos con recurso remoto y 0 peticiones externas.
+- Ruff y formato: 97 archivos conformes. Mypy estricto: 98 archivos sin errores. TypeScript y ESLint:
+  código de salida 0. Compilación de producción correcta, con el aviso de tamaño del bundle principal de Vite.
+
+**Siguiente checkpoint.** Esperar aprobación para merge y push. La entrega 2 guardará el progreso
+por partes en `data/` y medirá la generación larga con el modelo de referencia.
+
+## Siguiente paso
+
+Antes de integrar esta rama hay trabajo previo, resumido y priorizado en
+[`docs/revision-2026-11-19.md`](revision-2026-11-19.md): la revisión de solo lectura de esta entrega
+encontró un bloqueo de la búsqueda durante la publicación de notas (alta), el borrado omitido ante fallos
+por nota y la falta de índice de payload para `generation` (medias), y confirmó el inventario de privacidad.
+Ese documento incluye también la valoración de los informes de modelos, el orden propuesto para las
+Entregas 2-4 y la lista completa de pendientes (Fase 4 y fase 3c). Los puntos 1-6 están hechos (ver el
+checkpoint de arriba); falta el 7 (merge de la fase 3c y de la Entrega 1 a `main` y push), que espera tu OK,
+y después los puntos 8-13.
+
+## Estado histórico por fases
 
 | Fase | Estado |
 |---|---|
@@ -376,7 +461,7 @@ nuevo no arrancaba, así que las primeras respuestas de la interfaz salían con 
 
 - Una cita válida sigue sin garantizar que la nota respalde la frase (comprobación de respaldo por frase:
   Fase 4).
-- Copias casi idénticas con nombres distintos (`Nota`, `Nota (1)`) no se funden si su contenido difiere.
+- Copias casi idénticas con nombres distintos (`Nota`, `Nota (1)`): resuelto después en la 3b con las familias de copias.
 - `3º/SISTEMAS` mezcla sistemas operativos con integración y cloud: el mapa de alias las une por pedido
   del usuario; una visión general de «sistemas operativos» incluye también esos temas.
 - Ver «Pendiente para la Fase 4» (tema inventado en la visión general y formato de párrafos).
@@ -400,7 +485,7 @@ nuevo no arrancaba, así que las primeras respuestas de la interfaz salían con 
   accesible que no contenía el texto visible (WCAG 2.5.3), página sin `h1` y panel de nota que
   desbordaba a 768 px.
 - **Límites**: las fórmulas de las notas se muestran en texto (sin KaTeX); las copias casi idénticas con
-  nombre distinto se muestran como fuentes separadas.
+  nombre distinto se mostraban como fuentes separadas (resuelto después con las familias de copias).
 
 ## Fase 3b, checkpoint 2 (rama `feat/fase-3b-buscar-nota`, en curso)
 
@@ -540,7 +625,7 @@ Lo que se sabe y se ha dejado a propósito para la Fase de evals, con su medida 
 3. Diversificación por asignatura (prioridad 1) y comprobación de respaldo por frase (valid ≠ respaldada).
 4. Orden de recuperación en preguntas concretas (p. ej. «proceso vs hilo»: recall 0,33): combinar el
    RRF con el coseno de la nota, y afinar α, cuota de notas grandes y umbral relativo.
-5. Copias casi idénticas con nombre distinto (`Nota`, `Nota (1)`) que hoy salen como fuentes separadas.
+5. ~~Copias casi idénticas con nombre distinto~~: resuelto en la 3b con las familias de copias.
 6. Revisar los umbrales de relevancia (0,55 / 0,12) si cambia el vault.
 
 ## Decisiones aprobadas (Fase 3a)
@@ -589,7 +674,7 @@ Sobre el diseño de `referencia_fase1.md`:
 5. **BM25 offline:** `fastembed` descarga una sola vez `Qdrant/bm25`; su caché se fija en
    `data/fastembed_cache` (ignorada por git). Verificado con `HF_HUB_OFFLINE=1`.
 
-## Siguiente paso
+## Siguiente paso registrado en la fase 3b
 
 Checkpoint 2 de la 3b (Buscar y Nota): filtros y facetas en `/search`, resolución de `[[enlaces]]` por
 título, «Abrir en Obsidian» y fórmulas LaTeX con KaTeX empaquetado en local. Se presenta el plan y se

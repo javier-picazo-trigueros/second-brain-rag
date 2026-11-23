@@ -72,7 +72,7 @@ def _is_note_target(target: str) -> bool:
 
 def _targets(text: str) -> Iterator[str]:
     for m in _WIKILINK.finditer(text):
-        target = m.group(1).strip().rsplit("/", 1)[-1]
+        target = m.group(1).strip()
         if _is_note_target(target):
             yield target
 

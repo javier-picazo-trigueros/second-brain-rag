@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
+from dataclasses import replace
 from typing import Any
 
 from secondbrain.answer.llm import Delta, Finished, LLMError, Message
@@ -42,6 +43,18 @@ class FakeStore:
         for c in chunks:
             self.events.append(("upsert", c.note_path))
             self.chunks.setdefault(c.note_path, []).append(c)
+
+    def retire_versions(self, note_path: str, keep: str) -> None:
+        self.events.append(("retire", note_path))
+        current = [c for c in self.chunks.get(note_path, []) if c.generation == keep]
+        if current:
+            self.chunks[note_path] = current
+        else:
+            self.chunks.pop(note_path, None)
+
+    def update_links(self, note_path: str, links: Sequence[str]) -> None:
+        self.events.append(("links", note_path))
+        self.chunks[note_path] = [replace(c, links=tuple(links)) for c in self.chunks[note_path]]
 
     def delete_note(self, note_path: str) -> None:
         self.events.append(("delete", note_path))
@@ -168,7 +181,11 @@ class ScriptedStore:
 
     def ensure_collection(self) -> None: ...
 
+    def update_links(self, note_path: str, links: Sequence[str]) -> None: ...
+
     def upsert_chunks(self, chunks: list[Chunk], dense: list[list[float]]) -> None: ...
+
+    def retire_versions(self, note_path: str, keep: str) -> None: ...
 
     def delete_note(self, note_path: str) -> None: ...
 

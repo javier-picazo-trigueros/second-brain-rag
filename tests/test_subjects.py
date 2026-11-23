@@ -8,18 +8,18 @@ from secondbrain.retrieval.intent import detect_intent
 from secondbrain.retrieval.subjects import SubjectIndex, load_aliases, norm, subject_of
 
 PATHS = [
-    "3º/Discretas/Tema 5 Teoría de grafos [MD].md",
-    "3º/Discretas/Resumen Tema 5 [MD] (1).md",
+    "3º/Discretas/Tema 5 Ejemplo de grafos [MD].md",
+    "3º/Discretas/Resumen Tema 5 Ejemplo [MD] (1).md",
     "3º/Discretas/Tema 4 Teoría de números.md",
-    "1º/DISCRETAS/TEMA 5/Tema 5 Teoría de grafos [MD].md",
+    "1º/DISCRETAS/TEMA 5/Tema 5 Ejemplo de grafos [MD].md",
     "1º/DISCRETAS/TEMA 5/images/figura.md",
     "3º/DM/DM - Unit 1 - Introduction.md",
     "3º/DM/PWI_GROUP1/PWI_GROUP1/RESEARCH.md",
-    "3º/IA II/DM - Unit 0 - Introduction.md",
+    "3º/IA II/DM - Unit 0 - Overview.md",
     "3º/IA II/AIII - Unit 2 - Neural Networks.md",
-    "2º/SISTEMAS OPERATIVOS/Tema-3.3 Procesos e Hilos en C v2021.md",
-    "3º/SISTEMAS/Tema-3.1 Procesos e Hilos v2021.md",
-    "3º/SISTEMAS/Tema 3 - Seguridad en Sistemas IT.md",
+    "2º/SISTEMAS OPERATIVOS/Tema-3.3 Ejemplo de hilos en C v2021.md",
+    "3º/SISTEMAS/Tema-3.1 Ejemplo de procesos v2021.md",
+    "3º/SISTEMAS/Tema 3 - Ejemplo de seguridad.md",
     "3º/Redes/Redes_Tema4_V4.md",
     "3º/Redes/Redes_Tema5_V2.md",
     "Suelta.md",
@@ -84,7 +84,7 @@ def test_folders_with_different_case_and_courses_are_one_subject() -> None:
     idx = SubjectIndex(PATHS)
     discretas = idx.by_name("discretas")
     assert discretas is not None
-    assert "1º/DISCRETAS/TEMA 5/Tema 5 Teoría de grafos [MD].md" in idx.notes_of(discretas)
+    assert "1º/DISCRETAS/TEMA 5/Tema 5 Ejemplo de grafos [MD].md" in idx.notes_of(discretas)
     assert "3º/Discretas/Tema 4 Teoría de números.md" in idx.notes_of(discretas)
 
 
@@ -99,14 +99,14 @@ def test_alias_file_merges_folders_and_adds_includes(index: SubjectIndex) -> Non
     dm = index.detect("de qué trata data mining")
     assert dm is not None and dm.name == "Data Mining"
     notes = index.notes_of(dm)
-    assert "3º/IA II/DM - Unit 0 - Introduction.md" in notes  # por `include`
+    assert "3º/IA II/DM - Unit 0 - Overview.md" in notes  # por `include`
     assert "3º/DM/DM - Unit 1 - Introduction.md" in notes  # por `folders`
     assert "3º/IA II/AIII - Unit 2 - Neural Networks.md" not in notes
     so = index.detect("la asignatura de sistemas operativos")
     assert so is not None
     so_notes = set(index.notes_of(so))
-    assert "2º/SISTEMAS OPERATIVOS/Tema-3.3 Procesos e Hilos en C v2021.md" in so_notes
-    assert "3º/SISTEMAS/Tema-3.1 Procesos e Hilos v2021.md" in so_notes
+    assert "2º/SISTEMAS OPERATIVOS/Tema-3.3 Ejemplo de hilos en C v2021.md" in so_notes
+    assert "3º/SISTEMAS/Tema-3.1 Ejemplo de procesos v2021.md" in so_notes
 
 
 def test_detect_prefers_the_longest_alias(index: SubjectIndex) -> None:
@@ -171,14 +171,14 @@ def test_topic_notes_match_by_name_or_folder(index: SubjectIndex) -> None:
     discretas = index.detect("matemática discreta")
     assert discretas is not None
     notes = index.topic_notes(discretas, 5)
-    assert "3º/Discretas/Tema 5 Teoría de grafos [MD].md" in notes
-    assert "3º/Discretas/Resumen Tema 5 [MD] (1).md" in notes
+    assert "3º/Discretas/Tema 5 Ejemplo de grafos [MD].md" in notes
+    assert "3º/Discretas/Resumen Tema 5 Ejemplo [MD] (1).md" in notes
     assert "1º/DISCRETAS/TEMA 5/images/figura.md" in notes  # por la carpeta TEMA 5
     assert "3º/Discretas/Tema 4 Teoría de números.md" not in notes
     so = index.detect("sistemas operativos")
     assert so is not None
-    assert "3º/SISTEMAS/Tema-3.1 Procesos e Hilos v2021.md" in index.topic_notes(so, 3)
-    assert "3º/SISTEMAS/Tema 3 - Seguridad en Sistemas IT.md" in index.topic_notes(so, 3)
+    assert "3º/SISTEMAS/Tema-3.1 Ejemplo de procesos v2021.md" in index.topic_notes(so, 3)
+    assert "3º/SISTEMAS/Tema 3 - Ejemplo de seguridad.md" in index.topic_notes(so, 3)
 
 
 def test_detect_all_returns_every_named_subject_in_question_order(index: SubjectIndex) -> None:
@@ -226,10 +226,10 @@ def test_an_include_moves_notes_out_of_the_other_subjects_folder(split: SubjectI
     asi = split.by_name("Administración de Sistemas")
     assert so is not None and asi is not None
     so_notes, asi_notes = set(split.notes_of(so)), set(split.notes_of(asi))
-    assert "3º/SISTEMAS/Tema-3.1 Procesos e Hilos v2021.md" in so_notes
-    assert "2º/SISTEMAS OPERATIVOS/Tema-3.3 Procesos e Hilos en C v2021.md" in so_notes
-    assert "3º/SISTEMAS/Tema-3.1 Procesos e Hilos v2021.md" not in asi_notes
-    assert "3º/SISTEMAS/Tema 3 - Seguridad en Sistemas IT.md" in asi_notes
+    assert "3º/SISTEMAS/Tema-3.1 Ejemplo de procesos v2021.md" in so_notes
+    assert "2º/SISTEMAS OPERATIVOS/Tema-3.3 Ejemplo de hilos en C v2021.md" in so_notes
+    assert "3º/SISTEMAS/Tema-3.1 Ejemplo de procesos v2021.md" not in asi_notes
+    assert "3º/SISTEMAS/Tema 3 - Ejemplo de seguridad.md" in asi_notes
     assert not so_notes & asi_notes  # ninguna nota en las dos
 
 
@@ -288,10 +288,10 @@ INFORMAL_PATHS = [
     "3º/IA I/AII - Unit 2 - Human intelligence.md",
     "3º/IA II/AIII - Unit 1 - Background.md",
     "3º/IA II/AIII - Unit 2 - Neural Networks.md",
-    "3º/IA II/DM - Unit 0 - Introduction.md",
-    "3º/DM/DM - Unit 1 - Introduction to Data Mining.md",
+    "3º/IA II/DM - Unit 0 - Overview.md",
+    "3º/DM/DM - Unit 1 - Overview of Data Mining.md",
     "2º/SISTEMAS OPERATIVOS/Tema 4.1 - Sincronizacion.md",
-    "3º/Discretas/Tema 5 Teoría de grafos.md",
+    "3º/Discretas/Tema 5 Ejemplo de grafos.md",
     "3º/Redes/Redes_Tema4.md",
 ]
 
@@ -325,8 +325,8 @@ def test_dm_notes_inside_the_ia_ii_folder_belong_to_data_mining(informal: Subjec
     ia2 = informal.by_name("Inteligencia Artificial II")
     dm = informal.by_name("Data Mining")
     assert ia2 is not None and dm is not None
-    assert "3º/IA II/DM - Unit 0 - Introduction.md" in informal.notes_of(dm)
-    assert "3º/IA II/DM - Unit 0 - Introduction.md" not in informal.notes_of(ia2)
+    assert "3º/IA II/DM - Unit 0 - Overview.md" in informal.notes_of(dm)
+    assert "3º/IA II/DM - Unit 0 - Overview.md" not in informal.notes_of(ia2)
     assert "3º/IA I/AII - Unit 1 - Background.md" not in informal.notes_of(ia2)
 
 

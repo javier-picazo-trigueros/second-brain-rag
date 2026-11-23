@@ -60,6 +60,16 @@ export function ExternalLink({ href, children }: { href?: string; children?: Rea
   );
 }
 
+function LocalImage({ src, alt }: { src?: string | Blob; alt?: string }) {
+  if (typeof src === "string" && src && URL.canParse(src, window.location.href)) {
+    const url = new URL(src, window.location.href);
+    if (url.origin === window.location.origin && /^https?:$/.test(url.protocol)) {
+      return <img src={url.href} alt={alt ?? ""} />;
+    }
+  }
+  return <span>imagen externa bloqueada</span>;
+}
+
 interface MarkdownProps {
   children: string;
   components?: Components;
@@ -113,7 +123,7 @@ export function Markdown({
         ...(highlight ? [rehypeHighlight] : []),
       ]}
       urlTransform={urlTransform}
-      components={components}
+      components={{ ...components, img: LocalImage }}
     >
       {math ? math.normalizeDelimiters(children, latexDelimiters) : children}
     </ReactMarkdown>

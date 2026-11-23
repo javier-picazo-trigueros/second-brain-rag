@@ -8,7 +8,7 @@ from secondbrain.retrieval.study import StudyPart, StudyPlan
 from secondbrain.retrieval.subjects import norm
 
 NOT_FOUND = "No lo encuentro en el vault."
-QUESTION_MAX_CHARS = 2000
+QUESTION_MAX_CHARS = 4000
 
 SYSTEM_PROMPT = (
     "Eres el asistente del vault de apuntes del usuario. "
@@ -141,7 +141,7 @@ def build_study_messages(
 def build_messages(question: str, context: BuiltContext) -> list[Message]:
     asked = question.strip()
     if len(asked) > QUESTION_MAX_CHARS:
-        asked = asked[:QUESTION_MAX_CHARS].rstrip() + " […]"
+        asked = asked[: QUESTION_MAX_CHARS - len(" […]")].rstrip() + " […]"
     sources = context.text or "FUENTES: (no se ha recuperado ninguna nota)"
     extra = {
         "overview": OVERVIEW_PROMPT,

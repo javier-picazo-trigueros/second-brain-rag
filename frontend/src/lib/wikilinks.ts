@@ -3,7 +3,7 @@
 export interface Wikilink {
   raw: string;
   index: number;
-  target: string; // último segmento de la ruta, sin apartado ni etiqueta
+  target: string; // ruta escrita, sin apartado ni etiqueta
   heading: string | null;
   label: string | null;
   embed: boolean; // ![[...]]
@@ -23,7 +23,7 @@ export function parseWikilinks(text: string): Wikilink[] {
   for (const match of text.matchAll(PATTERN)) {
     const written = match[2]!.trim();
     if (written === "") continue;
-    const target = written.split("/").pop()!.trim();
+    const target = written;
     const dot = target.lastIndexOf(".");
     const extension = dot === -1 ? "" : target.slice(dot + 1).toLowerCase();
     found.push({

@@ -108,6 +108,13 @@ describe("wikilinks in markdown", () => {
   });
 });
 
+it.each([true, false])("blocks external resources before rendering (note=%s)", (note) => {
+  const { container } = render(<Markdown wikilinks={note}>{"![a](https://remote.invalid/x) ![b](//remote.invalid/y)"}</Markdown>);
+  expect(container.querySelector("img")).toBeNull();
+  expect(document.querySelector('link[href*="remote.invalid"]')).toBeNull();
+  expect(screen.getAllByText("imagen externa bloqueada")).toHaveLength(2);
+});
+
 describe("heading levels of a note body", () => {
   const levels = (container: HTMLElement) =>
     [...container.querySelectorAll("h1,h2,h3,h4,h5,h6")].map((h) => `${h.tagName.toLowerCase()}:${h.textContent}`);

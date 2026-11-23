@@ -3,7 +3,8 @@ from __future__ import annotations
 import sqlite3
 import threading
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import closing, contextmanager
 from pathlib import Path
 
 
@@ -13,14 +14,24 @@ class Manifest:
     def __init__(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         self._db = sqlite3.connect(path, check_same_thread=False)
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
+        self._writing = False
         with self._lock:
+            # El commit de publicación espera a los lectores antes de retirar puntos en Qdrant.
+            self._db.execute("PRAGMA journal_mode=DELETE")
             self._db.execute(
                 "CREATE TABLE IF NOT EXISTS notes ("
                 "path TEXT PRIMARY KEY, hash TEXT NOT NULL, n_chunks INTEGER NOT NULL)"
             )
             # Migración: las bases creadas en la fase 1 no tienen body_hash.
             columns = {row[1] for row in self._db.execute("PRAGMA table_info(notes)")}
+            if "generation" not in columns:
+                self._db.execute("ALTER TABLE notes ADD COLUMN generation TEXT")
+                self._db.execute("ALTER TABLE notes ADD COLUMN cleanup INTEGER NOT NULL DEFAULT 0")
+            if "links_version" not in columns:
+                self._db.execute(
+                    "ALTER TABLE notes ADD COLUMN links_version INTEGER NOT NULL DEFAULT 0"
+                )
             if "body_hash" not in columns:
                 self._db.execute("ALTER TABLE notes ADD COLUMN body_hash TEXT")
             self._db.execute(
@@ -36,25 +47,105 @@ class Manifest:
             )
             self._db.commit()
 
+    @contextmanager
+    def writing(self) -> Iterator[None]:
+        """Serializa publicaciones incluso entre watcher, API y CLI de distintos procesos."""
+        with self._lock, self._db:
+            self._db.execute("BEGIN IMMEDIATE")
+            self._writing = True
+            try:
+                yield
+            finally:
+                self._writing = False
+
+    def _commit(self) -> None:
+        if not self._writing:
+            self._db.commit()
+
+    def _advance_revision(self) -> None:
+        self._db.execute(
+            "INSERT INTO meta(key,value) VALUES('revision',1) "
+            "ON CONFLICT(key) DO UPDATE SET value=value+1"
+        )
+
+    @staticmethod
+    @contextmanager
+    def read_generations(path: Path) -> Iterator[dict[str, str]]:
+        """Mantiene la transacción lectora hasta que Qdrant devuelve el último lote."""
+        if not path.exists():
+            yield {}
+            return
+        with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True)) as db:
+            db.execute("BEGIN")
+            if "generation" not in {r[1] for r in db.execute("PRAGMA table_info(notes)")}:
+                yield {}
+                return
+            yield dict(db.execute("SELECT path,generation FROM notes WHERE generation IS NOT NULL"))
+
+    def pending_cleanup(self, path: str) -> str | None:
+        with self._lock:
+            row = self._db.execute(
+                "SELECT generation FROM notes WHERE path=? AND cleanup=1", (path,)
+            ).fetchone()
+            return str(row[0]) if row else None
+
+    def cleaned(self, path: str) -> None:
+        with self._lock:
+            self._db.execute("UPDATE notes SET cleanup=0 WHERE path=?", (path,))
+            self._commit()
+
     def get(self, path: str) -> str | None:
         with self._lock:
             row = self._db.execute("SELECT hash FROM notes WHERE path=?", (path,)).fetchone()
         return None if row is None else str(row[0])
 
-    def upsert(self, path: str, content_hash: str, n_chunks: int) -> None:
+    def links_version(self, path: str) -> int:
+        """Versión del formato de enlaces guardado en el payload de la nota (0 = anterior)."""
+        with self._lock:
+            row = self._db.execute(
+                "SELECT links_version FROM notes WHERE path=?", (path,)
+            ).fetchone()
+        return 0 if row is None else int(row[0])
+
+    def set_links_version(self, path: str, version: int) -> None:
+        with self._lock:
+            self._db.execute("UPDATE notes SET links_version=? WHERE path=?", (version, path))
+            self._advance_revision()  # los enlaces inversos del catálogo salen del payload
+            self._commit()
+
+    def upsert(
+        self,
+        path: str,
+        content_hash: str,
+        n_chunks: int,
+        generation: str | None = None,
+        links_version: int = 0,
+    ) -> None:
         with self._lock:
             self._db.execute(
-                "INSERT INTO notes(path, hash, n_chunks) VALUES(?,?,?) "
-                "ON CONFLICT(path) DO UPDATE SET hash=excluded.hash, n_chunks=excluded.n_chunks",
-                (path, content_hash, n_chunks),
+                "INSERT INTO notes(path,hash,n_chunks,generation,cleanup,links_version) "
+                "VALUES(?,?,?,?,?,?) "
+                "ON CONFLICT(path) DO UPDATE SET hash=excluded.hash,n_chunks=excluded.n_chunks,"
+                "generation=excluded.generation,cleanup=excluded.cleanup,"
+                "links_version=excluded.links_version",
+                (
+                    path,
+                    content_hash,
+                    n_chunks,
+                    generation,
+                    int(generation is not None),
+                    links_version,
+                ),
             )
-            self._db.commit()
+            self._advance_revision()
+            self._commit()
 
     def delete(self, path: str) -> None:
         with self._lock:
             self._db.execute("DELETE FROM notes WHERE path=?", (path,))
             self._db.execute("DELETE FROM note_concepts WHERE path=?", (path,))
-            self._db.commit()
+            self._advance_revision()
+            self._commit()
 
     def paths(self) -> set[str]:
         with self._lock:
@@ -78,7 +169,7 @@ class Manifest:
                 "INSERT OR IGNORE INTO note_concepts(path, concept, pos) VALUES(?,?,?)",
                 [(path, c, i) for i, c in enumerate(concepts)],
             )
-            self._db.commit()
+            self._commit()
 
     def note_concepts(self) -> dict[str, tuple[str, ...]]:
         """Nota -> conceptos, incluidas las notas sin conceptos."""

@@ -58,7 +58,7 @@ describe("SourceCards", () => {
   });
 
   it("keeps the title and the page visibly and textually apart", () => {
-    // Regresión: salía «Tema-3.1 Procesos e Hilos v2021SISTEMAS».
+    // Regresión: salía «Tema-3.1 Ejemplo de procesos v2021SISTEMAS».
     render(<SourceCards sources={sources} cited={cited} onOpen={() => {}} />);
     const text = screen.getByRole("button", { name: /Doc iptables/ }).textContent ?? "";
     expect(text).toMatch(/Doc iptables\s+p\. 4/);

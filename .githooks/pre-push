@@ -1,0 +1,19 @@
+#!/bin/sh
+# Auditoría de privacidad antes de publicar. Se activa con `.\tasks.ps1 install`
+# (git config --local core.hooksPath .githooks). Bloquea el push si hay hallazgos.
+venv=$(printf '%s' "${BRAIN_VENV:-C:/venvs/second-brain}" | tr '\\' '/')
+py="$venv/Scripts/python.exe"
+if [ ! -x "$py" ]; then
+    echo "pre-push: no existe $py; no se puede auditar. Crea el venv con .\\tasks.ps1 install." >&2
+    exit 1
+fi
+zero=0000000000000000000000000000000000000000
+status=0
+while read -r _local_ref local_sha _remote_ref _remote_sha; do
+    [ "$local_sha" = "$zero" ] && continue # borrado de rama: nada que auditar
+    "$py" -m secondbrain.privacy_audit --tip "$local_sha" || status=1
+done
+if [ "$status" -ne 0 ]; then
+    echo "pre-push: la auditoría de privacidad encontró hallazgos; no se publica." >&2
+fi
+exit "$status"

@@ -213,3 +213,30 @@ def test_backlinks_do_not_list_a_version_of_the_note_itself(
     links.note_links = lambda: {"3º/DM/Unit 5 (1).md": ("Unit 5",), "3º/DM/Otra.md": ("Unit 5",)}  # type: ignore[method-assign]
     catalog = make(tmp_path, manifest, links)
     assert [b for b in catalog.backlinks("3º/DM/Unit 5.md")] == ["3º/DM/Otra.md"]
+
+
+def test_content_change_refreshes_cached_tags_and_backlinks(
+    tmp_path: Path, manifest: Manifest
+) -> None:
+    add(manifest, "A.md", "B.md")
+    tags = Tags({"A.md": ("antes",)})
+    catalog = make(tmp_path, manifest, tags)
+    links: dict[str, tuple[str, ...]] = {"A.md": ("B",)}
+    tags.note_links = lambda: links  # type: ignore[method-assign]
+    assert catalog.note_tags()["A.md"] == ("antes",)
+    assert catalog.backlinks("B.md") == ["A.md"]
+    tags.data = {"A.md": ("despues",)}
+    links.clear()
+    manifest.upsert("A.md", "nuevo", 2)
+    assert catalog.note_tags()["A.md"] == ("despues",)
+    assert catalog.backlinks("B.md") == []
+
+
+def test_folder_link_resolves_a_short_vault_path_and_its_backlink(
+    tmp_path: Path, manifest: Manifest
+) -> None:
+    add(manifest, "Curso/Uno/Intro.md", "Curso/Dos/Intro.md", "Resumen.md")
+    catalog = with_links(tmp_path, manifest, {"Resumen.md": ("Uno/Intro",)})
+    assert catalog.resolve_link("Uno/Intro") == ["Curso/Uno/Intro.md"]
+    assert catalog.backlinks("Curso/Uno/Intro.md") == ["Resumen.md"]
+    assert catalog.backlinks("Curso/Dos/Intro.md") == []

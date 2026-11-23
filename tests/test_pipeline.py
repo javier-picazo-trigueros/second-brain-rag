@@ -243,3 +243,15 @@ def test_the_first_token_time_is_measured_when_text_reaches_the_client(tmp_path:
     # Si el modelo empieza con una cita, el primer texto visible sale cuando se valida la cita.
     events, _, _ = run(tmp_path, found(), ["[S", "1] ", "es un contador."])
     assert done(events).timings.first_token_ms is not None
+
+
+def test_long_question_is_shortened_before_retrieval_and_reported(tmp_path: Path) -> None:
+    from secondbrain.answer.prompt import QUESTION_MAX_CHARS
+    from secondbrain.api.schemas import AskRequest
+
+    assert AskRequest(question="x" * QUESTION_MAX_CHARS, k=None)
+    retriever = FakeRetriever(found())
+    pipeline = AnswerPipeline(settings(tmp_path), retriever, ScriptedLLM(["bien [S1]"]))
+    events = list(pipeline.ask("x" * (QUESTION_MAX_CHARS + 1)))
+    assert len(retriever.calls[0][0]) <= QUESTION_MAX_CHARS
+    assert "pregunta_recortada" in done(events).warnings

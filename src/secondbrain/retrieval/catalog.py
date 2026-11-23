@@ -1,7 +1,7 @@
 """Catálogo del índice: asignaturas canónicas, cursos, etiquetas y enlaces de cada nota.
 
 Sirve a los filtros y facetas de la búsqueda y a la resolución de `[[enlaces]]`. Se reconstruye solo
-cuando cambia el conjunto de notas del índice (el vault puede cambiar con la API en marcha).
+cuando se publica un cambio en el índice (el vault puede cambiar con la API en marcha).
 """
 
 from __future__ import annotations
@@ -47,9 +47,9 @@ class Catalog:
         self._backlinks: dict[str, list[str]] | None = None
 
     def _refresh(self) -> SubjectIndex:
-        paths = self._manifest.paths()
-        key = hash(frozenset(paths))
+        key = int(self._manifest.get_value("revision") or 0)
         if self._index is None or key != self._key:
+            paths = self._manifest.paths()
             self._index = SubjectIndex(paths, self._aliases)
             self._paths = set(paths)
             self._by_title = {}
@@ -99,7 +99,9 @@ class Catalog:
         key = target.strip()
         found = [c for c in (key, f"{key}.md") if c in self._paths][:1]
         if not found:
-            found = self._by_title.get(key.casefold(), [])
+            target = key.casefold().removesuffix(".md")
+            candidates = self._by_title.get(target.rsplit("/", 1)[-1], [])
+            found = [p for p in candidates if ("/" + p.casefold()).endswith("/" + target + ".md")]
         groups: dict[str, list[str]] = {}
         for path in found:
             groups.setdefault(self._canonical.get(path, path), []).append(path)

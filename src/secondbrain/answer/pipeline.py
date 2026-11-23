@@ -10,7 +10,12 @@ from typing import Protocol
 from secondbrain.answer.citations import CitationStream
 from secondbrain.answer.context import BuiltContext, Fragment, Source, build_context
 from secondbrain.answer.llm import LLM, Delta, Finished, LLMError, Message
-from secondbrain.answer.prompt import NOT_FOUND, build_messages, build_study_messages
+from secondbrain.answer.prompt import (
+    NOT_FOUND,
+    QUESTION_MAX_CHARS,
+    build_messages,
+    build_study_messages,
+)
 from secondbrain.config import Settings
 from secondbrain.retrieval.hybrid import SearchResult
 from secondbrain.retrieval.study import StudyPlan
@@ -229,10 +234,20 @@ class AnswerPipeline:
         return result, build_context(result, self._s)
 
     def ask(self, question: str, k: int | None = None) -> Iterator[Event]:
+        clipped = len(question) > QUESTION_MAX_CHARS
+        for event in self._ask(question[:QUESTION_MAX_CHARS], k):
+            if clipped and isinstance(event, DoneEvent):
+                event = replace(event, warnings=(*event.warnings, "pregunta_recortada"))
+            yield event
+
+    def _ask(self, question: str, k: int | None) -> Iterator[Event]:
         start = self._clock()
         result, context = self.plan(question, k)
         retrieval_ms = (self._clock() - start) * 1000
         confidence = confidence_label(result.top_similarity, self._s.confidence_threshold)
+        if result.study is not None:
+            yield from self._write_study(result.study, start, retrieval_ms)
+            return
         yield SourcesEvent(
             context.sources,
             context.fragments,
@@ -240,10 +255,6 @@ class AnswerPipeline:
             result.top_similarity,
             context.dropped_notes,
         )
-
-        if result.study is not None:
-            yield from self._write_study(result.study, start, retrieval_ms)
-            return
 
         if result.canned:
             # Respuesta fija (p. ej. «no hay ejercicios de ese tema»): no pasa por el modelo.
@@ -415,7 +426,7 @@ class AnswerPipeline:
             for f in part.fragments
         )
         sources = _study_sources(plan)
-        yield SourcesEvent(sources, fragments, "alta", None, 0)
+        yield SourcesEvent(sources, fragments, "desconocida", None, 0)
 
         heading = f"# {plan.title}"
         pieces = [heading]
@@ -428,7 +439,8 @@ class AnswerPipeline:
         finished: Finished | None = None
         for number, part in enumerate(plan.parts, start=1):
             yield ProgressEvent(number, len(plan.parts), part.title)
-            stream = CitationStream(fragments)
+            ids = {f.id for f in part.fragments}
+            stream = CitationStream(tuple(f for f in fragments if f.id in ids))
             text: list[str] = []
             part_head = f"## {part.title}\n\n"
             if number > 1:
@@ -481,7 +493,7 @@ class AnswerPipeline:
             invalid=tuple(invalid),
             warnings=tuple(warnings),
             not_found=False,
-            confidence="alta",
+            confidence="desconocida",
             similarity=None,
             timings=Timings(
                 retrieval_ms, first_token_ms, (self._clock() - start) * 1000, None, None

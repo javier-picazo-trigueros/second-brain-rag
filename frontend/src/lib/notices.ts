@@ -20,6 +20,7 @@ const ORDER = [
   "sin_citas",
   "solo_pistas",
   "respuesta_truncada",
+  "pregunta_recortada",
   "confianza_baja",
   "contexto_recortado",
 ];
@@ -34,11 +35,13 @@ function decimal(value: number): string {
 
 function build(code: string, done: DoneEvent): Notice | null {
   switch (code) {
+    case "pregunta_recortada":
+      return { code, tone: "neutral", title: "Pregunta recortada", detail: "Se ha usado el inicio de la pregunta hasta el límite permitido." };
     case "confianza_baja":
       return {
         code,
         tone: "neutral",
-        title: "Confianza baja",
+        title: "Relevancia de las fuentes baja",
         detail:
           "Tu pregunta se parece poco a lo que hay en tus apuntes" +
           (done.similarity === null ? "" : ` (similitud ${decimal(done.similarity)})`) +
@@ -133,7 +136,7 @@ export function describeNotices(done: DoneEvent): Notice[] {
     .filter((notice): notice is Notice => notice !== null);
 }
 
-/** Una línea con los avisos visibles: «1 cita no verificada · Confianza baja». */
+/** Una línea con los avisos visibles: «1 cita no verificada · Relevancia de las fuentes baja». */
 export function summarizeNotices(notices: Notice[]): string {
   return notices
     .filter((n) => !n.detailsOnly)

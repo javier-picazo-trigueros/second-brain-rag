@@ -6,6 +6,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from secondbrain.answer.prompt import QUESTION_MAX_CHARS
+
 # --- salud ----------------------------------------------------------------------------------
 
 
@@ -130,7 +132,7 @@ class SearchResponse(BaseModel):
 
 
 class AskRequest(BaseModel):
-    question: str = Field(min_length=1, max_length=4000)
+    question: str = Field(min_length=1, max_length=QUESTION_MAX_CHARS)
     k: int | None = Field(None, ge=1, le=20)
 
 

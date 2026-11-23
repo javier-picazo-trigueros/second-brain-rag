@@ -148,6 +148,7 @@ def test_links_handle_alias_anchor_block_path_and_dedupe(vault: Path) -> None:
         "Condiciones de carrera",
         "Semáforos y monitores",
         "Sin frontmatter",
+        "1º/IA/Sin frontmatter",
         "semaforo",
         "firewall",
     )

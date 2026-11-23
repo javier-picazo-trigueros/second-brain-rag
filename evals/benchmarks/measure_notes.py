@@ -64,6 +64,8 @@ def measure(question: str) -> dict[str, Any]:
         if isinstance(event, ProgressEvent):
             marks.append(len(recorder.calls))
             parts_total = event.total
+            elapsed = time.perf_counter() - start
+            print(f"  parte {event.part}/{event.total} ({elapsed:.0f} s)", flush=True)
         elif isinstance(event, DoneEvent):
             done = event
         elif isinstance(event, ErrorEvent):

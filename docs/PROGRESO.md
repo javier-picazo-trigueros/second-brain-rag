@@ -2,7 +2,42 @@
 
 Se actualiza en cada checkpoint.
 
-## Checkpoint actual · Entrega 1 de fiabilidad
+## Checkpoint actual · «Antes de integrar» (puntos 1-6 de la revisión)
+
+23 de noviembre de 2026. Misma rama (`feat/entrega-1-fiabilidad`), pendiente de tu OK para el merge (punto 7).
+
+| Punto | Resultado verificado |
+|---|---|
+| 1. Cerrojo | Parseo, embeddings y subida a Qdrant ya no están bajo el cerrojo del manifest: los puntos nuevos son invisibles hasta el commit, y solo la escritura del manifest (breve) lo toma. Test: una lectura (`get_value`) termina mientras otra hebra está parada en el embedding o en la subida. La retirada de puntos viejos sigue después del commit, en un bloque breve y con la generación vigente del manifest (un borrado por filtro, milisegundos). |
+| 2. `sync` | Un fallo de una nota ya no impide los borrados; solo los impide un fallo del recorrido. `last_sync` solo se guarda si no hubo fallos. |
+| 3. Índice `generation` | `ensure_collection` crea los índices que falten también en colecciones existentes. En tu Qdrant (23.236 puntos, filtro de 1.000 generaciones, búsqueda con prefetch denso y BM25): **60 ms → 14 ms** de mediana; el índice se creó en 1,8 s. |
+| 4. Reindexación | `"wikilinks-with-path"` sale de la huella (vuelve a la huella anterior): no se re-embebe nada. Las notas con `[[carpeta/Nota]]` se corrigen en el payload de enlaces (`set_payload` por nota, sin vectores) y la versión de enlaces queda en el manifest. `brain index` sobre tu vault: **41,7 s**, `indexadas=0 sin_cambios=1000`, 23.236 puntos intactos; una segunda pasada no vuelve a tocar nada. |
+| 5. Integración | 35 pruebas de integración pasan con Qdrant y Ollama reales (las 33 de antes y 2 nuevas: índice de `generation` y `update_links`). Suite completa: 1.018 aprobadas, 1 omitida (symlinks en Windows), cobertura total 97 %. Vitest 417, `tsc` y ESLint en 0; ruff y `mypy --strict` limpios. |
+| 6. Privacidad | Ver abajo. |
+
+**Privacidad (punto 6).**
+
+- **Auditoría automática** (`secondbrain/privacy_audit.py`, `.\tasks.ps1 audit`, `tests/test_privacy_audit.py`):
+  rutas completas y títulos distintivos del manifest (≥ 14 caracteres y con espacio, guion o cifra, sin los
+  títulos del vault de ejemplo), datos personales (rutas de usuario salvo ejemplos como `yo` o `user`,
+  correos salvo `noreply`/`example.*`, credenciales), autoría de cada commit sin publicar y menciones a una IA
+  o trailers de coautoría **en los mensajes** (`CLAUDE.md` no cuenta; «IA II» tampoco). Revisa los commits
+  que no están en ningún remoto y el árbol que se publica. Sin manifest omite solo las comprobaciones del
+  vault. Devuelve 1 si hay hallazgos. El hook `.githooks/pre-push` la ejecuta antes de cada push
+  (`.\tasks.ps1 install` activa `core.hooksPath`; ya está activado en este clon). Probado: limpio → 0; una
+  ruta real en un commit → bloquea el push.
+- **Commits sin publicar:** filtro local (`git filter-branch`) sobre `origin/main..HEAD` que sustituye los
+  títulos reales de 4 ficheros (`test_exercises.py`, `test_generated.py`, `AnswerView.test.tsx`,
+  `screens.mjs`). `origin/main` no se tocó. Las ramas locales `feat/fase-3c-apuntes-ejercicios` y
+  `fix/cita-con-corchetes` se reescribieron con el mismo filtro (los hashes cambiaron); las copias previas
+  siguen en `refs/original/` hasta que se borren.
+- **Lo ya publicado:** un commit nuevo (`test: sustituir rutas y títulos reales…`) pone nombres ficticios en
+  los tests de citas, Obsidian, asignaturas y temas y en la tarjeta de fuentes. Las carpetas de asignatura
+  se mantienen (los tests dependen de ellas). **El historial de `origin/main` y de las ramas publicadas
+  conserva las rutas antiguas**: no se reescribe (sin force push).
+- Resultado: `.\tasks.ps1 audit` → 0 hallazgos.
+
+## Entrega 1 de fiabilidad (checkpoint anterior)
 
 18 de noviembre de 2026. Rama local `feat/entrega-1-fiabilidad`, basada en
 `feat/fase-3c-apuntes-ejercicios`. Entrega verificada y pendiente de autorización para integrar y publicar.
@@ -48,8 +83,9 @@ Antes de integrar esta rama hay trabajo previo, resumido y priorizado en
 encontró un bloqueo de la búsqueda durante la publicación de notas (alta), el borrado omitido ante fallos
 por nota y la falta de índice de payload para `generation` (medias), y confirmó el inventario de privacidad.
 Ese documento incluye también la valoración de los informes de modelos, el orden propuesto para las
-Entregas 2-4 y la lista completa de pendientes (Fase 4 y fase 3c). Este paso queda a la espera de tu
-decisión sobre los puntos 1-7 de esa lista.
+Entregas 2-4 y la lista completa de pendientes (Fase 4 y fase 3c). Los puntos 1-6 están hechos (ver el
+checkpoint de arriba); falta el 7 (merge de la fase 3c y de la Entrega 1 a `main` y push), que espera tu OK,
+y después los puntos 8-13.
 
 ## Estado histórico por fases
 

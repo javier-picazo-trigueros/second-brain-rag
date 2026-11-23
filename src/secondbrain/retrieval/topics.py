@@ -19,7 +19,7 @@ _MARKER = re.compile(
 # «T20», «T22» o «T2a» no cuenten como el tema 2.
 _SHORT_MARKER = re.compile(r"(?<![a-z0-9])t0?([1-9])(?:\.(\d{1,2}))?(?![a-z0-9])")
 _SHORT_LEADING = re.compile(
-    r"^.*?(?<![a-z0-9])t0?[1-9](?:\.\d{1,2})?(?![a-z0-9])[\s_.:\-–]*", re.IGNORECASE
+    r"^.*?(?<![a-z0-9])t0?[1-9](?:\.\d{1,2})?(?![a-z0-9])[\s_.:\-\u2013]*", re.IGNORECASE
 )
 _LEADING = re.compile(
     r"^.*?(?:tema|unit|unidad|topic|lecci[oó]n|lesson)[\s_-]*0?\d{1,2}(?:\.\d{1,2})?[\s_.:\-\u2013]*",

@@ -17,7 +17,9 @@ notas: `evals/results/` está ignorado por git; no los muevas a un sitio version
 from __future__ import annotations
 
 import argparse
+import ctypes
 import json
+import sys
 import time
 from collections.abc import Iterator, Sequence
 from itertools import pairwise
@@ -104,6 +106,14 @@ def measure(question: str, part_max_tokens: int | None = None) -> dict[str, Any]
     }
 
 
+def keep_awake() -> None:
+    """En Windows evita que el equipo se suspenda mientras dura la medida (si no, los tiempos
+    incluyen la suspensión y la conexión con Ollama puede caerse)."""
+    if sys.platform == "win32":
+        es_continuous, es_system_required = 0x80000000, 0x00000001
+        ctypes.windll.kernel32.SetThreadExecutionState(es_continuous | es_system_required)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("questions", nargs="+")
@@ -112,6 +122,7 @@ def main() -> None:
         "--part-max-tokens", type=int, default=None, help="tope de salida por parte"
     )
     args = parser.parse_args()
+    keep_awake()
     results = [measure(q, args.part_max_tokens) for q in args.questions]
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")

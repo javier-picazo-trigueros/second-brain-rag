@@ -5,23 +5,23 @@ cerrados está en [`HISTORIAL.md`](HISTORIAL.md).
 
 ## Estado actual
 
-- **Publicado en `main`:** fases 0-3c, Entrega 1 (fiabilidad) y Entrega 2, bloque A (continuación de las
-  partes de apuntes y temas con marca corta).
-- **En curso:** Entrega 3, bloque B (infraestructura), rama `feat/entrega-3-infraestructura`, pendiente de
-  OK para integrar.
+- **Publicado en `main`:** fases 0-3c, Entrega 1 (fiabilidad), Entrega 2, bloque A (continuación de las
+  partes de apuntes y temas con marca corta) y Entrega 3, bloque B.
+- **Último bloque cerrado:** Entrega 3, bloque B (infraestructura), integrado y publicado; el CI de GitHub
+  pasa en `main`.
 - **Verificación de la rama:** 1.070 pruebas del backend aprobadas (con las 35 de integración) y 1 omitida
   (symlinks en Windows), cobertura total 97 %; Vitest 419, `tsc` y ESLint en 0; ruff, `mypy --strict` y
   `.\tasks.ps1 audit` limpios.
 - **Entorno:** el repositorio y `.env` están en OneDrive; el venv (`C:\venvs\second-brain`), los datos
   locales (`C:\venvs\second-brain-data`) y el volumen de Qdrant (Docker) están fuera.
 
-## Checkpoint actual · Entrega 3, bloque B (puntos 11 y 13): CI, benchmarks, historial y datos fuera de OneDrive
+## Último checkpoint cerrado · Entrega 3, bloque B (puntos 11 y 13): CI, benchmarks, historial y datos fuera de OneDrive
 
-24 de noviembre de 2026. Rama `feat/entrega-3-infraestructura` (sobre `main`), pendiente de tu OK.
+24 de noviembre de 2026. Aprobado, integrado en `main` y publicado.
 
 | Punto | Resultado |
 |---|---|
-| CI | `.github/workflows/ci.yml`: en cada push a `main`, `feat/**` y `fix/**` y en cada PR. Job de backend (Windows, Python 3.11): ruff, formato, `mypy --strict`, pruebas unitarias (`-m "not integration"`) con cobertura de `ingest/` y `retrieval/` (mínimo 85 %; medido 99 %) y auditoría de privacidad. Job de interfaz (Ubuntu, Node 22, pnpm 10.34.9): `tsc`, ESLint y Vitest. Sin Ollama ni Qdrant. **Todavía no se ha ejecutado en GitHub** (la regla del proyecto es no subir a mitad de fase): los pasos de Python se probaron en local y el fichero se validó como YAML, pero la primera ejecución real será la del primer push. |
+| CI | `.github/workflows/ci.yml`: en cada push a `main`, `feat/**` y `fix/**` y en cada PR. Job de backend (Windows, Python 3.11): ruff, formato, `mypy --strict`, pruebas unitarias (`-m "not integration"`) con cobertura de `ingest/` y `retrieval/` (mínimo 85 %; medido 99 %) y auditoría de privacidad. Job de interfaz (Ubuntu, Node 22, pnpm 10.34.9): `tsc`, ESLint y Vitest. Sin Ollama ni Qdrant. **Verificado en GitHub tras el merge:** el backend pasó a la primera; la interfaz falló porque `frontend/.npmrc` fija rutas de Windows (`C:/venvs/second-brain-web/...`) que en Linux rompen la resolución de KaTeX (12 tests); el CI borra ese `.npmrc` antes de instalar y `main` quedó en verde. |
 | Auditoría sin manifest | `python -m secondbrain.privacy_audit` ya funciona sin `.env` ni correo local: sin configuración usa `data/manifest.sqlite` del repositorio y, si no existe, omite solo las comprobaciones de rutas y títulos del vault (mensaje explícito); sin correo local omite solo la autoría. El resto (datos personales, menciones a una IA en los mensajes) sigue activo. Con tests. |
 | Benchmarks | `evals/benchmarks/` solo con scripts: `measure_notes.py` (apuntes), `ab_models.py` (A/B de modelos, parametrizado por modelos, ids del golden y rutas; probado con una pregunta contra Qwen2.5 7B) y `reliability_browser.cjs` (bloqueo de imágenes remotas en Edge; probado: 2 marcadores, 0 peticiones externas), más su `README.md`. No se movió nada con resultados ni con nombres reales: los experimentos puntuales de `evals/results/` (comparativa Qwen3, apuntes largos, scripts de auditoría antiguos) dependen de casos y de ids del golden local, y siguen donde estaban, ignorados por git. |
 | `PROGRESO.md` / historial | `PROGRESO.md` queda con el estado actual y lo que viene; las fases y los checkpoints cerrados pasaron a [`HISTORIAL.md`](HISTORIAL.md) sin cambios de contenido. |
@@ -33,7 +33,7 @@ caché de BM25 y `aliases.toml`) se copió y verificó en `C:\venvs\second-brain
 `brain stats` (1.000 notas, 23.236 puntos), una búsqueda y `brain index` (0 cambios). **El `data/` antiguo
 sigue en el repositorio, ya obsoleto** (se escribe en el nuevo): bórralo a mano cuando quieras.
 
-**Pendiente de este bloque:** que corra el CI en GitHub (y corregir lo que salga); el resto de ficheros
+**Pendiente de este bloque:** nada propio; el resto de ficheros
 generados por la herramienta que vayan a `data/` en las entregas siguientes (progreso reanudable de los
 apuntes, punto 10) heredarán `data_dir`.
 

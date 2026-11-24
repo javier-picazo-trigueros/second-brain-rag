@@ -225,6 +225,11 @@ y anota el estado de la GPU: si está compartida con otro proceso, las latencias
 Copia `.env.example` a `.env` y ajusta `BRAIN_VAULT_PATH`. Los datos de Qdrant viven en el volumen
 Docker `qdrant_data`, nunca en el repo. El vault se trata como solo lectura.
 
+Los datos locales (manifest, caché del modelo BM25 y alias) viven por defecto en `data/`, ignorada por
+git. Si el repositorio está en OneDrive, sácalos con `brain migrate-data C:\ruta\a\tus\datos`: copia
+la carpeta, la verifica fichero a fichero y fila a fila, y te dice qué línea `BRAIN_DATA_DIR=` poner en el
+`.env`. No toca el origen; bórralo tú cuando compruebes que todo funciona.
+
 ## Licencia
 
 Este proyecto se distribuye bajo la [PolyForm Noncommercial License 1.0.0](LICENSE). Se puede ver,

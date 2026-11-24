@@ -17,6 +17,14 @@ from secondbrain.ingest.chunker import CHUNKER_VERSION
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
+# Ficheros de la carpeta de datos que siguen a `data_dir` mientras no se fijen por separado.
+_DATA_FILES = {
+    "manifest_path": "manifest.sqlite",
+    "bm25_cache_dir": "fastembed_cache",
+    "aliases_path": "aliases.toml",
+}
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="BRAIN_", env_file=PROJECT_ROOT / ".env", extra="ignore"
@@ -128,6 +136,9 @@ class Settings(BaseSettings):
     graph_budget: int = Field(4, ge=0)  # notas relacionadas máximas por búsqueda
     graph_min_idf: float = Field(0.0, ge=0)  # ignora conceptos más genéricos que este idf
 
+    # Carpeta de datos locales (manifest, caché de BM25, alias): puede vivir fuera del repositorio
+    # (p. ej. fuera de OneDrive). Cada fichero se puede fijar por separado y entonces manda.
+    data_dir: Path = Path("data")
     manifest_path: Path = Path("data/manifest.sqlite")
     chunk_max_chars: int = Field(1800, ge=400)
     chunk_min_chars: int = Field(300, ge=50)
@@ -139,7 +150,7 @@ class Settings(BaseSettings):
             return [part.strip() for part in v.split(";") if part.strip()]
         return v
 
-    @field_validator("manifest_path", "bm25_cache_dir", "aliases_path")
+    @field_validator("data_dir", "manifest_path", "bm25_cache_dir", "aliases_path")
     @classmethod
     def _anchor_to_project_root(cls, v: Path) -> Path:
         return v if v.is_absolute() else PROJECT_ROOT / v
@@ -150,6 +161,13 @@ class Settings(BaseSettings):
         if not v.is_dir():
             raise ValueError(f"El vault no existe: {v}")
         return v.resolve()
+
+    @model_validator(mode="after")
+    def _data_files_follow_data_dir(self) -> Settings:
+        for name, filename in _DATA_FILES.items():
+            if name not in self.model_fields_set:
+                setattr(self, name, self.data_dir / filename)
+        return self
 
     @model_validator(mode="after")
     def _min_below_max(self) -> Settings:

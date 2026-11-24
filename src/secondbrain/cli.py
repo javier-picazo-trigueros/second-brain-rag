@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import threading
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Annotated, NoReturn
 
 import httpx
@@ -16,6 +17,7 @@ from secondbrain.embeddings.ollama import OllamaEmbedder
 from secondbrain.evals.cli import golden_app
 from secondbrain.ingest.indexer import Indexer, SyncReport
 from secondbrain.ingest.watcher import WatcherService
+from secondbrain.migrate import MigrationError, migrate_data
 from secondbrain.notes import resolve_note
 from secondbrain.protocols import Embedder, Store
 from secondbrain.retrieval.families import CopyFamilies
@@ -208,6 +210,32 @@ def stats() -> None:
         f"notas={notes} chunks_manifest={chunks} puntos_qdrant={svc.store.count()} "
         f"grupos_de_copias={len(svc.manifest.duplicate_groups())} conceptos={len(concepts)}"
     )
+
+
+def _data_dir() -> Path:
+    return _settings().data_dir
+
+
+@app.command("migrate-data")
+def migrate_data_command(
+    destination: Annotated[Path, typer.Argument(help="Carpeta nueva (vacía o inexistente).")],
+    source: Annotated[
+        Path | None,
+        typer.Option(help="Carpeta de datos de origen (por defecto la actual: BRAIN_DATA_DIR)."),
+    ] = None,
+) -> None:
+    """Copia la carpeta de datos (manifest, caché de BM25, alias) a otro sitio y la verifica."""
+    try:
+        report = migrate_data(source or _data_dir(), destination)
+    except MigrationError as exc:
+        _fail(str(exc))
+    typer.echo(
+        f"Copia verificada: notas={report.notes} chunks={report.chunks} ficheros={report.files} "
+        f"tamaño={report.size_bytes / 2**20:.1f} MiB"
+    )
+    typer.echo("Para usarla, añade esto a tu .env:")
+    typer.echo(f"  BRAIN_DATA_DIR={destination.resolve()}")
+    typer.echo("El origen no se ha tocado: bórralo a mano cuando compruebes que todo funciona.")
 
 
 _LOOPBACK = frozenset({"127.0.0.1", "localhost", "::1"})

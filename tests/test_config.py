@@ -316,3 +316,43 @@ def test_confidence_threshold_default_comes_from_the_calibration(tmp_path: Path)
     # Calibrado con 14 preguntas sobre temas presentes (mín. 0,605) y 13 sobre temas ausentes
     # (máx. 0,604): el margen es mínimo, por eso la confianza es un aviso y nunca un bloqueo.
     assert _settings(tmp_path).confidence_threshold == 0.6
+
+
+# --- directorio de datos configurable (fuera de OneDrive) ----------------------------------------
+
+
+def test_data_files_default_to_the_data_folder_of_the_project(tmp_path: Path) -> None:
+    s = _settings(tmp_path)
+    assert s.data_dir == PROJECT_ROOT / "data"
+    assert s.manifest_path == PROJECT_ROOT / "data" / "manifest.sqlite"
+    assert s.bm25_cache_dir == PROJECT_ROOT / "data" / "fastembed_cache"
+    assert s.aliases_path == PROJECT_ROOT / "data" / "aliases.toml"
+
+
+def test_data_dir_moves_manifest_cache_and_aliases_together(tmp_path: Path) -> None:
+    where = tmp_path / "datos"
+    s = _settings(tmp_path, data_dir=where)
+    assert s.manifest_path == where / "manifest.sqlite"
+    assert s.bm25_cache_dir == where / "fastembed_cache"
+    assert s.aliases_path == where / "aliases.toml"
+
+
+def test_data_dir_comes_from_the_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("BRAIN_VAULT_PATH", str(tmp_path))
+    monkeypatch.setenv("BRAIN_DATA_DIR", str(tmp_path / "fuera"))
+    s = Settings(_env_file=None)  # type: ignore[call-arg]
+    assert s.manifest_path == tmp_path / "fuera" / "manifest.sqlite"
+
+
+def test_a_relative_data_dir_is_anchored_to_the_project_root(tmp_path: Path) -> None:
+    s = _settings(tmp_path, data_dir=Path("otros-datos"))
+    assert s.manifest_path == PROJECT_ROOT / "otros-datos" / "manifest.sqlite"
+
+
+def test_an_explicit_path_wins_over_data_dir(tmp_path: Path) -> None:
+    explicit = tmp_path / "m.sqlite"
+    s = _settings(tmp_path, data_dir=tmp_path / "datos", manifest_path=explicit)
+    assert s.manifest_path == explicit
+    assert s.bm25_cache_dir == tmp_path / "datos" / "fastembed_cache"

@@ -245,3 +245,26 @@ def test_main_without_a_manifest_skips_only_the_vault_checks(
     assert "omitidas" in capsys.readouterr().out
     commit(repo, "b.md", f"correo {MAIL}\n", "docs: con correo")
     assert main(args) == 1
+
+
+# --- entorno sin configuración (integración continua) -----------------------------------------
+
+
+def test_main_without_a_configured_email_skips_only_the_authorship_check(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    bare = tmp_path / "limpio"
+    bare.mkdir()
+    git(bare, "init", "-q", "-b", "main")
+    commit(bare, "a.py", "x = 1\n", "feat: base", email=MAIL)
+    assert main(["--repo", str(bare), "--manifest", str(tmp_path / "no.sqlite")]) == 0
+    assert "autoría omitida" in capsys.readouterr().out
+
+
+def test_main_without_a_vault_configuration_falls_back_to_the_repository_data_folder(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.delenv("BRAIN_VAULT_PATH", raising=False)
+    commit(repo, "a.py", "x = 1\n", "feat: base")
+    assert main(["--repo", str(repo), "--email", EMAIL]) == 0
+    assert "omitidas" in capsys.readouterr().out

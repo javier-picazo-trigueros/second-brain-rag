@@ -231,7 +231,7 @@ def migrate_data_command(
         _fail(str(exc))
     typer.echo(
         f"Copia verificada: notas={report.notes} chunks={report.chunks} ficheros={report.files} "
-        f"tamaño={report.size_bytes / 2**20:.1f} MiB"
+        f"tamaño={report.size_bytes / 2**20:.2f} MiB"
     )
     typer.echo("Para usarla, añade esto a tu .env:")
     typer.echo(f"  BRAIN_DATA_DIR={destination.resolve()}")

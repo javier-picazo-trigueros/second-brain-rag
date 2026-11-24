@@ -20,7 +20,7 @@ _KEYWORD_INDEXES = ("note_path", "generation", "tags", "asignatura", "curso")
 
 class VectorStore:
     def __init__(self, settings: Settings, dim: int | None = None) -> None:
-        self._client = QdrantClient(url=settings.qdrant_url)
+        self._client = QdrantClient(url=settings.qdrant_url, timeout=int(settings.qdrant_timeout_s))
         settings.bm25_cache_dir.mkdir(parents=True, exist_ok=True)
         use_system_trust_store()  # antivirus que inspecciona HTTPS: ver secondbrain.net
         # Primera ejecución: descarga única del modelo BM25. Después funciona sin conexión.

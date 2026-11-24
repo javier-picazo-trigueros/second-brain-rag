@@ -38,6 +38,21 @@ IA2 = [
         ("3º/D/Tema 1 2024.md", (1, "1")),  # un año no es un subtema
         ("3º/D/Cap 5 Ejemplo de libro.md", None),  # un capítulo de libro no es un tema
         ("3º/IA II/2401.00001v1.md", None),
+        # Marcas cortas: «T2», «ABC_T2», con cero inicial y pegadas a otras palabras.
+        ("4º/CAR/ABC_T2_Teoria.md", (2, "2")),
+        ("2º/ADSI/T2 Caso de ejemplo.md", (2, "2")),
+        ("2º/ADSI/T3. Diagrama de ejemplo.md", (3, "3")),
+        ("1º/D/24_25_Asignatura Ejemplo_T1_Conjuntos.md", (1, "1")),
+        ("3º/X/Tema2 Ejemplo.md", (2, "2")),
+        ("3º/X/Unit 2 Ejemplo.md", (2, "2")),
+        ("3º/X/X_T02_Ejemplo.md", (2, "2")),
+        # Negativos: dos cifras, letras pegadas y palabras que solo acaban en «t».
+        ("4º/CAR/ABC_T20_Teoria.md", None),
+        ("2º/AOC/T22 - Ejemplo.md", None),
+        ("2º/AOC/T22 - Solución Ejemplo T2 (1).md", (2, "2")),
+        ("3º/X/T2a Ejemplo.md", None),
+        ("3º/X/Part2 Ejemplo.md", None),
+        ("3º/X/Net5 Ejemplo.md", None),
     ],
 )
 def test_topic_key_comes_from_the_file_name_or_its_folder(
@@ -53,6 +68,8 @@ def test_topic_key_comes_from_the_file_name_or_its_folder(
         ("Tema-3.1 Ejemplo de procesos v2021", "Ejemplo de procesos"),
         ("Redes_Tema4_V4", ""),
         ("Tema 5 Ejemplo de grafos [MD]", "Ejemplo de grafos [MD]"),
+        ("ABC_T2_Teoria", "Teoria"),
+        ("T2 Caso de ejemplo", "Caso de ejemplo"),
     ],
 )
 def test_clean_title_drops_the_marker_copies_and_versions(stem: str, clean: str) -> None:

@@ -22,7 +22,7 @@ from secondbrain.retrieval.overview import IntentRetriever
 from secondbrain.retrieval.study import StudyPlanner
 from secondbrain.retrieval.subjects import SubjectIndex, SubjectSpec
 from secondbrain.store.manifest import Manifest
-from tests.fakes import FakeRetriever, ScriptedLLM
+from tests.fakes import FakeRetriever, ScriptedLLM, SequenceLLM
 
 ALIASES = {
     "Matemática Discreta": SubjectSpec(
@@ -425,3 +425,233 @@ def test_a_window_that_crosses_notes_is_titled_with_their_names_not_with_pages(
     m.close()
     assert plan is not None and len(plan.parts) == 1
     assert plan.parts[0].title == "Procesos + Hilos"
+
+
+# --- continuación de las partes cortadas por el tope de salida ----------------------------------
+
+CUT = "La primera mitad de esta parte explica el concepto principal [S1] y se corta en med"
+REST = "io de una frase para seguir con el desarrollo completo [S2]. Fin de la parte."
+
+
+def run_seq(
+    tmp_path: Path,
+    manifest: Manifest,
+    index: SubjectIndex,
+    script: Sequence[tuple[Sequence[str], bool]],
+    **over: Any,
+) -> tuple[list[Any], SequenceLLM, int]:
+    over = {"notes_window_tokens": 3500, **over}
+    plan, _ = plan_for(tmp_path, manifest, index, **over)
+    llm = SequenceLLM(script)
+    pipeline = AnswerPipeline(
+        settings(tmp_path, **over),
+        FakeRetriever(SearchResult([], [], None, mode="notes", study=plan)),
+        llm,
+    )
+    events = list(pipeline.ask("apuntes"))
+    return events, llm, len(plan.parts)
+
+
+def first_part(done: DoneEvent) -> str:
+    section = done.answer.split("\n\n## ")[1]
+    return section.split("\n\n", 1)[1]  # sin su encabezado
+
+
+def test_a_part_cut_by_the_output_limit_is_continued_automatically(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    events, llm, parts = run_seq(tmp_path, manifest, index, [([CUT], True), ([REST], False)])
+    done = events[-1]
+    assert isinstance(done, DoneEvent)
+    assert llm.calls == parts + 1
+    assert CUT in first_part(done) and REST in first_part(done)
+    assert "parte_sin_terminar" not in done.warnings
+    assert "respuesta_truncada" not in done.warnings
+
+
+def test_the_continuation_carries_the_same_sources_and_the_end_of_what_was_written(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    _, llm, _ = run_seq(tmp_path, manifest, index, [([CUT], True), ([REST], False)])
+    original, continuation = llm.all_messages[0], llm.all_messages[1]
+    assert continuation[0] == original[0]  # mismas instrucciones de sistema
+    assert original[1].content in continuation[1].content  # mismas fuentes y esquema
+    assert CUT[-60:] in continuation[1].content  # el final de lo escrito
+    assert "continúa" in continuation[1].content.lower()
+
+
+def test_what_the_continuation_repeats_is_not_duplicated(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    repeated = "explica el concepto principal [S1] y se corta en med" + REST
+    events, _, _ = run_seq(tmp_path, manifest, index, [([CUT], True), ([repeated], False)])
+    done = events[-1]
+    assert isinstance(done, DoneEvent)
+    assert first_part(done).count("explica el concepto principal") == 1
+    assert first_part(done).strip().startswith(CUT)
+    streamed = "".join(e.text for e in events if isinstance(e, TokenEvent))
+    assert streamed == done.answer  # lo que se ve es lo que se guarda
+
+
+def test_a_sentence_end_and_a_new_sentence_are_separated_by_a_space(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    first = "Esta parte llega hasta el final de una frase completa [S1]."
+    script = [([first], True), (["Otra frase nueva sigue aquí [S2]."], False)]
+    events, _, _ = run_seq(tmp_path, manifest, index, script)
+    done = events[-1]
+    assert isinstance(done, DoneEvent)
+    assert f"{first} Otra frase nueva" in first_part(done)
+
+
+def test_two_cuts_in_a_row_are_continued_twice(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    middle = "seguimos con otro tramo largo del desarrollo de la parte [S1] y volvemos a cortar"
+    script = [([CUT], True), ([middle], True), ([" y terminamos [S2]."], False)]
+    events, llm, parts = run_seq(tmp_path, manifest, index, script)
+    done = events[-1]
+    assert isinstance(done, DoneEvent)
+    assert llm.calls == parts + 2
+    assert middle in first_part(done) and "terminamos" in first_part(done)
+    assert "parte_sin_terminar" not in done.warnings
+    assert middle[:40] in llm.all_messages[2][1].content  # la 2.ª continuación ve el nuevo final
+
+
+def test_a_part_that_is_still_cut_after_the_limit_stays_pending_and_is_flagged(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    cuts = [
+        ([f"tramo {i} largo de texto que sigue avanzando con contenido nuevo [S1]"], True)
+        for i in range(3)
+    ]
+    events, llm, parts = run_seq(tmp_path, manifest, index, cuts, notes_max_continuations=2)
+    done = events[-1]
+    assert isinstance(done, DoneEvent)
+    assert llm.calls == parts + 2  # el límite son dos continuaciones por parte
+    assert "parte_sin_terminar" in done.warnings
+    assert "tramo 0" in first_part(done)  # lo escrito se conserva
+    assert sum(isinstance(e, ProgressEvent) for e in events) == parts  # y las demás partes siguen
+
+
+def test_a_continuation_that_does_not_advance_stays_pending_and_is_flagged(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    stuck = "se corta en med"  # solo repite el final: nada nuevo que añadir
+    script = [([CUT], True), ([stuck], True)]
+    events, llm, parts = run_seq(tmp_path, manifest, index, script, notes_max_continuations=5)
+    done = events[-1]
+    assert isinstance(done, DoneEvent)
+    assert llm.calls == parts + 1  # no se insiste con una continuación que no avanza
+    assert "parte_sin_terminar" in done.warnings
+    assert first_part(done).strip() == CUT
+
+
+def test_citations_of_the_continuation_are_verified_and_collected(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    rest = "io de una frase que cita [S2] y también una fuente inventada [S99]. Fin."
+    events, _, _ = run_seq(tmp_path, manifest, index, [([CUT], True), ([rest], False)])
+    done = events[-1]
+    assert isinstance(done, DoneEvent)
+    assert "S2" in {c.id for c in done.citations}
+    assert "S99" in done.invalid and "citas_no_verificadas" in done.warnings
+
+
+def test_a_citation_cut_in_half_is_not_left_dangling(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    script = [
+        (["Texto de la parte que acaba en una cita rota [S"], True),
+        ([" seguimos con otra frase [S1]."], False),
+    ]
+    events, _, _ = run_seq(tmp_path, manifest, index, script)
+    done = events[-1]
+    assert isinstance(done, DoneEvent)
+    assert "[S seguimos" not in done.answer and "[S [" not in done.answer
+
+
+def test_tokens_of_every_call_are_added_up(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    events, llm, _ = run_seq(tmp_path, manifest, index, [([CUT], True), ([REST], False)])
+    done = events[-1]
+    assert isinstance(done, DoneEvent)
+    assert done.completion_tokens == 50 * llm.calls
+
+
+def test_continuations_can_be_switched_off(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    script = [([CUT], True)]
+    events, llm, parts = run_seq(tmp_path, manifest, index, script, notes_max_continuations=0)
+    done = events[-1]
+    assert isinstance(done, DoneEvent)
+    assert llm.calls == parts and "parte_sin_terminar" in done.warnings
+
+
+# --- empalme: casos vistos con el modelo real (empieza una frase nueva en vez de seguir) ---
+
+
+def seam(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex, first: str, second: str
+) -> tuple[str, str]:
+    """(parte tal como queda, texto emitido) de una parte cortada y su continuación."""
+    events, _, _ = run_seq(tmp_path, manifest, index, [([first], True), ([second], False)])
+    done = events[-1]
+    assert isinstance(done, DoneEvent)
+    streamed = "".join(e.text for e in events if isinstance(e, TokenEvent))
+    assert streamed == done.answer  # lo que se ve es lo que se guarda
+    return first_part(done), streamed
+
+
+def test_a_new_sentence_after_an_unfinished_one_drops_the_fragment(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    first = "Primera frase completa del tema [S1]. Segunda frase que se corta con far fewer"
+    part, _ = seam(tmp_path, manifest, index, first, "Random under-sampling pierde datos [S2].")
+    assert part.startswith("Primera frase completa del tema [S1].\n\nRandom under-sampling")
+    assert "far fewer" not in part and "fewerRandom" not in part
+
+
+def test_without_a_sentence_boundary_the_fragment_is_kept_and_marked(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    first = "una sola frase larga sin punto que se corta de repente con far fewer"
+    part, _ = seam(tmp_path, manifest, index, first, "Random under-sampling empieza otra [S1].")
+    assert f"{first} […]\n\nRandom under-sampling" in part
+
+
+def test_a_dangling_marker_is_removed_and_the_repeated_heading_is_not_duplicated(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    first = "Texto previo largo de la parte [S1].\n\n### Feature aggregation\n\n**"
+    second = "### Feature aggregation\n\nFeature aggregation combina atributos [S2]."
+    part, _ = seam(tmp_path, manifest, index, first, second)
+    assert part.count("### Feature aggregation") == 1
+    assert "**" not in part and "combina atributos" in part
+
+
+def test_a_list_item_after_a_list_item_goes_on_its_own_line(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    first = "- **Dummy Encoding**: parecido a One-Hot Encoding [S1]\n- **Label**: asigna enteros"
+    part, _ = seam(tmp_path, manifest, index, first, "- **Binary Encoding**: usa códigos [S2].")
+    assert "asigna enteros\n- **Binary Encoding**" in part
+
+
+def test_a_paragraph_break_at_the_cut_is_kept(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    part, _ = seam(tmp_path, manifest, index, "Párrafo uno completo [S1].\n\n", "Párrafo dos [S2].")
+    assert part.startswith("Párrafo uno completo [S1].\n\nPárrafo dos")
+
+
+def test_a_repeated_last_sentence_with_a_dangling_marker_is_not_duplicated(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    first = "Intro de la parte con datos [S1].\n\nLa matriz de covarianza mide la relación **"
+    second = "La matriz de covarianza mide la relación entre variables [S2]."
+    part, _ = seam(tmp_path, manifest, index, first, second)
+    assert part.count("La matriz de covarianza mide la relación") == 1
+    assert "entre variables [S2]" in part

@@ -61,6 +61,8 @@ jobs:
           node-version: 22
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Quitar el .npmrc local (rutas de Windows para sacar node_modules de OneDrive)
+        run: rm -f .npmrc
       - run: pnpm install --frozen-lockfile
       - name: TypeScript
         run: pnpm typecheck

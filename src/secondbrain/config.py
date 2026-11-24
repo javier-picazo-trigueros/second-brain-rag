@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     embed_keep_alive: str = "30m"  # el embedder de consulta (CPU) no se descarga entre preguntas
 
     qdrant_url: str = "http://127.0.0.1:6333"
+    qdrant_timeout_s: float = Field(
+        30.0, gt=0
+    )  # el plazo por defecto del cliente (5 s) falla con carga
     collection: str = "vault_chunks"
     bm25_language: str = "spanish"
     # Caché del modelo BM25 de fastembed: se descarga una vez y después funciona offline.

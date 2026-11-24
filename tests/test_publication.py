@@ -118,3 +118,21 @@ def test_search_sees_one_complete_generation(
     assert client.count(s.collection, exact=True).count == len(final)
     assert final and all("nuevo" in text for text in final)
     assert len(final) == env.manifest.chunk_counts()[path] == store.count()
+
+
+def test_the_qdrant_client_gets_a_patient_timeout_from_the_settings(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Bajo carga, crear índices o publicar puede tardar más que el plazo por defecto (5 s)."""
+    seen: dict[str, Any] = {}
+
+    def fake_client(**kwargs: Any) -> QdrantClient:
+        seen.update(kwargs)
+        return QdrantClient(":memory:")
+
+    monkeypatch.setattr("secondbrain.store.qdrant.QdrantClient", fake_client)
+    monkeypatch.setattr("secondbrain.store.qdrant.SparseTextEmbedding", lambda **kw: Mock())
+    s = env.settings(bm25_cache_dir=env.tmp / "cache", qdrant_timeout_s=45)
+    VectorStore(s, dim=3)
+    assert seen["timeout"] == 45
+    assert env.settings().qdrant_timeout_s == 30  # por defecto, holgado

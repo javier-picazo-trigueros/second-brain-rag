@@ -24,6 +24,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import unquote
 
+from pydantic import ValidationError
+
+from secondbrain.config import load_settings
+
 FIXTURES_PREFIX = "tests/fixtures/vault/"
 _MIN_TITLE_LEN = 14
 # Palabras sueltas que aparecen como título de nota pero también en el código y la documentación.
@@ -151,7 +155,7 @@ def _audit_diff(diff: str, label: str, markers: Markers | None) -> list[Finding]
 
 
 def audit_repository(
-    repo: Path, tip: str, markers: Markers | None, expected_email: str
+    repo: Path, tip: str, markers: Markers | None, expected_email: str | None
 ) -> list[Finding]:
     """Commits de `tip` que no están en ningún remoto, más el árbol completo de `tip`."""
     findings: list[Finding] = []
@@ -161,7 +165,8 @@ def audit_repository(
         message = _text(_git(repo, "show", "-s", "--format=%B", sha))
         findings += [Finding(f.kind, f"{label}:mensaje", f.value) for f in audit_message(message)]
         emails = _text(_git(repo, "show", "-s", "--format=%ae%n%ce", sha)).split()
-        findings += [Finding("autoría", label, e) for e in emails if e != expected_email]
+        if expected_email is not None:
+            findings += [Finding("autoría", label, e) for e in emails if e != expected_email]
         diff = _text(_git(repo, "show", "--format=", "-U0", "--no-renames", sha))
         findings += _audit_diff(diff, label, markers)
     names = _git(repo, "ls-tree", "-r", "--name-only", "-z", tip).split(b"\0")
@@ -188,6 +193,21 @@ def load_markers(manifest_path: Path, fixtures_dir: Path | None) -> Markers | No
     return Markers.from_paths(paths, fixture_paths=fixtures)
 
 
+def _default_manifest(repo: Path) -> Path:
+    """Manifest de la configuración local o, sin ella (integración continua), `data/` del repo."""
+    try:
+        return load_settings().manifest_path
+    except ValidationError:
+        return repo / "data" / "manifest.sqlite"
+
+
+def _local_email(repo: Path) -> str | None:
+    try:
+        return _text(_git(repo, "config", "--local", "user.email")).strip() or None
+    except subprocess.CalledProcessError:
+        return None
+
+
 def _say(text: str) -> None:
     sys.stdout.write(text + "\n")
 
@@ -200,14 +220,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--email", default=None, help="correo esperado de autor y committer")
     args = parser.parse_args(argv)
     repo: Path = args.repo
-    manifest: Path
-    if args.manifest is not None:
-        manifest = args.manifest
-    else:
-        from secondbrain.config import Settings
-
-        manifest = Settings().manifest_path  # type: ignore[call-arg]
-    email = args.email or _text(_git(repo, "config", "--local", "user.email")).strip()
+    manifest: Path = args.manifest if args.manifest is not None else _default_manifest(repo)
+    email = args.email or _local_email(repo)
+    if email is None:
+        _say("Comprobación de autoría omitida: no hay correo local configurado en el repositorio.")
     markers = load_markers(manifest, repo / FIXTURES_PREFIX)
     if markers is None:
         _say(f"Comprobaciones de rutas y títulos omitidas: no hay manifest en {manifest}.")

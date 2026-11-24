@@ -30,6 +30,9 @@ Diseño de la Fase 1 aprobado en `docs/referencia_fase1.md`; estado y decisiones
 ## Entorno
 - Windows 11, PowerShell, Python 3.11. Ollama en el host (`http://localhost:11434`), Qdrant en Docker.
 - Venv **fuera del repo** (está en OneDrive): `C:\venvs\second-brain` (o `$env:BRAIN_VENV`).
+- Datos locales (manifest, caché de BM25, alias) fuera del repo: `BRAIN_DATA_DIR` (por defecto `data/`;
+  `brain migrate-data DESTINO` los copia y verifica). Estado en `docs/PROGRESO.md`, historial en
+  `docs/HISTORIAL.md`.
 - Si un comando falla con "archivo en uso" o "access denied", suele ser OneDrive: esperar unos
   segundos y reintentar una vez; si persiste, avisar al usuario.
 - GPU de 8 GB: en consulta el embedder (`bge-m3`) corre en CPU (`num_gpu=0`); LLM `qwen2.5:7b` con

@@ -588,3 +588,70 @@ def test_continuations_can_be_switched_off(
     done = events[-1]
     assert isinstance(done, DoneEvent)
     assert llm.calls == parts and "parte_sin_terminar" in done.warnings
+
+
+# --- empalme: casos vistos con el modelo real (empieza una frase nueva en vez de seguir) ---
+
+
+def seam(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex, first: str, second: str
+) -> tuple[str, str]:
+    """(parte tal como queda, texto emitido) de una parte cortada y su continuación."""
+    events, _, _ = run_seq(tmp_path, manifest, index, [([first], True), ([second], False)])
+    done = events[-1]
+    assert isinstance(done, DoneEvent)
+    streamed = "".join(e.text for e in events if isinstance(e, TokenEvent))
+    assert streamed == done.answer  # lo que se ve es lo que se guarda
+    return first_part(done), streamed
+
+
+def test_a_new_sentence_after_an_unfinished_one_drops_the_fragment(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    first = "Primera frase completa del tema [S1]. Segunda frase que se corta con far fewer"
+    part, _ = seam(tmp_path, manifest, index, first, "Random under-sampling pierde datos [S2].")
+    assert part.startswith("Primera frase completa del tema [S1].\n\nRandom under-sampling")
+    assert "far fewer" not in part and "fewerRandom" not in part
+
+
+def test_without_a_sentence_boundary_the_fragment_is_kept_and_marked(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    first = "una sola frase larga sin punto que se corta de repente con far fewer"
+    part, _ = seam(tmp_path, manifest, index, first, "Random under-sampling empieza otra [S1].")
+    assert f"{first} […]\n\nRandom under-sampling" in part
+
+
+def test_a_dangling_marker_is_removed_and_the_repeated_heading_is_not_duplicated(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    first = "Texto previo largo de la parte [S1].\n\n### Feature aggregation\n\n**"
+    second = "### Feature aggregation\n\nFeature aggregation combina atributos [S2]."
+    part, _ = seam(tmp_path, manifest, index, first, second)
+    assert part.count("### Feature aggregation") == 1
+    assert "**" not in part and "combina atributos" in part
+
+
+def test_a_list_item_after_a_list_item_goes_on_its_own_line(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    first = "- **Dummy Encoding**: parecido a One-Hot Encoding [S1]\n- **Label**: asigna enteros"
+    part, _ = seam(tmp_path, manifest, index, first, "- **Binary Encoding**: usa códigos [S2].")
+    assert "asigna enteros\n- **Binary Encoding**" in part
+
+
+def test_a_paragraph_break_at_the_cut_is_kept(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    part, _ = seam(tmp_path, manifest, index, "Párrafo uno completo [S1].\n\n", "Párrafo dos [S2].")
+    assert part.startswith("Párrafo uno completo [S1].\n\nPárrafo dos")
+
+
+def test_a_repeated_last_sentence_with_a_dangling_marker_is_not_duplicated(
+    tmp_path: Path, manifest: Manifest, index: SubjectIndex
+) -> None:
+    first = "Intro de la parte con datos [S1].\n\nLa matriz de covarianza mide la relación **"
+    second = "La matriz de covarianza mide la relación entre variables [S2]."
+    part, _ = seam(tmp_path, manifest, index, first, second)
+    assert part.count("La matriz de covarianza mide la relación") == 1
+    assert "entre variables [S2]" in part

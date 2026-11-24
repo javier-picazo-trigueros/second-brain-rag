@@ -27,37 +27,57 @@ _EMPTY = BuiltContext("", (), 0, 0, "search", ())
 
 _MIN_PROGRESS_CHARS = 40  # una continuación con menos texto nuevo que esto «no avanza»
 _HOLD_CHARS = 400  # al continuar se retiene el arranque para quitar lo que repite del final
+_TAIL_HOLD = 400  # de cada llamada se retiene el final: si se corta, se empalma con la continuación
 _MIN_OVERLAP = 15  # solape mínimo (caracteres) para considerar que el modelo repite lo escrito
 _SENTENCE_STOP = ".!?:;)]"
 _LIST_START = "-*#|>"
+_DANGLING = " \t\r\n*_#>`-"  # marcas de formato que un corte deja colgando al final
+_BOUNDARY = re.compile(r"(?<=[.!?])\s+|\n+")
+# Línea que ya es un bloque completo aunque no acabe en punto: elemento de lista, título, tabla.
+_STRUCTURAL_LINE = re.compile(r"^\s*(?:[-*\u2022]\s|\d+[.)]\s|#|\||>)")
 
 
-def _drop_overlap(previous: str, new: str) -> str:
-    """Quita del arranque de `new` lo que repite el final de `previous` (el modelo, al continuar,
-    suele volver a escribir la frase en la que se cortó)."""
+def _splice(tail: str, new: str) -> tuple[str, int]:
+    """Empalma el final retenido de lo escrito (`tail`) con la continuación `new`.
+
+    Devuelve el texto que sustituye a ambos y cuántos caracteres nuevos aporta `new`. El modelo,
+    al continuar, a menudo vuelve a escribir el final (se quita el solape, también si el corte
+    dejó marcas colgando como `**`), o empieza una frase nueva en lugar de seguir la cortada (se
+    separa y se descarta la frase a medias).
+    """
     body = new.lstrip()
-    longest = min(len(previous), len(body), 1500)
+    if not body:
+        return tail, 0
+    stripped = tail.rstrip(_DANGLING)
+    gap = tail[len(stripped) :]
+    if not stripped:
+        return body, len(body)
+    longest = min(len(stripped), len(body), 1500)
     for size in range(longest, _MIN_OVERLAP - 1, -1):
-        if previous.endswith(body[:size]):
-            return body[size:]
-    return new
-
-
-def _join(previous: str, new: str) -> str:
-    """Texto de la continuación con el separador que pide el empalme: un corte en mitad de una
-    palabra se une tal cual; tras el final de una frase, con un espacio o un salto de línea."""
-    if not previous or not new or previous[-1].isspace() or new[0].isspace():
-        return new
-    if previous[-1] not in _SENTENCE_STOP:
-        return new
-    return ("\n" if new[0] in _LIST_START else " ") + new
+        if stripped.endswith(body[:size]):
+            return stripped + body[size:], len(body) - size
+    if body[0].islower():  # sigue la misma frase (o la misma palabra: se une tal cual)
+        return stripped + (new if new[0].isspace() or not gap else " " + new), len(new)
+    last_line = stripped.rsplit("\n", 1)[-1]
+    if stripped[-1] not in _SENTENCE_STOP and not _STRUCTURAL_LINE.match(last_line):
+        boundaries = list(_BOUNDARY.finditer(stripped))
+        if boundaries:  # se descarta la frase que quedó a medias
+            return stripped[: boundaries[-1].start()] + "\n\n" + body, len(body)
+        return stripped + " […]\n\n" + body, len(body)
+    if body[0] in _LIST_START:
+        separator = "\n\n" if body[0] == "#" or "\n\n" in gap else "\n"
+        return stripped + separator + body, len(body)
+    separator = "\n\n" if "\n\n" in gap else "\n" if "\n" in gap else " "
+    return stripped + separator + body, len(body)
 
 
 @dataclass(slots=True)
 class _Attempt:
     """Resultado de una llamada al modelo para una parte de los apuntes."""
 
-    text: str = ""
+    text: str = ""  # lo ya emitido al cliente
+    tail: str = ""  # final retenido porque la llamada se cortó: lo empalmará la continuación
+    fresh: int = 0  # caracteres nuevos que aporta (sin contar lo que repite)
     finished: Finished | None = None
 
 
@@ -481,6 +501,7 @@ class AnswerPipeline:
                 yield TokenEvent("\n\n")  # separa de la parte anterior
             yield TokenEvent(part_head)
             body = ""
+            tail = ""
             attempt = 0
             part_citations: dict[str, Fragment] = {}
             part_invalid: dict[str, None] = {}
@@ -491,7 +512,9 @@ class AnswerPipeline:
                 stream = CitationStream(part_fragments)
                 run = _Attempt()
                 try:
-                    for event in self._write_attempt(messages, stream, body, attempt > 0, run):
+                    for event in self._write_attempt(
+                        messages, stream, body, tail, attempt > 0, run
+                    ):
                         if first_token_ms is None and isinstance(event, TokenEvent):
                             first_token_ms = (self._clock() - start) * 1000
                         yield event
@@ -500,16 +523,17 @@ class AnswerPipeline:
                     yield ErrorEvent(str(exc))
                     return
                 body += run.text
+                tail = run.tail
                 for fragment in stream.report.citations:
                     part_citations.setdefault(fragment.id, fragment)
                 part_invalid.update(dict.fromkeys(stream.report.invalid))
                 if run.finished is not None:
                     part_tokens += run.finished.completion_tokens
-                if _contradiction(body) or not (run.finished and run.finished.truncated):
+                if _contradiction(body + tail) or not (run.finished and run.finished.truncated):
                     break
                 # Cortada por el tope de salida: se continúa con las mismas fuentes y el final de lo
                 # escrito, salvo que se haya agotado el límite o la continuación no avance.
-                stuck = attempt > 0 and len(run.text.strip()) < _MIN_PROGRESS_CHARS
+                stuck = attempt > 0 and run.fresh < _MIN_PROGRESS_CHARS
                 if attempt >= self._s.notes_max_continuations or stuck:
                     unfinished = True
                     log.warning(
@@ -518,7 +542,12 @@ class AnswerPipeline:
                     break
                 attempt += 1
                 log.info("Continuando la parte %d (corte %d)", number, attempt)
-                messages = build_continuation_messages(plan, part, number, len(plan.parts), body)
+                messages = build_continuation_messages(
+                    plan, part, number, len(plan.parts), body + tail
+                )
+            if tail:  # el último corte quedó sin continuar: se emite el final retenido
+                yield TokenEvent(tail)
+                body += tail
             if _contradiction(body):
                 warnings["respuesta_contradictoria"] = None
                 continue  # lo escrito en esta parte no es de fiar: no entra en los apuntes
@@ -556,55 +585,74 @@ class AnswerPipeline:
         self,
         messages: list[Message],
         stream: CitationStream,
-        previous: str,
+        written: str,
+        tail: str,
         continuing: bool,
         run: _Attempt,
     ) -> Iterator[Event]:
-        """Una llamada al modelo para una parte. Al continuar se retiene el arranque hasta poder
-        quitar lo repetido; lo que se emite es exactamente lo que se añade a `run.text`."""
+        """Una llamada al modelo para una parte. Siempre se retiene el final de lo escrito: si la
+        llamada se corta, ese final se empalma con la continuación (`run.tail`); si no, se emite.
+        Al continuar también se retiene el arranque, hasta poder empalmarlo con `tail`."""
         held: list[str] = []
         released = not continuing
-        emitted: list[str] = []
+        buffer = ""
 
-        def emit(text: str) -> Iterator[Event]:
-            if not text:
-                return
-            emitted.append(text)
-            yield TokenEvent(text)
+        def flush(*, final: bool) -> Iterator[Event]:
+            nonlocal buffer
+            cut = len(buffer) if final else max(0, len(buffer) - _TAIL_HOLD)
+            out, buffer = buffer[:cut], buffer[cut:]
+            if out:
+                run.text += out
+                yield TokenEvent(out)
 
-        def release() -> Iterator[Event]:
+        def release() -> None:
+            nonlocal buffer, released
             joined = "".join(held)
             held.clear()
-            yield from emit(_join(previous, _drop_overlap(previous, joined)))
+            released = True
+            spliced, run.fresh = _splice(tail, joined)
+            buffer += spliced
 
         contradictory = False
-        for item in self._llm.stream_chat(messages, self._s.notes_part_max_tokens):
-            if isinstance(item, Delta):
-                piece = stream.feed(item.text)
-            else:
-                run.finished, piece = item, ""
-            if not piece:
-                continue
-            if released:
-                yield from emit(piece)
-                if _contradiction(previous + "".join(emitted)):
-                    contradictory = True
-                    break
-            else:
-                held.append(piece)
-                if sum(map(len, held)) >= _HOLD_CHARS:
-                    released = True
-                    yield from release()
-        if not contradictory:
-            tail = stream.finish()
-            if run.finished is not None and run.finished.truncated:
-                tail = re.sub(r"\[[^\]\n]*$", "", tail)  # una cita cortada por el tope
-            if released:
-                yield from emit(tail)
-            else:
-                held.append(tail)
-                yield from release()
-        run.text = "".join(emitted)
+        try:
+            for item in self._llm.stream_chat(messages, self._s.notes_part_max_tokens):
+                if isinstance(item, Delta):
+                    piece = stream.feed(item.text)
+                else:
+                    run.finished, piece = item, ""
+                if not piece:
+                    continue
+                if released:
+                    buffer += piece
+                    run.fresh += len(piece)
+                    if _contradiction(written + run.text + buffer):
+                        contradictory = True
+                        break
+                    yield from flush(final=False)
+                else:
+                    held.append(piece)
+                    if sum(map(len, held)) >= _HOLD_CHARS:
+                        release()
+                        yield from flush(final=False)
+        except LLMError:
+            if not released:
+                release()
+            yield from flush(final=True)  # lo ya escrito se conserva aunque falle el modelo
+            raise
+        final_piece = "" if contradictory else stream.finish()
+        truncated = run.finished is not None and run.finished.truncated
+        if truncated:
+            final_piece = re.sub(r"\[[^\]\n]*$", "", final_piece)  # una cita cortada por el tope
+        if not released:
+            held.append(final_piece)
+            release()
+        else:
+            buffer += final_piece
+            run.fresh += len(final_piece)
+        if truncated and not contradictory:
+            run.tail, buffer = buffer, ""
+        else:
+            yield from flush(final=True)
 
     def _contradictory(
         self,
